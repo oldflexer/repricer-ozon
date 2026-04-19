@@ -43,6 +43,9 @@ class OzonParser:
 
                 # Открываем новую вкладку и переходим по URL
                 tab = await self.browser.get(url)
+                # Даём странице до конца отрисоваться
+                await asyncio.sleep(1)
+                price_element = await tab.select('.pdp_bj', timeout=PARSER_TIMEOUT)
 
                 # Ждём появления элемента с ценой — по классу pdp_bj (специфичный класс Ozon для основной цены)
                 # Метод select ждёт появления элемента с заданным CSS-селектором

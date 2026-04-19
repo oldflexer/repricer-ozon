@@ -5,3 +5,4 @@ streamlit==1.56.0
 python-dotenv==1.2.2
 nodriver==0.48.1
 setuptools==82.0.1
+pytz==2026.1.post1
