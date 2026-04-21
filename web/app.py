@@ -5,8 +5,7 @@ import threading
 import logging
 from pathlib import Path
 import sys
-from datetime import datetime
-import pytz
+import plotly.graph_objects as go
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -18,7 +17,6 @@ from src.main import Repricer
 st.set_page_config(page_title="Репрайсер Ozon", layout="wide")
 st.title("🔄 Репрайсер Ozon")
 
-# --- Аутентификация ---
 def check_password():
     import os
     from dotenv import load_dotenv
@@ -49,7 +47,6 @@ if not check_password():
 
 db = Database(DATABASE_PATH)
 
-# --- Функция запуска репрайсера ---
 def run_repricer_async():
     async def _run():
         repricer = Repricer(dry_run=False)
@@ -64,11 +61,9 @@ def run_repricer_async():
 def run_repricer_thread():
     return run_repricer_async()
 
-# --- Боковая панель ---
 with st.sidebar:
     st.header("Управление")
     
-    # Кнопка запуска
     if st.button("🚀 Запустить репрайсинг сейчас", type="primary", use_container_width=True):
         with st.spinner("Выполняется парсинг и расчёт цен..."):
             result = run_repricer_thread()
@@ -80,7 +75,6 @@ with st.sidebar:
                 st.error("❌ Ошибка выполнения")
         st.rerun()
     
-    # Последний запуск в МСК
     last_run_utc = db.get_last_run_time()
     if last_run_utc:
         last_run_msk = last_run_utc.astimezone(TIMEZONE)
@@ -90,24 +84,30 @@ with st.sidebar:
     
     st.divider()
     
-    # Загрузка нового файла
     uploaded_file = st.file_uploader("📂 Загрузить новый Excel", type=["xlsx"])
     if uploaded_file is not None:
-        # Сохраняем загруженный файл поверх DATA_FILE
         with open(DATA_FILE, "wb") as f:
             f.write(uploaded_file.getbuffer())
         st.success(f"Файл загружен: {DATA_FILE.name}")
-        # Предлагаем запустить репрайсер
         if st.button("Запустить с новым файлом"):
             result = run_repricer_thread()
             st.rerun()
     
     st.divider()
+    
+    with open(DATA_FILE, "rb") as f:
+        st.download_button(
+            label="📥 Скачать текущий Excel",
+            data=f,
+            file_name=DATA_FILE.name,
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+    
+    st.divider()
     st.caption(f"Файл данных: {DATA_FILE}")
     st.caption(f"База данных: {DATABASE_PATH}")
 
-# --- Основная область с вкладками ---
-tab1, tab2, tab3 = st.tabs(["📦 Товары", "🏷️ Конкуренты", "📈 История"])
+tab1, tab2, tab3, tab4 = st.tabs(["📦 Товары", "🏷️ Конкуренты", "📈 История", "📊 Графики"])
 
 with tab1:
     st.header("Текущие товары")
@@ -115,8 +115,40 @@ with tab1:
     if not products:
         st.warning("Нет данных о товарах. Запустите репрайсер или загрузите файл.")
     else:
+        # KPI
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Всего товаров", len(products))
+        margins = []
+        for p in products:
+            with db._get_connection() as conn:
+                cur = conn.cursor()
+                cur.execute("SELECT margin FROM price_history WHERE offer_id=? ORDER BY timestamp DESC LIMIT 1", (p['offer_id'],))
+                row = cur.fetchone()
+                if row and row[0] is not None:
+                    margins.append(row[0])
+        avg_margin = sum(margins)/len(margins) if margins else 0
+        with col2:
+            st.metric("Средняя маржа", f"{avg_margin:.2f}%")
+        no_comp = sum(1 for p in products if not p.get('competitor_urls'))
+        with col3:
+            st.metric("Без конкурентов", no_comp)
+        
+        # Фильтры
+        col_f1, col_f2 = st.columns(2)
+        with col_f1:
+            strategies = sorted(list(set(p['strategy'] for p in products)))
+            selected_strategies = st.multiselect("Стратегия", strategies, default=strategies)
+        with col_f2:
+            show_only_with_competitors = st.checkbox("Только товары с конкурентами")
+        
         rows = []
         for p in products:
+            if selected_strategies and p['strategy'] not in selected_strategies:
+                continue
+            if show_only_with_competitors and not p.get('competitor_urls'):
+                continue
+            
             with db._get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
@@ -138,8 +170,8 @@ with tab1:
             rows.append({
                 "SKU": p['offer_id'],
                 "Название": p['product_name'],
-                "Текущая цена (Ozon)": p['current_price'],
-                "Целевая цена": f"{target_price:.2f}" if target_price else "—",
+                "Прошлая цена": p['current_price'],
+                "Текущая цена": f"{target_price:.2f}" if target_price else "—",
                 "Маржа, %": f"{margin:.2f}" if margin else "—",
                 "Ср. за неделю, %": f"{avg_week:.2f}" if avg_week else "—",
                 "Ср. за месяц, %": f"{avg_month:.2f}" if avg_month else "—",
@@ -150,21 +182,22 @@ with tab1:
                 "Конкуренты (цены)": competitor_prices,
             })
         
-        df = pd.DataFrame(rows)
-        st.dataframe(df, use_container_width=True, hide_index=True)
-        
-        csv = df.to_csv(index=False).encode('utf-8')
-        st.download_button("📥 Скачать таблицу (CSV)", csv, "repricer_export.csv", "text/csv")
+        if rows:
+            df = pd.DataFrame(rows)
+            st.dataframe(df, use_container_width=True, hide_index=True)
+            
+            csv = df.to_csv(index=False).encode('utf-8')
+            st.download_button("📥 Скачать таблицу (CSV)", csv, "repricer_export.csv", "text/csv")
+        else:
+            st.info("Нет товаров, соответствующих фильтрам.")
 
 with tab2:
     st.header("Цены конкурентов")
-    # Собираем последние цены по каждому конкуренту для каждого товара
     comp_data = []
     for p in products:
         urls = p.get('competitor_urls', [])
         if not urls:
             continue
-        # Получаем последнюю запись цен
         with db._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('''
@@ -207,3 +240,29 @@ with tab3:
         st.dataframe(hist_df, use_container_width=True, hide_index=True)
     else:
         st.info("История пуста")
+
+with tab4:
+    st.header("Динамика цены и маржинальности")
+    products = db.get_all_products()
+    if products:
+        sku_list = [p['offer_id'] for p in products]
+        selected_skus = st.multiselect("Выберите SKU", sku_list, default=sku_list[:2] if len(sku_list)>=2 else sku_list)
+        if selected_skus:
+            fig_price = go.Figure()
+            fig_margin = go.Figure()
+            for sku in selected_skus:
+                with db._get_connection() as conn:
+                    df = pd.read_sql_query('''
+                        SELECT timestamp, target_price, margin
+                        FROM price_history
+                        WHERE offer_id = ?
+                        ORDER BY timestamp ASC
+                    ''', conn, params=(sku,))
+                if not df.empty:
+                    df['timestamp'] = pd.to_datetime(df['timestamp'])
+                    fig_price.add_trace(go.Scatter(x=df['timestamp'], y=df['target_price'], mode='lines+markers', name=f'{sku} цена'))
+                    fig_margin.add_trace(go.Scatter(x=df['timestamp'], y=df['margin'], mode='lines+markers', name=f'{sku} маржа'))
+            st.subheader("Цена")
+            st.plotly_chart(fig_price, use_container_width=True)
+            st.subheader("Маржинальность, %")
+            st.plotly_chart(fig_margin, use_container_width=True)

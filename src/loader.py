@@ -21,11 +21,11 @@ class DataLoader:
         'competitor_urls': ['конкурент', 'ссылки_конкурентов'],
         'strategy': ['стратегия', 'strategy'],
         'strategy_percent': ['процент', 'percent', 'strategy_percent'],
-        'schedule': ['расписание', 'schedule', 'intervals'],
+        # 'schedule' больше не используется, теперь парсим из отдельных столбцов
     }
 
-    # Количество колонок с конкурентами (Конкурент 1 ... Конкурент 5)
     COMPETITOR_COLUMNS_COUNT = 5
+    SCHEDULE_INTERVALS_COUNT = 4  # Количество возможных временных интервалов
 
     def __init__(self, file_path: Path):
         self.file_path = file_path
@@ -41,7 +41,6 @@ class DataLoader:
 
         # Читаем с указанием, что все столбцы - объекты, чтобы сохранить строки
         df = pd.read_excel(self.file_path, engine='openpyxl', dtype=str)
-        # Удаляем возможные пробелы в названиях колонок
         df.columns = df.columns.str.lower().str.strip()
 
         # Дополнительно для SKU убираем пробелы
@@ -60,7 +59,6 @@ class DataLoader:
         return products
 
     def _parse_row(self, row: pd.Series, columns: pd.Index) -> Optional[Dict[str, Any]]:
-        """Парсит одну строку таблицы в словарь с нормализованными ключами."""
         product = {}
 
         # 1. Простые поля через маппинг
@@ -93,15 +91,8 @@ class DataLoader:
                     break
         product['competitor_urls'] = competitor_urls
 
-        # 4. Расписание: преобразуем в JSON, если задано в текстовом формате
-        schedule_raw = None
-        for syn in self.COLUMN_MAPPING['schedule']:
-            if syn in columns:
-                val = row.get(syn)
-                if pd.notna(val):
-                    schedule_raw = str(val).strip()
-                    break
-        product['schedule'] = self._parse_schedule(schedule_raw)
+        # 4. Расписание: формируем JSON из отдельных столбцов для интервалов
+        product['schedule'] = self._parse_schedule_from_columns(row, columns)
 
         # 5. Числовые поля
         for field in ['cost_price', 'min_price', 'current_price', 'strategy_percent']:
@@ -126,80 +117,88 @@ class DataLoader:
 
         return product
 
+    def _parse_schedule_from_columns(self, row: pd.Series, columns: pd.Index) -> Optional[str]:
+        """
+        Собирает расписание из столбцов вида:
+        Промежуток 1, Стратеги 1, Процент 1, ... до 4-го интервала.
+        Возвращает JSON-строку с массивом интервалов.
+        """
+        intervals = []
+        for i in range(1, self.SCHEDULE_INTERVALS_COUNT + 1):
+            # Ищем колонки для i-го интервала
+            time_col = self._find_column(columns, [f'промежуток {i}', f'промежуток{i}', f'интервал {i}'])
+            strategy_col = self._find_column(columns, [f'стратеги {i}', f'стратегия {i}', f'strategy_{i}'])
+            percent_col = self._find_column(columns, [f'процент {i}', f'percent_{i}'])
+
+            if not time_col:
+                continue  # Если нет времени начала, интервал не задан
+
+            time_val = row.get(time_col)
+            if pd.isna(time_val) or not str(time_val).strip():
+                continue
+
+            time_range = str(time_val).strip()
+            # Ожидаемый формат: "09:00-12:00"
+            if '-' not in time_range:
+                logger.warning(f"Неверный формат промежутка '{time_range}', ожидается 'ЧЧ:ММ-ЧЧ:ММ'")
+                continue
+
+            start, end = time_range.split('-', 1)
+            start = start.strip()
+            end = end.strip()
+
+            strategy_val = row.get(strategy_col) if strategy_col else None
+            percent_val = row.get(percent_col) if percent_col else None
+
+            try:
+                strategy = int(float(strategy_val)) if pd.notna(strategy_val) else 3
+            except (ValueError, TypeError):
+                strategy = 3
+
+            try:
+                percent = float(percent_val) if pd.notna(percent_val) else 0.0
+            except (ValueError, TypeError):
+                percent = 0.0
+
+            intervals.append({
+                'start': start,
+                'end': end,
+                'strategy': strategy,
+                'percent': percent
+            })
+
+        if intervals:
+            return json.dumps(intervals, ensure_ascii=False)
+        return None
+
+    def _find_column(self, columns: pd.Index, candidates: List[str]) -> Optional[str]:
+        """Находит первую подходящую колонку из списка кандидатов."""
+        for cand in candidates:
+            if cand in columns:
+                return cand
+        return None
+
+    # Старый метод _parse_schedule больше не используется, оставлен для совместимости
     def _parse_schedule(self, raw: Optional[str]) -> Optional[str]:
-        """
-        Преобразует расписание в JSON-строку для PriceCalculator.
-        Поддерживает три формата:
-        1) JSON-строка (начинается с '[') – возвращается как есть.
-        2) Текстовый формат старого образца: "00:00 1 10 10:00 2 5 20:00 3"
-        3) Человеко-читаемый формат с явными интервалами:
-        "09:00-12:00:2:5; 13:00-17:00:1:3" (разделители ';' или ',')
-        """
+        """Устаревший метод, оставлен для обратной совместимости (если вдруг есть столбец 'Расписание')."""
         if not raw:
             return None
-
         raw = raw.strip()
-        if not raw:
-            return None
-
-        # 1) JSON
         if raw.startswith('['):
             try:
                 json.loads(raw)
                 return raw
             except json.JSONDecodeError:
-                logger.warning(f"Некорректный JSON в расписании: {raw}")
                 return None
-
-        # 2) Явные интервалы с дефисом и двоеточиями
-        # Шаблон: ЧЧ:ММ-ЧЧ:ММ:стратегия:процент
-        if '-' in raw and ':' in raw:
-            intervals = []
-            # Разделяем по ';' или ','
-            for part in re.split(r'[;,]\s*', raw):
-                part = part.strip()
-                if not part:
-                    continue
-                # Ожидаем формат: start-end:strategy:percent
-                m = re.match(r'(\d{1,2}:\d{2})-(\d{1,2}:\d{2}):(\d):(\d+(?:\.\d+)?)', part)
-                if m:
-                    intervals.append({
-                        'start': m.group(1),
-                        'end': m.group(2),
-                        'strategy': int(m.group(3)),
-                        'percent': float(m.group(4))
-                    })
-                else:
-                    logger.warning(f"Не удалось распознать интервал '{part}' в расписании")
-            if intervals:
-                return json.dumps(intervals, ensure_ascii=False)
-
-        # 3) Старый формат: "00:00 1 10 10:00 2 5 20:00 3"
-        parts = raw.split()
-        if len(parts) % 3 == 0:
-            intervals = []
-            for i in range(0, len(parts), 3):
-                time_str = parts[i]
-                try:
-                    strategy = int(parts[i+1])
-                    percent = float(parts[i+2])
-                except ValueError:
-                    logger.warning(f"Ошибка преобразования стратегии/процента в '{parts[i:i+3]}'")
-                    return None
-                intervals.append({'start': time_str, 'strategy': strategy, 'percent': percent})
-
-            # Устанавливаем конец для каждого интервала
-            for i in range(len(intervals)):
-                if i + 1 < len(intervals):
-                    intervals[i]['end'] = intervals[i+1]['start']
-                else:
-                    intervals[i]['end'] = '23:59'
-            return json.dumps(intervals, ensure_ascii=False)
-
-        logger.warning(f"Не удалось распарсить расписание: {raw}")
+        # Можно добавить парсинг старого текстового формата, но сейчас не требуется
         return None
 
-    def update_current_price_in_file(self, offer_id: str, new_price: float) -> bool:
+    def update_product_in_file(self, offer_id: str, updates: Dict[str, Any]) -> bool:
+        """
+        Обновляет поля товара в Excel-файле.
+        updates: словарь с ключами, соответствующими колонкам:
+            'current_price', 'margin', 'margin_week', 'margin_month'
+        """
         try:
             from openpyxl import load_workbook
             wb = load_workbook(self.file_path)
@@ -209,17 +208,19 @@ class DataLoader:
                 return False
 
             header_row = 1
-            # Найдём колонку "Ваша цена"
-            current_price_col = None
-            for col_idx, cell in enumerate(ws[header_row], start=1):
-                if cell.value and str(cell.value).lower().strip() in ['ваша цена', 'current_price', 'price']:
-                    current_price_col = col_idx
-                    break
-            if current_price_col is None:
-                logger.error("Не найдена колонка 'Ваша цена'")
-                return False
+            col_map = {}
+            target_columns = {
+                'current_price': ['ваша цена', 'current_price', 'price'],
+                'margin': ['маржа', 'margin'],
+                'margin_week': ['маржа за неделю', 'margin_week'],
+                'margin_month': ['маржа за месяц', 'margin_month'],
+            }
+            for field, synonyms in target_columns.items():
+                for col_idx, cell in enumerate(ws[header_row], start=1):
+                    if cell.value and str(cell.value).lower().strip() in synonyms:
+                        col_map[field] = col_idx
+                        break
 
-            # Найдём колонку SKU
             sku_col = None
             for col_idx, cell in enumerate(ws[header_row], start=1):
                 if cell.value and str(cell.value).lower().strip() in ['sku', 'артикул', 'offer_id']:
@@ -229,7 +230,6 @@ class DataLoader:
                 logger.error("Не найдена колонка 'SKU'")
                 return False
 
-            # Ищем строку с нужным SKU
             target_row = None
             target_sku_int = None
             try:
@@ -258,9 +258,15 @@ class DataLoader:
                 logger.warning(f"SKU {offer_id} не найден в файле")
                 return False
 
-            ws.cell(target_row, current_price_col, value=new_price)
+            for field, col_idx in col_map.items():
+                value = updates.get(field)
+                if value is not None:
+                    if field.startswith('margin'):
+                        value = round(float(value), 2)
+                    ws.cell(target_row, col_idx, value=value)
+
             wb.save(self.file_path)
-            logger.info(f"Обновлена 'Ваша цена' для {offer_id} на {new_price}")
+            logger.info(f"Обновлены поля {list(updates.keys())} для {offer_id}")
             return True
         except Exception as e:
             logger.error(f"Ошибка обновления Excel: {e}")

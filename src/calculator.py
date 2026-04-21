@@ -8,17 +8,6 @@ class PriceCalculator:
 
     @staticmethod
     def get_strategy_for_time(schedule: Optional[str]) -> Optional[Dict[str, Any]]:
-        """
-        Определяет активную стратегию в зависимости от текущего времени.
-        schedule - JSON строка вида:
-        [
-            {"start": "09:00", "end": "12:00", "strategy": 2, "percent": 5},
-            {"start": "12:00", "end": "18:00", "strategy": 1, "percent": 3},
-            ...
-        ]
-        Возвращает словарь с параметрами активной стратегии.
-        Если расписание не задано или не найдено – возвращает None.
-        """
         if not schedule:
             return None
         try:
@@ -45,21 +34,9 @@ class PriceCalculator:
         min_price: float,
         schedule: Optional[str] = None
     ) -> float:
-        """
-        Рассчитывает целевую цену с учётом временных интервалов.
-
-        competitor_prices: список цен конкурентов (уже спарсенные)
-        base_strategy: базовая стратегия (1 - ниже, 2 - выше, 3 - равная)
-        base_percent: базовый процент для стратегий 1 и 2
-        min_price: минимально допустимая цена
-        schedule: JSON расписание (может быть None)
-
-        Возвращает рассчитанную цену.
-        """
         if not competitor_prices:
             return min_price
 
-        # Определяем активную стратегию
         active = PriceCalculator.get_strategy_for_time(schedule)
         if active:
             strategy = active['strategy']
@@ -68,26 +45,22 @@ class PriceCalculator:
             strategy = base_strategy
             percent = base_percent
 
-        # Базовая цена по минимальной цене конкурента
         min_comp_price = min(competitor_prices)
 
-        if strategy == 1:   # Ниже конкурента на X%
+        if strategy == 1:
             target = min_comp_price * (1 - percent / 100)
-        elif strategy == 2: # Выше конкурента на X%
+        elif strategy == 2:
             target = min_comp_price * (1 + percent / 100)
-        else:               # Такая же
+        else:
             target = min_comp_price
 
-        # Не ниже разрешённого минимума
-        return max(target, min_price)
+        target = round(max(target, min_price))
+        return target
 
 
 class MarginCalculator:
-    """Расчёт маржинальности с учётом комиссий Ozon"""
-
-    # Примерные значения (в реальности нужно получать через API или таблицу)
-    DEFAULT_COMMISSION = 0.15  # 15%
-    DEFAULT_LOGISTICS = 50     # 50 руб за единицу
+    DEFAULT_COMMISSION = 0.15
+    DEFAULT_LOGISTICS = 50
 
     def __init__(self, db_connection):
         self.db = db_connection
@@ -95,9 +68,6 @@ class MarginCalculator:
     def calculate_margin(self, price: float, cost_price: float,
                          commission: Optional[float] = None,
                          logistics: Optional[float] = None) -> float:
-        """
-        Возвращает маржинальность в процентах.
-        """
         commission = commission or self.DEFAULT_COMMISSION
         logistics = logistics or self.DEFAULT_LOGISTICS
 
@@ -107,8 +77,5 @@ class MarginCalculator:
         return (profit / price) * 100
 
     def get_average_margin(self, offer_id: str, days: int) -> Optional[float]:
-        """
-        Получает среднюю маржинальность за последние `days` дней из истории.
-        """
-        # Будет реализовано после создания БД
+        # Реализация в database.py
         pass

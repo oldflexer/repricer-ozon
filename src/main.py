@@ -5,7 +5,6 @@ import argparse
 from pathlib import Path
 from typing import List, Dict, Optional
 
-# Добавляем корень проекта в путь
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from config.settings import DATA_FILE
@@ -28,8 +27,6 @@ logger = logging.getLogger(__name__)
 
 
 class Repricer:
-    """Главный класс репрайсера"""
-
     def __init__(self, dry_run: bool = False):
         self.dry_run = dry_run
         self.db = Database()
@@ -49,7 +46,6 @@ class Repricer:
 
         logger.info(f"=== Запуск репрайсера {'(DRY-RUN)' if self.dry_run else ''} ===")
 
-        # 1. Загрузка товаров
         products = self.loader.load()
         stats['products_loaded'] = len(products)
         if not products:
@@ -61,7 +57,6 @@ class Repricer:
         for product in products:
             self.db.upsert_product(product)
 
-        # 2. Парсинг цен
         logger.info(f"Парсинг цен для {len(products)} товаров")
         products_with_prices = []
 
@@ -84,7 +79,6 @@ class Repricer:
                     'raw_prices': prices
                 })
 
-        # 3. Расчёт и отправка
         updates_for_ozon = []
         margin_updates = []
 
@@ -126,11 +120,9 @@ class Repricer:
                 'competitor_prices': item['raw_prices']
             })
 
-        # 4. Отправка (или пропуск в dry-run)
         if updates_for_ozon:
             if self.dry_run:
                 logger.info(f"[DRY-RUN] Пропущена отправка {len(updates_for_ozon)} цен в Ozon")
-                # В dry-run всё равно сохраняем историю как "успех"
                 for item in margin_updates:
                     self.db.save_price_record(
                         item['offer_id'],
@@ -138,12 +130,13 @@ class Repricer:
                         item['margin'],
                         item['competitor_prices']
                     )
-                
-                for item in margin_updates:
-                    offer_id = item['offer_id']
-                    target_price = item['target_price']
-                    # Обновляем Excel
-                    self.loader.update_current_price_in_file(offer_id, target_price)
+                    updates = {
+                        'current_price': item['target_price'],
+                        'margin': item['margin'],
+                        'margin_week': self.db.get_average_margin(item['offer_id'], 7),
+                        'margin_month': self.db.get_average_margin(item['offer_id'], 30),
+                    }
+                    self.loader.update_product_in_file(item['offer_id'], updates)
 
                 stats['prices_updated'] = len(updates_for_ozon)
             else:
@@ -158,13 +151,13 @@ class Repricer:
                             item['margin'],
                             item['competitor_prices']
                         )
-
-                    for item in margin_updates:
-                        offer_id = item['offer_id']
-                        target_price = item['target_price']
-                        # Обновляем Excel
-                        self.loader.update_current_price_in_file(offer_id, target_price)
-
+                        updates = {
+                            'current_price': item['target_price'],
+                            'margin': item['margin'],
+                            'margin_week': self.db.get_average_margin(item['offer_id'], 7),
+                            'margin_month': self.db.get_average_margin(item['offer_id'], 30),
+                        }
+                        self.loader.update_product_in_file(item['offer_id'], updates)
                 else:
                     stats['errors'].append("Ошибка при отправке цен в Ozon API")
                     if not self.dry_run:
@@ -172,7 +165,6 @@ class Repricer:
         else:
             logger.warning("Нет данных для отправки в Ozon")
 
-        # 5. Уведомления
         if not self.dry_run:
             self.notifier.notify_cycle_complete(
                 updated_count=stats['prices_updated'],
