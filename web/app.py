@@ -11,23 +11,20 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from config.settings import DATA_FILE, DATABASE_PATH, TIMEZONE
 from src.database import Database
-from src.loader import DataLoader
 from src.main import Repricer
 
 st.set_page_config(page_title="Репрайсер Ozon", layout="wide")
 st.title("🔄 Репрайсер Ozon")
 
+# --- Аутентификация ---
 def check_password():
     import os
     from dotenv import load_dotenv
     load_dotenv()
-    
     WEB_USER = os.getenv("WEB_USER", "admin")
     WEB_PASS = os.getenv("WEB_PASS", "admin")
-    
     if "authenticated" not in st.session_state:
         st.session_state.authenticated = False
-    
     if not st.session_state.authenticated:
         with st.form("login"):
             username = st.text_input("Логин")
@@ -61,9 +58,9 @@ def run_repricer_async():
 def run_repricer_thread():
     return run_repricer_async()
 
+# --- Боковая панель ---
 with st.sidebar:
     st.header("Управление")
-    
     if st.button("🚀 Запустить репрайсинг сейчас", type="primary", use_container_width=True):
         with st.spinner("Выполняется парсинг и расчёт цен..."):
             result = run_repricer_thread()
@@ -74,195 +71,261 @@ with st.sidebar:
             else:
                 st.error("❌ Ошибка выполнения")
         st.rerun()
-    
+
     last_run_utc = db.get_last_run_time()
     if last_run_utc:
         last_run_msk = last_run_utc.astimezone(TIMEZONE)
         st.metric("Последний запуск (МСК)", last_run_msk.strftime("%Y-%m-%d %H:%M"))
     else:
         st.metric("Последний запуск", "—")
-    
+
     st.divider()
-    
-    uploaded_file = st.file_uploader("📂 Загрузить новый Excel", type=["xlsx"])
+    st.subheader("Работа с Excel")
+    uploaded_file = st.file_uploader("Загрузить новый файл", type=["xlsx"], label_visibility="visible")
     if uploaded_file is not None:
         with open(DATA_FILE, "wb") as f:
             f.write(uploaded_file.getbuffer())
         st.success(f"Файл загружен: {DATA_FILE.name}")
         if st.button("Запустить с новым файлом"):
-            result = run_repricer_thread()
+            run_repricer_thread()
             st.rerun()
-    
-    st.divider()
-    
+
     with open(DATA_FILE, "rb") as f:
-        st.download_button(
-            label="📥 Скачать текущий Excel",
-            data=f,
-            file_name=DATA_FILE.name,
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
-    
+        st.download_button("📥 Скачать текущий Excel", f, file_name=DATA_FILE.name)
+
     st.divider()
     st.caption(f"Файл данных: {DATA_FILE}")
     st.caption(f"База данных: {DATABASE_PATH}")
 
+# --- Основные вкладки ---
 tab1, tab2, tab3, tab4 = st.tabs(["📦 Товары", "🏷️ Конкуренты", "📈 История", "📊 Графики"])
 
 with tab1:
-    st.header("Текущие товары")
+    st.header("Товары")
     products = db.get_all_products()
     if not products:
-        st.warning("Нет данных о товарах. Запустите репрайсер или загрузите файл.")
+        st.warning("Нет данных о товарах.")
     else:
-        # KPI
+        # Фильтры
         col1, col2, col3 = st.columns(3)
         with col1:
-            st.metric("Всего товаров", len(products))
-        margins = []
-        for p in products:
-            with db._get_connection() as conn:
-                cur = conn.cursor()
-                cur.execute("SELECT margin FROM price_history WHERE offer_id=? ORDER BY timestamp DESC LIMIT 1", (p['offer_id'],))
-                row = cur.fetchone()
-                if row and row[0] is not None:
-                    margins.append(row[0])
-        avg_margin = sum(margins)/len(margins) if margins else 0
+            sku_filter = st.text_input("🔍 SKU")
         with col2:
-            st.metric("Средняя маржа", f"{avg_margin:.2f}%")
-        no_comp = sum(1 for p in products if not p.get('competitor_urls'))
+            name_filter = st.text_input("🔍 Название")
         with col3:
-            st.metric("Без конкурентов", no_comp)
-        
-        # Фильтры
-        col_f1, col_f2 = st.columns(2)
-        with col_f1:
-            strategies = sorted(list(set(p['strategy'] for p in products)))
-            selected_strategies = st.multiselect("Стратегия", strategies, default=strategies)
-        with col_f2:
-            show_only_with_competitors = st.checkbox("Только товары с конкурентами")
-        
+            strategy_filter = st.selectbox(
+                "Тип стратегии",
+                ["Все", "Ниже", "Выше", "Равная", "Смешанная"]
+            )
+
+        col4, col5, col6 = st.columns(3)
+        with col4:
+            ric_op = st.selectbox("РИЦ", ["Не важно", ">=", "<=", "="])
+            ric_val = st.number_input("Значение РИЦ", value=0.0, step=100.0, format="%.2f", key="ric")
+        with col5:
+            margin_op = st.selectbox("Маржа", ["Не важно", ">=", "<=", "="])
+            margin_val = st.number_input("Значение маржи", value=0.0, step=1.0, format="%.2f", key="margin")
+        with col6:
+            price_op = st.selectbox("Текущая цена", ["Не важно", ">=", "<=", "="])
+            price_val = st.number_input("Значение цены", value=0.0, step=100.0, format="%.2f", key="price")
+
         rows = []
         for p in products:
-            if selected_strategies and p['strategy'] not in selected_strategies:
+            # Текстовые фильтры
+            if sku_filter and sku_filter.lower() not in str(p['offer_id']).lower():
                 continue
-            if show_only_with_competitors and not p.get('competitor_urls'):
+            if name_filter and name_filter.lower() not in (p['product_name'] or '').lower():
                 continue
-            
-            with db._get_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute('''
-                    SELECT target_price, margin, competitor_prices 
-                    FROM price_history 
-                    WHERE offer_id = ? 
-                    ORDER BY timestamp DESC 
-                    LIMIT 1
-                ''', (p['offer_id'],))
-                row = cursor.fetchone()
-            
-            target_price = row['target_price'] if row else None
-            margin = row['margin'] if row else None
-            competitor_prices = row['competitor_prices'] if row else "[]"
-            
+
+            hist = db.get_price_history(p['offer_id'])
+            last_price = hist[-1]['target_price'] if hist else None
+            last_margin = hist[-1]['margin'] if hist else None
             avg_week = db.get_average_margin(p['offer_id'], 7)
             avg_month = db.get_average_margin(p['offer_id'], 30)
-            
+
+            strategies = db.get_strategies(p['offer_id'])
+            strat_types = set(s['strategy_type'] for s in strategies)
+            if len(strat_types) > 1:
+                strat_label = "Смешанная"
+            elif 1 in strat_types:
+                strat_label = "Ниже"
+            elif 2 in strat_types:
+                strat_label = "Выше"
+            else:
+                strat_label = "Равная"
+
+            if strategy_filter != "Все" and strategy_filter != strat_label:
+                continue
+
+            # Фильтр по РИЦ
+            if ric_op != "Не важно" and p['min_price'] is not None:
+                if ric_op == ">=" and p['min_price'] < ric_val:
+                    continue
+                if ric_op == "<=" and p['min_price'] > ric_val:
+                    continue
+                if ric_op == "=" and abs(p['min_price'] - ric_val) > 1e-6:
+                    continue
+
+            # Фильтр по марже
+            if margin_op != "Не важно" and last_margin is not None:
+                if margin_op == ">=" and last_margin < margin_val:
+                    continue
+                if margin_op == "<=" and last_margin > margin_val:
+                    continue
+                if margin_op == "=" and abs(last_margin - margin_val) > 1e-6:
+                    continue
+
+            # Фильтр по текущей цене
+            if price_op != "Не важно" and last_price is not None:
+                if price_op == ">=" and last_price < price_val:
+                    continue
+                if price_op == "<=" and last_price > price_val:
+                    continue
+                if price_op == "=" and abs(last_price - price_val) > 1e-6:
+                    continue
+
+            strategy_text = "; ".join([
+                f"{s['start_time']}-{s['end_time']}: {['','Ниже','Выше','Равная'][s['strategy_type']]}"
+                + (f" {s['percent']}%" if s['strategy_type'] != 3 else "")
+                for s in strategies
+            ]) if strategies else "Равная"
+
+            comps = db.get_competitors_for_product(p['offer_id'])
+            comp_prices = []
+            for c in comps:
+                price_hist = db.get_competitor_price_history(c['id'])
+                if price_hist:
+                    comp_prices.append(f"{price_hist[-1]['price']:.0f}")
+                else:
+                    comp_prices.append("—")
+            comp_prices_str = ", ".join(comp_prices) if comp_prices else "—"
+
             rows.append({
                 "SKU": p['offer_id'],
                 "Название": p['product_name'],
-                "Прошлая цена": p['current_price'],
-                "Текущая цена": f"{target_price:.2f}" if target_price else "—",
-                "Маржа, %": f"{margin:.2f}" if margin else "—",
-                "Ср. за неделю, %": f"{avg_week:.2f}" if avg_week else "—",
-                "Ср. за месяц, %": f"{avg_month:.2f}" if avg_month else "—",
-                "Мин. цена": p['min_price'],
                 "Себестоимость": p['cost_price'],
-                "Стратегия": p['strategy'],
-                "Процент": p['strategy_percent'],
-                "Конкуренты (цены)": competitor_prices,
+                "Мин. цена (РИЦ)": p['min_price'],
+                "Прошлая цена": p['current_price'],
+                "Текущая цена": f"{last_price:.2f}" if last_price else "—",
+                "Маржа, %": f"{last_margin:.2f}" if last_margin else "—",
+                "Ср. неделя, %": f"{avg_week:.2f}" if avg_week else "—",
+                "Ср. месяц, %": f"{avg_month:.2f}" if avg_month else "—",
+                "Стратегии": strategy_text,
+                "Цены конкурентов": comp_prices_str
             })
-        
+
         if rows:
             df = pd.DataFrame(rows)
             st.dataframe(df, use_container_width=True, hide_index=True)
-            
-            csv = df.to_csv(index=False).encode('utf-8')
-            st.download_button("📥 Скачать таблицу (CSV)", csv, "repricer_export.csv", "text/csv")
         else:
             st.info("Нет товаров, соответствующих фильтрам.")
 
 with tab2:
-    st.header("Цены конкурентов")
-    comp_data = []
-    for p in products:
-        urls = p.get('competitor_urls', [])
-        if not urls:
-            continue
-        with db._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                SELECT competitor_prices FROM price_history 
-                WHERE offer_id = ? 
-                ORDER BY timestamp DESC LIMIT 1
-            ''', (p['offer_id'],))
-            row = cursor.fetchone()
-        if row and row[0]:
-            import json
-            prices = json.loads(row[0])
-            for i, url in enumerate(urls):
-                price = prices[i] if i < len(prices) else None
-                comp_data.append({
-                    "SKU": p['offer_id'],
-                    "Название": p['product_name'],
-                    "Конкурент": f"Конкурент {i+1}",
-                    "Ссылка": url,
-                    "Цена": f"{price:.2f}" if price else "—"
-                })
-    if comp_data:
-        comp_df = pd.DataFrame(comp_data)
-        st.dataframe(comp_df, use_container_width=True, hide_index=True)
-    else:
+    st.header("Конкуренты")
+    competitors = db.get_all_competitors_with_details()
+    if not competitors:
         st.info("Нет данных о конкурентах")
+    else:
+        rows = []
+        for c in competitors:
+            price_hist = db.get_competitor_price_history(c['id'])
+            last_price = price_hist[-1]['price'] if price_hist else None
+            rows.append({
+                "ID": c['id'],
+                "Магазин": c['shop_name'] or "—",
+                "Товар конкурента": c['product_name'] or "—",
+                "Ссылка": c['url'],
+                "Последняя цена": f"{last_price:.2f}" if last_price else "—",
+                "Связанные SKU": c['offer_ids'] or "—"
+            })
+        df = pd.DataFrame(rows)
+        st.dataframe(df, use_container_width=True, hide_index=True)
 
 with tab3:
-    st.header("История изменений цен")
+    st.header("История изменений")
     with db._get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute('''
-            SELECT offer_id, timestamp, target_price, margin 
-            FROM price_history 
-            ORDER BY timestamp DESC 
-            LIMIT 50
-        ''')
-        history = cursor.fetchall()
-    if history:
-        hist_df = pd.DataFrame(history, columns=["SKU", "Время (UTC)", "Цена", "Маржа, %"])
+        hist_df = pd.read_sql_query('''
+            SELECT offer_id as "SKU", 
+                   timestamp as "Время", 
+                   target_price as "Цена", 
+                   margin as "Маржа, %"
+            FROM price_history
+            ORDER BY timestamp DESC
+            LIMIT 100
+        ''', conn)
+    if not hist_df.empty:
         st.dataframe(hist_df, use_container_width=True, hide_index=True)
     else:
         st.info("История пуста")
 
 with tab4:
-    st.header("Динамика цены и маржинальности")
+    st.header("Графики")
     products = db.get_all_products()
     if products:
-        sku_list = [p['offer_id'] for p in products]
-        selected_skus = st.multiselect("Выберите SKU", sku_list, default=sku_list[:2] if len(sku_list)>=2 else sku_list)
-        if selected_skus:
+        sku_options = [f"{p['offer_id']} – {p['product_name']}" for p in products]
+        sku_to_label = {opt: p['offer_id'] for opt, p in zip(sku_options, products)}
+
+        # График 1: Динамика цены и маржи
+        st.subheader("Динамика цены и маржинальности")
+        selected = st.multiselect(
+            "Выберите товары",
+            sku_options,
+            default=sku_options[:2] if len(sku_options)>=2 else sku_options,
+            key="multi_price"
+        )
+        if selected:
             fig_price = go.Figure()
             fig_margin = go.Figure()
-            for sku in selected_skus:
-                with db._get_connection() as conn:
-                    df = pd.read_sql_query('''
-                        SELECT timestamp, target_price, margin
-                        FROM price_history
-                        WHERE offer_id = ?
-                        ORDER BY timestamp ASC
-                    ''', conn, params=(sku,))
-                if not df.empty:
+            for label in selected:
+                sku = sku_to_label[label]
+                hist = db.get_price_history(sku)
+                if hist:
+                    df = pd.DataFrame(hist)
                     df['timestamp'] = pd.to_datetime(df['timestamp'])
-                    fig_price.add_trace(go.Scatter(x=df['timestamp'], y=df['target_price'], mode='lines+markers', name=f'{sku} цена'))
-                    fig_margin.add_trace(go.Scatter(x=df['timestamp'], y=df['margin'], mode='lines+markers', name=f'{sku} маржа'))
-            st.subheader("Цена")
-            st.plotly_chart(fig_price, use_container_width=True)
-            st.subheader("Маржинальность, %")
-            st.plotly_chart(fig_margin, use_container_width=True)
+                    fig_price.add_trace(go.Scatter(x=df['timestamp'], y=df['target_price'], mode='lines+markers', name=label))
+                    fig_margin.add_trace(go.Scatter(x=df['timestamp'], y=df['margin'], mode='lines+markers', name=label))
+            if fig_price.data:
+                fig_price.update_layout(legend=dict(orientation="h", y=-0.2))
+                fig_margin.update_layout(legend=dict(orientation="h", y=-0.2))
+                col_left, col_right = st.columns(2)
+                with col_left:
+                    st.write("**Цена**")
+                    st.plotly_chart(fig_price, use_container_width=True)
+                with col_right:
+                    st.write("**Маржа, %**")
+                    st.plotly_chart(fig_margin, use_container_width=True)
+
+        st.divider()
+        st.subheader("Сравнение с конкурентами")
+        selected_sku_comp = st.selectbox("Выберите товар", sku_options, key="comp_select")
+        if selected_sku_comp:
+            sku = sku_to_label[selected_sku_comp]
+            # Получаем историю цены товара
+            price_hist = db.get_price_history(sku)
+            if price_hist:
+                df_price = pd.DataFrame(price_hist)
+                df_price['timestamp'] = pd.to_datetime(df_price['timestamp'])
+
+                fig_comp = go.Figure()
+                fig_comp.add_trace(go.Scatter(
+                    x=df_price['timestamp'], y=df_price['target_price'],
+                    mode='lines+markers', name='Наша цена'
+                ))
+
+                # Получаем конкурентов
+                comps = db.get_competitors_for_product(sku)
+                for c in comps:
+                    comp_price_hist = db.get_competitor_price_history(c['id'])
+                    if comp_price_hist:
+                        df_comp = pd.DataFrame(comp_price_hist)
+                        df_comp['timestamp'] = pd.to_datetime(df_comp['timestamp'])
+                        shop = c['shop_name'] or f"Конкурент {c['competitor_index']}"
+                        fig_comp.add_trace(go.Scatter(
+                            x=df_comp['timestamp'], y=df_comp['price'],
+                            mode='lines+markers', name=shop
+                        ))
+
+                fig_comp.update_layout(legend=dict(orientation="h", y=-0.2))
+                st.plotly_chart(fig_comp, use_container_width=True)
+            else:
+                st.info("Нет данных о цене товара")

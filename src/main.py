@@ -3,7 +3,7 @@ import logging
 import sys
 import argparse
 from pathlib import Path
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Set
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -35,6 +35,8 @@ class Repricer:
         self.margin_calc = MarginCalculator(self.db)
         self.api_client = OzonApiClient()
         self.notifier = MaxNotifier(chat_id=None)
+        # Кэш для отслеживания уже сохранённых цен конкурентов в этом запуске
+        self._saved_competitor_prices: Set[int] = set()
 
     async def run(self) -> Dict:
         stats = {
@@ -46,6 +48,7 @@ class Repricer:
 
         logger.info(f"=== Запуск репрайсера {'(DRY-RUN)' if self.dry_run else ''} ===")
 
+        # 1. Загрузка товаров из Excel
         products = self.loader.load()
         stats['products_loaded'] = len(products)
         if not products:
@@ -54,44 +57,70 @@ class Repricer:
                 self.notifier.notify_critical_event("Нет товаров в таблице или ошибка загрузки")
             return stats
 
-        for product in products:
-            self.db.upsert_product(product)
+        # Сохраняем / обновляем товары и стратегии
+        for p in products:
+            self.db.upsert_product(p)
+            self.db.set_strategies(p['offer_id'], p['intervals'])
 
+        # 2. Парсинг реальной цены по SKU и цен конкурентов
         logger.info(f"Парсинг цен для {len(products)} товаров")
-        products_with_prices = []
+        products_data = []  # будет хранить {product, real_price, competitor_prices}
 
         async with OzonParser() as parser:
             for product in products:
+                offer_id = product['offer_id']
+
+                # 2a. Реальная цена нашего товара по прямой ссылке
+                real_price = await parser.fetch_price_by_sku(offer_id)
+                if real_price is None:
+                    # Если не найдена, берём из таблицы
+                    real_price = product.get('current_price')
+                    logger.info(f"Товар {offer_id}: реальная цена не найдена, используем из таблицы: {real_price}")
+                else:
+                    logger.info(f"Товар {offer_id}: реальная цена = {real_price}")
+
+                # 2b. Цены конкурентов
                 urls = product.get('competitor_urls', [])
-                if not urls:
-                    logger.info(f"Товар {product['offer_id']}: нет ссылок на конкурентов, пропускаем")
-                    continue
+                comp_prices = []
+                if urls:
+                    results = await parser.get_prices(urls)
+                    for idx, (price, prod_name, shop_name) in enumerate(results):
+                        if price is not None:
+                            comp_prices.append(price)
+                        # Сохраняем конкурента и связь
+                        comp_id = self.db.get_or_create_competitor(urls[idx], prod_name, shop_name)
+                        self.db.link_product_competitor(offer_id, comp_id, idx + 1)
+                        # Сохраняем цену конкурента только один раз за запуск
+                        if price is not None and comp_id not in self._saved_competitor_prices:
+                            self.db.save_competitor_price(comp_id, price)
+                            self._saved_competitor_prices.add(comp_id)
+                    logger.info(f"Товар {offer_id}: получено {len(comp_prices)}/{len(urls)} цен конкурентов")
+                else:
+                    logger.info(f"Товар {offer_id}: нет ссылок на конкурентов")
 
-                prices = await parser.get_prices(urls)
-                valid_prices = [p for p in prices if p is not None]
-                stats['prices_parsed'] += len(valid_prices)
-
-                logger.info(f"Товар {product['offer_id']}: получено {len(valid_prices)}/{len(urls)} цен")
-
-                products_with_prices.append({
+                products_data.append({
                     'product': product,
-                    'competitor_prices': valid_prices,
-                    'raw_prices': prices
+                    'real_price': real_price,
+                    'competitor_prices': comp_prices,
                 })
 
+        # 3. Расчёт целевых цен
         updates_for_ozon = []
         margin_updates = []
 
-        for item in products_with_prices:
+        for item in products_data:
             product = item['product']
             competitor_prices = item['competitor_prices']
+            real_price = item['real_price']
+            min_price = product.get('min_price', 0.0)  # РРЦ
+
+            intervals = product['intervals']
 
             target_price = self.calculator.calculate_target_price(
                 competitor_prices=competitor_prices,
-                base_strategy=product.get('strategy', 3),
-                base_percent=product.get('strategy_percent', 0.0),
-                min_price=product.get('min_price', 0.0),
-                schedule=product.get('schedule')
+                intervals=intervals,
+                min_price=min_price,
+                real_price=real_price
             )
 
             cost_price = product.get('cost_price', 0.0)
@@ -110,26 +139,21 @@ class Repricer:
                 'offer_id': str(product['offer_id']),
                 'price': f"{target_price:.2f}",
                 'old_price': f"{product.get('current_price', target_price):.2f}",
-                'min_price': f"{product.get('min_price', 0.0):.2f}"
+                'min_price': f"{min_price:.2f}"
             })
 
             margin_updates.append({
                 'offer_id': product['offer_id'],
                 'target_price': target_price,
                 'margin': current_margin,
-                'competitor_prices': item['raw_prices']
             })
 
+        # 4. Отправка в Ozon
         if updates_for_ozon:
             if self.dry_run:
                 logger.info(f"[DRY-RUN] Пропущена отправка {len(updates_for_ozon)} цен в Ozon")
                 for item in margin_updates:
-                    self.db.save_price_record(
-                        item['offer_id'],
-                        item['target_price'],
-                        item['margin'],
-                        item['competitor_prices']
-                    )
+                    self.db.save_price_record(item['offer_id'], item['target_price'], item['margin'])
                     updates = {
                         'current_price': item['target_price'],
                         'margin': item['margin'],
@@ -137,7 +161,6 @@ class Repricer:
                         'margin_month': self.db.get_average_margin(item['offer_id'], 30),
                     }
                     self.loader.update_product_in_file(item['offer_id'], updates)
-
                 stats['prices_updated'] = len(updates_for_ozon)
             else:
                 logger.info(f"Отправка {len(updates_for_ozon)} цен в Ozon")
@@ -145,12 +168,7 @@ class Repricer:
                 if success:
                     stats['prices_updated'] = len(updates_for_ozon)
                     for item in margin_updates:
-                        self.db.save_price_record(
-                            item['offer_id'],
-                            item['target_price'],
-                            item['margin'],
-                            item['competitor_prices']
-                        )
+                        self.db.save_price_record(item['offer_id'], item['target_price'], item['margin'])
                         updates = {
                             'current_price': item['target_price'],
                             'margin': item['margin'],
@@ -177,9 +195,8 @@ class Repricer:
 
 async def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dry-run', action='store_true', help='Тестовый прогон без отправки в Ozon и уведомлений')
+    parser.add_argument('--dry-run', action='store_true')
     args = parser.parse_args()
-
     repricer = Repricer(dry_run=args.dry_run)
     await repricer.run()
 

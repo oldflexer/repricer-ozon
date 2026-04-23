@@ -9,23 +9,19 @@ logger = logging.getLogger(__name__)
 
 
 class DataLoader:
-    """Загрузка данных из Excel-файла с таблицей товаров"""
+    """Загрузка данных из Excel-файла с таблицей товаров (новая структура)"""
 
-    # Маппинг стандартных имён полей на возможные названия колонок в таблице заказчика
     COLUMN_MAPPING = {
         'offer_id': ['sku', 'артикул', 'article', 'id', 'offer_id'],
         'product_name': ['название', 'name', 'товар', 'product_name'],
         'cost_price': ['себестоимость', 'cost_price', 'cost'],
-        'min_price': ['минимальная цена', 'min_price', 'min'],
+        'min_price': ['цена риц', 'минимальная цена', 'min_price', 'min'],
         'current_price': ['ваша цена', 'current_price', 'price'],
         'competitor_urls': ['конкурент', 'ссылки_конкурентов'],
-        'strategy': ['стратегия', 'strategy'],
-        'strategy_percent': ['процент', 'percent', 'strategy_percent'],
-        # 'schedule' больше не используется, теперь парсим из отдельных столбцов
     }
 
     COMPETITOR_COLUMNS_COUNT = 5
-    SCHEDULE_INTERVALS_COUNT = 4  # Количество возможных временных интервалов
+    SCHEDULE_INTERVALS_COUNT = 4
 
     def __init__(self, file_path: Path):
         self.file_path = file_path
@@ -39,11 +35,10 @@ class DataLoader:
             logger.error(f"Неподдерживаемый формат файла: {self.file_path.suffix}. Используйте .xlsx")
             return []
 
-        # Читаем с указанием, что все столбцы - объекты, чтобы сохранить строки
         df = pd.read_excel(self.file_path, engine='openpyxl', dtype=str)
         df.columns = df.columns.str.lower().str.strip()
 
-        # Дополнительно для SKU убираем пробелы
+        # Нормализация SKU
         for sku_col in ['sku', 'артикул', 'article', 'id', 'offer_id']:
             if sku_col in df.columns:
                 df[sku_col] = df[sku_col].str.strip()
@@ -61,10 +56,10 @@ class DataLoader:
     def _parse_row(self, row: pd.Series, columns: pd.Index) -> Optional[Dict[str, Any]]:
         product = {}
 
-        # 1. Простые поля через маппинг
+        # 1. Простые поля
         for std_name, synonyms in self.COLUMN_MAPPING.items():
-            if std_name in ('competitor_urls', 'schedule'):
-                continue  # обработаем отдельно
+            if std_name == 'competitor_urls':
+                continue
             value = None
             for syn in synonyms:
                 if syn in columns:
@@ -74,12 +69,11 @@ class DataLoader:
                         break
             product[std_name] = value
 
-        # 2. Обязательное поле offer_id
         if not product.get('offer_id'):
             logger.warning("Пропущена строка без SKU/offer_id")
             return None
 
-        # 3. Ссылки конкурентов
+        # 2. Ссылки конкурентов
         competitor_urls = []
         for i in range(1, self.COMPETITOR_COLUMNS_COUNT + 1):
             col_candidates = [f'конкурент {i}', f'конкурент{i}', f'конкурент_{i}']
@@ -91,56 +85,24 @@ class DataLoader:
                     break
         product['competitor_urls'] = competitor_urls
 
-        # 4. Расписание: формируем JSON из отдельных столбцов для интервалов
-        product['schedule'] = self._parse_schedule_from_columns(row, columns)
-
-        # 5. Числовые поля
-        for field in ['cost_price', 'min_price', 'current_price', 'strategy_percent']:
-            val = product.get(field)
-            if val is not None:
-                try:
-                    product[field] = float(val)
-                except (ValueError, TypeError):
-                    logger.warning(f"Не удалось преобразовать {field}='{val}' в число для {product['offer_id']}")
-
-        # 6. Стратегия по умолчанию
-        if product.get('strategy') is None:
-            product['strategy'] = 3
-        else:
-            try:
-                product['strategy'] = int(product['strategy'])
-            except (ValueError, TypeError):
-                product['strategy'] = 3
-
-        if product.get('strategy_percent') is None:
-            product['strategy_percent'] = 0.0
-
-        return product
-
-    def _parse_schedule_from_columns(self, row: pd.Series, columns: pd.Index) -> Optional[str]:
-        """
-        Собирает расписание из столбцов вида:
-        Промежуток 1, Стратеги 1, Процент 1, ... до 4-го интервала.
-        Возвращает JSON-строку с массивом интервалов.
-        """
+        # 3. Интервалы стратегий
         intervals = []
+        # Сначала пытаемся собрать из отдельных колонок
         for i in range(1, self.SCHEDULE_INTERVALS_COUNT + 1):
-            # Ищем колонки для i-го интервала
-            time_col = self._find_column(columns, [f'промежуток {i}', f'промежуток{i}', f'интервал {i}'])
-            strategy_col = self._find_column(columns, [f'стратеги {i}', f'стратегия {i}', f'strategy_{i}'])
+            time_col = self._find_column(columns, [f'интервал {i}', f'промежуток {i}'])
+            strategy_col = self._find_column(columns, [f'стратегия {i}', f'стратеги {i}'])
             percent_col = self._find_column(columns, [f'процент {i}', f'percent_{i}'])
 
             if not time_col:
-                continue  # Если нет времени начала, интервал не задан
+                continue
 
             time_val = row.get(time_col)
             if pd.isna(time_val) or not str(time_val).strip():
                 continue
 
             time_range = str(time_val).strip()
-            # Ожидаемый формат: "09:00-12:00"
             if '-' not in time_range:
-                logger.warning(f"Неверный формат промежутка '{time_range}', ожидается 'ЧЧ:ММ-ЧЧ:ММ'")
+                logger.warning(f"Неверный формат интервала '{time_range}'")
                 continue
 
             start, end = time_range.split('-', 1)
@@ -152,12 +114,12 @@ class DataLoader:
 
             try:
                 strategy = int(float(strategy_val)) if pd.notna(strategy_val) else 3
-            except (ValueError, TypeError):
+            except:
                 strategy = 3
 
             try:
                 percent = float(percent_val) if pd.notna(percent_val) else 0.0
-            except (ValueError, TypeError):
+            except:
                 percent = 0.0
 
             intervals.append({
@@ -167,44 +129,72 @@ class DataLoader:
                 'percent': percent
             })
 
-        if intervals:
-            return json.dumps(intervals, ensure_ascii=False)
-        return None
+        # Если интервалы не найдены, создаём один по умолчанию 00:00-23:59
+        if not intervals:
+            # Проверяем, есть ли старые колонки "Стратегия" и "Процент"
+            base_strategy = self._get_int(row, columns, ['стратегия', 'strategy'], 3)
+            base_percent = self._get_float(row, columns, ['процент', 'percent'], 0.0)
+            intervals.append({
+                'start': '00:00',
+                'end': '23:59',
+                'strategy': base_strategy,
+                'percent': base_percent
+            })
+        else:
+            # Если интервалы есть, но базовая стратегия не задана – не страшно
+            pass
+
+        product['intervals'] = intervals
+
+        # 4. Числовые поля
+        for field in ['cost_price', 'min_price', 'current_price']:
+            val = product.get(field)
+            if val is not None:
+                try:
+                    product[field] = float(val)
+                except:
+                    product[field] = 0.0
+            else:
+                product[field] = 0.0
+
+        return product
 
     def _find_column(self, columns: pd.Index, candidates: List[str]) -> Optional[str]:
-        """Находит первую подходящую колонку из списка кандидатов."""
         for cand in candidates:
             if cand in columns:
                 return cand
         return None
 
-    # Старый метод _parse_schedule больше не используется, оставлен для совместимости
-    def _parse_schedule(self, raw: Optional[str]) -> Optional[str]:
-        """Устаревший метод, оставлен для обратной совместимости (если вдруг есть столбец 'Расписание')."""
-        if not raw:
-            return None
-        raw = raw.strip()
-        if raw.startswith('['):
-            try:
-                json.loads(raw)
-                return raw
-            except json.JSONDecodeError:
-                return None
-        # Можно добавить парсинг старого текстового формата, но сейчас не требуется
-        return None
+    def _get_int(self, row: pd.Series, columns: pd.Index, candidates: List[str], default: int) -> int:
+        col = self._find_column(columns, candidates)
+        if col:
+            val = row.get(col)
+            if pd.notna(val):
+                try:
+                    return int(float(val))
+                except:
+                    pass
+        return default
+
+    def _get_float(self, row: pd.Series, columns: pd.Index, candidates: List[str], default: float) -> float:
+        col = self._find_column(columns, candidates)
+        if col:
+            val = row.get(col)
+            if pd.notna(val):
+                try:
+                    return float(val)
+                except:
+                    pass
+        return default
 
     def update_product_in_file(self, offer_id: str, updates: Dict[str, Any]) -> bool:
-        """
-        Обновляет поля товара в Excel-файле.
-        updates: словарь с ключами, соответствующими колонкам:
-            'current_price', 'margin', 'margin_week', 'margin_month'
-        """
+        """Обновляет поля товара в Excel-файле (цена и маржа)."""
         try:
             from openpyxl import load_workbook
             wb = load_workbook(self.file_path)
             ws = wb.active
             if ws is None:
-                logger.error("Не удалось получить активный лист из Excel-файла")
+                logger.error("Не удалось получить активный лист")
                 return False
 
             header_row = 1

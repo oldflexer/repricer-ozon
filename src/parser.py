@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Tuple
 import random
 
 import nodriver as uc
@@ -11,11 +11,11 @@ logger = logging.getLogger(__name__)
 
 
 class OzonParser:
-    """Асинхронный парсер цен Ozon на основе nodriver"""
+    """Асинхронный парсер цен Ozon с извлечением названия товара и продавца"""
 
     def __init__(self):
         self.browser: Optional[uc.Browser] = None
-        self._cache: Dict[str, Optional[float]] = {}
+        self._cache: Dict[str, Tuple[Optional[float], Optional[str], Optional[str]]] = {}
 
     async def __aenter__(self) -> 'OzonParser':
         self.browser = await uc.start(headless=False)
@@ -25,7 +25,8 @@ class OzonParser:
         if self.browser:
             self.browser.stop()
 
-    async def fetch_price(self, url: str) -> Optional[float]:
+    async def fetch_price_and_info(self, url: str) -> Tuple[Optional[float], Optional[str], Optional[str]]:
+        """Возвращает (цена, название товара, магазин)."""
         if self.browser is None:
             raise RuntimeError("Браузер не инициализирован")
 
@@ -40,18 +41,34 @@ class OzonParser:
                 timeout = base_timeout * (attempt + 1)
                 tab = await self.browser.get(url)
                 await asyncio.sleep(1)
-                price_element = await tab.select('.pdp_bj', timeout=timeout)
 
-                if price_element:
-                    price_text = price_element.text
+                # Проверка на заглушку "Такой страницы не существует"
+                page_text = await tab.evaluate('document.body.innerText')
+                if page_text and "Такой страницы не существует" in page_text:
+                    logger.warning(f"Страница не существует (заглушка) для {url}")
+                    self._cache[url] = (None, None, None)
+                    return None, None, None
+
+                # Цена
+                price_elem = await tab.select('.pdp_bj', timeout=timeout)
+                price = None
+                if price_elem:
+                    price_text = price_elem.text
                     price_text = ''.join(c for c in price_text if c.isdigit() or c in '.,')
                     price_text = price_text.replace(',', '.')
                     if price_text:
                         price = float(price_text)
-                        self._cache[url] = price
-                        return price
-                else:
-                    logger.warning(f"Цена не найдена на странице {url}")
+
+                # Название товара
+                title_elem = await tab.select('h1', timeout=5)
+                product_name = title_elem.text.strip() if title_elem else None
+
+                # Магазин (продавец)
+                shop_elem = await tab.select('span[class*="b35_3_30-b7"]', timeout=5)
+                shop_name = shop_elem.text.strip() if shop_elem else None
+
+                self._cache[url] = (price, product_name, shop_name)
+                return price, product_name, shop_name
 
             except asyncio.TimeoutError:
                 logger.warning(f"Таймаут при запросе {url} (попытка {attempt+1})")
@@ -63,15 +80,21 @@ class OzonParser:
 
             await asyncio.sleep(1)
 
-        logger.error(f"Не удалось получить цену после {MAX_RETRIES} попыток: {url}")
-        self._cache[url] = None
-        return None
+        logger.error(f"Не удалось получить данные после {MAX_RETRIES} попыток: {url}")
+        self._cache[url] = (None, None, None)
+        return None, None, None
 
-    async def get_prices(self, urls: List[str]) -> List[Optional[float]]:
+    async def fetch_price_by_sku(self, sku: str) -> Optional[float]:
+        """Получает цену товара по прямой ссылке https://www.ozon.ru/product/{sku}"""
+        url = f"https://www.ozon.ru/product/{sku}"
+        price, _, _ = await self.fetch_price_and_info(url)
+        return price
+
+    async def get_prices(self, urls: List[str]) -> List[Tuple[Optional[float], Optional[str], Optional[str]]]:
         results = []
         for url in urls:
-            price = await self.fetch_price(url)
-            results.append(price)
+            res = await self.fetch_price_and_info(url)
+            results.append(res)
         return results
 
 
@@ -89,7 +112,9 @@ class SyncOzonParser:
         self.loop.close()
 
     def fetch_price(self, url: str) -> Optional[float]:
-        return self.loop.run_until_complete(self.parser.fetch_price(url))
+        price, _, _ = self.loop.run_until_complete(self.parser.fetch_price_and_info(url))
+        return price
 
     def get_prices(self, urls: List[str]) -> List[Optional[float]]:
-        return self.loop.run_until_complete(self.parser.get_prices(urls))
+        results = self.loop.run_until_complete(self.parser.get_prices(urls))
+        return [r[0] for r in results]

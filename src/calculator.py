@@ -4,48 +4,40 @@ import json
 
 
 class PriceCalculator:
-    """Расчёт целевой цены по стратегиям и временным интервалам"""
-
     @staticmethod
-    def get_strategy_for_time(schedule: Optional[str]) -> Optional[Dict[str, Any]]:
-        if not schedule:
-            return None
-        try:
-            intervals = json.loads(schedule)
-        except:
-            return None
-
+    def get_active_strategy(intervals: List[Dict]) -> Optional[Dict[str, Any]]:
+        """intervals: список словарей с start, end, strategy, percent."""
         now = datetime.now().time()
-        for interval in intervals:
-            start = datetime.strptime(interval['start'], '%H:%M').time()
-            end = datetime.strptime(interval['end'], '%H:%M').time()
+        for inv in intervals:
+            start = datetime.strptime(inv['start'], '%H:%M').time()
+            end = datetime.strptime(inv['end'], '%H:%M').time()
             if start <= now <= end:
-                return {
-                    'strategy': interval.get('strategy', 3),
-                    'percent': interval.get('percent', 0)
-                }
+                return {'strategy': inv['strategy'], 'percent': inv['percent']}
         return None
 
     @staticmethod
-    def calculate_target_price(
+    def calculate_strategy_price(
         competitor_prices: List[float],
-        base_strategy: int,
-        base_percent: float,
-        min_price: float,
-        schedule: Optional[str] = None
+        intervals: List[Dict],
+        min_price: float
     ) -> float:
-        if not competitor_prices:
+        """Рассчитывает цену только на основе стратегии и конкурентов."""
+        if min_price is None:
+            min_price = 0.0
+
+        valid_prices = [p for p in competitor_prices if p is not None]
+        if not valid_prices:
             return min_price
 
-        active = PriceCalculator.get_strategy_for_time(schedule)
+        active = PriceCalculator.get_active_strategy(intervals)
         if active:
             strategy = active['strategy']
             percent = active['percent']
         else:
-            strategy = base_strategy
-            percent = base_percent
+            strategy = intervals[0]['strategy'] if intervals else 3
+            percent = intervals[0]['percent'] if intervals else 0.0
 
-        min_comp_price = min(competitor_prices)
+        min_comp_price = min(valid_prices)
 
         if strategy == 1:
             target = min_comp_price * (1 - percent / 100)
@@ -54,8 +46,35 @@ class PriceCalculator:
         else:
             target = min_comp_price
 
-        target = round(max(target, min_price))
-        return target
+        return round(max(target, min_price))
+
+    @staticmethod
+    def calculate_target_price(
+        competitor_prices: List[float],
+        intervals: List[Dict],
+        min_price: float,
+        real_price: Optional[float] = None
+    ) -> float:
+        """
+        Основной метод расчёта целевой цены с учётом реальной цены.
+        min_price – это РРЦ (цена РИЦ).
+        """
+        if min_price is None:
+            min_price = 0.0
+
+        strategy_price = PriceCalculator.calculate_strategy_price(
+            competitor_prices, intervals, min_price
+        )
+
+        if real_price is not None and real_price > 0 and real_price < min_price:
+            # РРЦ выше реальной цены
+            rrp_diff_percent = (min_price - real_price) / real_price * 100
+            required_price = min_price * (1 + rrp_diff_percent / 100)
+            target = max(strategy_price, required_price)
+        else:
+            target = max(strategy_price, min_price)
+
+        return round(target)
 
 
 class MarginCalculator:
@@ -75,7 +94,3 @@ class MarginCalculator:
         if price == 0:
             return 0.0
         return (profit / price) * 100
-
-    def get_average_margin(self, offer_id: str, days: int) -> Optional[float]:
-        # Реализация в database.py
-        pass
