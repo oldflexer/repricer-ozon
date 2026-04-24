@@ -5,7 +5,7 @@ import random
 
 import nodriver as uc
 
-from config.settings import PARSER_DELAY, PARSER_TIMEOUT, MAX_RETRIES
+from config.settings import PARSER_DELAY, PARSER_TIMEOUT, MAX_RETRIES, HEADLESS
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +18,18 @@ class OzonParser:
         self._cache: Dict[str, Tuple[Optional[float], Optional[str], Optional[str]]] = {}
 
     async def __aenter__(self) -> 'OzonParser':
-        self.browser = await uc.start(headless=False)
+        # Собираем аргументы Chrome
+        browser_args = [
+            '--window-size=1920,1080',
+            '--disable-blink-features=AutomationControlled',
+            '--disable-gpu',
+            '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36',
+        ]
+        # Запускаем с учётом флага HEADLESS из настроек
+        self.browser = await uc.start(
+            headless=HEADLESS,
+            browser_args=browser_args
+        )
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):

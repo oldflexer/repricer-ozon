@@ -201,9 +201,9 @@ class DataLoader:
             col_map = {}
             target_columns = {
                 'current_price': ['ваша цена', 'current_price', 'price'],
-                'margin': ['маржа', 'margin'],
-                'margin_week': ['маржа за неделю', 'margin_week'],
-                'margin_month': ['маржа за месяц', 'margin_month'],
+                'margin': ['маржинальность', 'маржа', 'margin'],
+                'margin_week': ['маржинальность за неделю', 'margin_week'],
+                'margin_month': ['маржинальность за месяц', 'margin_month'],
             }
             for field, synonyms in target_columns.items():
                 for col_idx, cell in enumerate(ws[header_row], start=1):

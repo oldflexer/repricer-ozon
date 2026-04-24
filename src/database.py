@@ -296,6 +296,20 @@ class Database:
             ''', (competitor_id,))
             rows = cursor.fetchall()
             return [dict(row) for row in rows]
+        
+    def delete_old_records(self, days: int = 7) -> int:
+        """Удаляет записи из price_history и competitor_price_history старше указанного количества дней."""
+        cutoff = datetime.now() - timedelta(days=days)
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('DELETE FROM price_history WHERE timestamp < ?', (cutoff.isoformat(),))
+            deleted_price = cursor.rowcount
+            cursor.execute('DELETE FROM competitor_price_history WHERE timestamp < ?', (cutoff.isoformat(),))
+            deleted_comp = cursor.rowcount
+            conn.commit()
+            total = deleted_price + deleted_comp
+            logger.info(f"Удалено старых записей: {total} (price_history: {deleted_price}, competitor_price: {deleted_comp})")
+            return total
 
     # --- Вспомогательные методы ---
     def get_last_run_time(self) -> Optional[datetime]:
