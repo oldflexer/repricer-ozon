@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 import plotly.graph_objects as go
 from typing import Dict, Any
+import logging
 
 # Корень проекта для импортов
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -16,6 +17,18 @@ from src.products_parser import ProductsParser
 from src.pricemaker import PriceMaker
 from src.price_updater import PriceUpdater
 from src.loader import DataLoader
+from src.mail_notifier import MailNotifier
+from src.ozon_api import OzonApiClient
+
+# Явная настройка файлового логирования (перезапись при каждом запуске)
+log_file = Path(__file__).parent.parent / 'repricer.log'
+file_handler = logging.FileHandler(log_file, mode='w', encoding='utf-8')
+file_handler.setLevel(logging.INFO)
+file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+
+root_logger = logging.getLogger()
+root_logger.setLevel(logging.INFO)
+root_logger.addHandler(file_handler)
 
 st.set_page_config(page_title="Репрайсер Ozon", layout="wide", page_icon="📊")
 st.title("🔄 Репрайсер Ozon")
@@ -60,6 +73,8 @@ if not check_password():
 
 db = Database(DATABASE_PATH)
 loader = DataLoader(DATA_FILE)
+notifier = MailNotifier()
+ozon_api = OzonApiClient()
 
 # --- Универсальный запуск асинхронного кода с нужной политикой ---
 def _run_async_with_proactor(async_func) -> Any:
@@ -82,6 +97,14 @@ def run_full_cycle() -> Dict[str, Any]:
         db.upsert_product(p)
         db.set_strategies(p['sku'], p['intervals'])
 
+    # Получаем product_id по SKU
+    sku_list = [p['sku'] for p in products]
+    product_map = ozon_api.get_product_ids_by_skus(sku_list)
+    for p in products:
+        info = product_map.get(p['sku'], {})
+        p['product_id'] = info.get('product_id')
+        p['offer_id'] = info.get('offer_id')
+
     async def fetch_real():
         prod_parser = ProductsParser()
         return await prod_parser.fetch_real_prices(products)
@@ -98,12 +121,20 @@ def run_full_cycle() -> Dict[str, Any]:
     updater = PriceUpdater(db, loader, dry_run=False)
     price_stats = updater.update(updates_for_ozon, margin_items)
 
-    return {
+    result = {
         "products_loaded": len(products),
         "prices_updated": price_stats.get('prices_updated', 0),
         "errors": price_stats.get('errors', []),
         "competitor_prices_parsed": comp_stats.get('competitor_prices_parsed', 0)
     }
+
+    # Отправляем уведомление (если SMTP настроен, письмо уйдёт)
+    notifier.notify_cycle_complete(
+        updated_count=result["prices_updated"],
+        errors=result["errors"] if result["errors"] else None
+    )
+
+    return result
 
 def run_competitors_parser() -> Dict[str, Any]:
     async def _run():
@@ -125,14 +156,45 @@ def run_products_parser() -> Dict[str, Any]:
 
 def run_pricemaker() -> Dict[str, Any]:
     products = loader.load()
+    if not products:
+        return {"prices_updated": 0, "errors": ["Нет товаров"]}
     for p in products:
         db.upsert_product(p)
         db.set_strategies(p['sku'], p['intervals'])
-    real_prices = {p['sku']: p.get('current_price') for p in products}
+
+    # Получаем product_id по SKU
+    sku_list = [p['sku'] for p in products]
+    product_map = ozon_api.get_product_ids_by_skus(sku_list)
+    for p in products:
+        info = product_map.get(p['sku'], {})
+        p['product_id'] = info.get('product_id')
+        p['offer_id'] = info.get('offer_id')
+
+    # Парсим реальные цены с витрины Ozon
+    async def fetch_real():
+        prod_parser = ProductsParser()
+        return await prod_parser.fetch_real_prices(products)
+    real_prices = _run_async_with_proactor(fetch_real)
+
     pricemaker = PriceMaker(db)
     updates_for_ozon, margin_items = pricemaker.calculate(products, real_prices)
+
     updater = PriceUpdater(db, loader, dry_run=False)
-    return updater.update(updates_for_ozon, margin_items)
+    price_stats = updater.update(updates_for_ozon, margin_items)
+
+    result = {
+        "products_loaded": len(products),
+        "prices_updated": price_stats.get('prices_updated', 0),
+        "errors": price_stats.get('errors', []),
+    }
+
+    # Уведомление
+    notifier.notify_cycle_complete(
+        updated_count=result["prices_updated"],
+        errors=result["errors"] if result["errors"] else None
+    )
+
+    return result
 
 # --- Боковая панель ---
 with st.sidebar:

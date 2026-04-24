@@ -1,5 +1,6 @@
 import requests
 import logging
+import time
 from typing import List, Dict, Optional, Any, Tuple
 
 from config.settings import OZON_CLIENT_ID, OZON_API_KEY, OZON_API_URL
@@ -20,26 +21,40 @@ class OzonApiClient:
 
     def get_product_ids_by_skus(self, skus: List[str]) -> Dict[str, dict]:
         """
-        Возвращает словарь: sku -> {"product_id": int, "offer_id": str}
+        Возвращает словарь: sku -> {"product_id": int, "offer_id": str}.
+        Обрабатывает SKU по одному, чтобы изолировать ошибки.
         """
         url = f"{self.base_url}/v3/product/info/list"
-        payload = {"sku": skus}
-        try:
-            response = requests.post(url, headers=self.headers, json=payload, timeout=30)
-            response.raise_for_status()
-            data = response.json()
-            result = {}
-            for item in data.get('items', []):
-                sku_val = str(item.get('sku'))
-                result[sku_val] = {
-                    'product_id': item.get('id'),
-                    'offer_id': item.get('offer_id', '')
-                }
-            logger.info(f"Получены product_id для {len(result)}/{len(skus)} SKU")
-            return result
-        except Exception as e:
-            logger.error(f"Ошибка получения product_id: {e}")
-            return {}
+        result = {}
+
+        for sku in skus:
+            sku_str = str(sku).strip()
+            if not sku_str:
+                continue
+            payload = {"sku": [sku_str]}
+            response = None
+            try:
+                response = requests.post(url, headers=self.headers, json=payload, timeout=30)
+                if response.status_code == 200:
+                    data = response.json()
+                    items = data.get('items', [])
+                    if items:
+                        item = items[0]
+                        result[sku_str] = {
+                            'product_id': item.get('id'),
+                            'offer_id': item.get('offer_id', '')
+                        }
+                    else:
+                        logger.warning(f"SKU {sku_str}: товар не найден в ответе")
+                else:
+                    logger.warning(f"SKU {sku_str}: статус {response.status_code}")
+            except Exception as e:
+                logger.error(f"SKU {sku_str}: ошибка запроса — {e}")
+            # Задержка между запросами для соблюдения лимита (1 запрос в 1.5 сек)
+            time.sleep(0.1)
+
+        logger.info(f"Получены product_id для {len(result)}/{len(skus)} SKU")
+        return result
 
     def update_prices(self, prices_data: List[Dict]) -> Tuple[bool, Optional[int]]:
         """
@@ -49,9 +64,11 @@ class OzonApiClient:
         url = f"{self.base_url}/v1/product/import/prices"
         payload = {"prices": prices_data}
 
+        logger.debug(f"Отправка цен: URL={url}, payload={payload}")
         try:
             response = requests.post(url, headers=self.headers, json=payload, timeout=30)
             status_code = response.status_code
+            logger.debug(f"Ответ: статус={status_code}, тело={response.text[:500]}")
             if status_code == 200:
                 result = response.json()
                 if result.get('result'):

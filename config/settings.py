@@ -12,7 +12,6 @@ load_dotenv(BASE_DIR / '.env')
 OZON_CLIENT_ID = os.getenv('OZON_CLIENT_ID')
 OZON_API_KEY = os.getenv('OZON_API_KEY')
 OZON_API_URL = 'https://api-seller.ozon.ru'
-
 # Email
 SMTP_HOST = os.getenv('SMTP_HOST', 'smtp.yandex.ru')
 SMTP_PORT = int(os.getenv('SMTP_PORT', '587'))

@@ -20,8 +20,8 @@ class PriceMaker:
         products: List[Dict],
         real_prices: Dict[str, Optional[float]]
     ) -> Tuple[List[Dict], List[Dict]]:
-        updates_for_ozon = []
-        margin_items = []
+        updates_for_ozon = []      # эти цены уйдут в Ozon (с поправкой на коэффициент)
+        margin_items = []          # эти цены будут сохранены локально (без поправки)
 
         for product in products:
             sku = product['sku']
@@ -40,7 +40,7 @@ class PriceMaker:
             min_price = product.get('min_price', 0.0)
             intervals = product['intervals']
 
-            # 1. Стратегическая цена (не ниже РРЦ)
+            # 1. Стратегическая цена (чистая, не ниже РРЦ)
             strategy_price = self.calculator.calculate_strategy_price(
                 competitor_prices=competitor_prices,
                 intervals=intervals,
@@ -50,29 +50,28 @@ class PriceMaker:
             # 2. Коэффициент Ozon (скидка)
             ozon_coef = self.calculator.calculate_ozon_coefficient(real_price, min_price)
 
-            # 3. Финальная цена = стратегическая * коэффициент
-            target_price = round(strategy_price * ozon_coef)
+            # 3. Финальная цена для Ozon = стратегическая / коэффициент
+            target_price = round(strategy_price / ozon_coef)
 
+            # Маржинальность по чистой стратегической цене
             cost_price = product.get('cost_price', 0.0)
-            current_margin = self.margin_calc.calculate_margin(target_price, cost_price)
+            local_margin = self.margin_calc.calculate_margin(strategy_price, cost_price)
 
             logger.info(
-                f"Товар {sku}: strategy={strategy_price:.2f}, coef={ozon_coef:.2f}, "
-                f"target={target_price:.2f}, margin={current_margin:.2f}%"
+                f"Товар {sku}: strategy={strategy_price:.2f}, target={target_price:.2f} (для Ozon), margin={local_margin:.2f}%"
             )
 
+            # Данные для отправки в Ozon (только price и идентификаторы)
             updates_for_ozon.append({
                 'product_id': product.get('product_id'),
                 'offer_id': '',
                 'price': f"{target_price:.2f}",
-                'old_price': f"{product.get('current_price', target_price):.2f}",
-                'min_price': f"{min_price:.2f}"
             })
 
             margin_items.append({
                 'sku': sku,
-                'target_price': target_price,
-                'margin': current_margin,
+                'target_price': strategy_price,   # сохраняем чистую стратегическую цену
+                'margin': local_margin,
             })
 
         return updates_for_ozon, margin_items

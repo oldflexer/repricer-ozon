@@ -43,7 +43,7 @@ class PriceUpdater:
             logger.warning("Нет данных для обработки")
             return stats
 
-        # Всегда сохраняем локально
+        # Всегда сохраняем локально (чистую стратегическую цену из margin_items)
         for item in margin_items:
             self._save_locally(item)
         stats['prices_updated'] = len(updates_for_ozon)
@@ -63,7 +63,7 @@ class PriceUpdater:
 
     def _save_locally(self, item: Dict):
         sku = item['sku']
-        target_price = item['target_price']
+        target_price = item['target_price']      # чистая стратегическая цена
         margin = item['margin']
 
         self.db.save_price_record(sku, target_price, margin)
