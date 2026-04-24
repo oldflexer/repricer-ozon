@@ -20,22 +20,17 @@ class PriceMaker:
         products: List[Dict],
         real_prices: Dict[str, Optional[float]]
     ) -> Tuple[List[Dict], List[Dict]]:
-        """
-        Возвращает кортеж:
-        - updates_for_ozon: список словарей для отправки в Ozon API
-        - margin_items: список словарей с offer_id, target_price, margin для сохранения истории и обновления Excel
-        """
         updates_for_ozon = []
         margin_items = []
 
         for product in products:
-            offer_id = product['offer_id']
-            real_price = real_prices.get(offer_id)
+            sku = product['sku']
+            real_price = real_prices.get(sku)
             if real_price is None:
                 real_price = product.get('current_price')
 
             # Последние цены конкурентов из БД
-            comps = self.db.get_competitors_for_product(offer_id)
+            comps = self.db.get_competitors_for_product(sku)
             competitor_prices = []
             for c in comps:
                 hist = self.db.get_competitor_price_history(c['id'])
@@ -45,30 +40,37 @@ class PriceMaker:
             min_price = product.get('min_price', 0.0)
             intervals = product['intervals']
 
-            target_price = self.calculator.calculate_target_price(
+            # 1. Стратегическая цена (не ниже РРЦ)
+            strategy_price = self.calculator.calculate_strategy_price(
                 competitor_prices=competitor_prices,
                 intervals=intervals,
-                min_price=min_price,
-                real_price=real_price
+                min_price=min_price
             )
+
+            # 2. Коэффициент Ozon (скидка)
+            ozon_coef = self.calculator.calculate_ozon_coefficient(real_price, min_price)
+
+            # 3. Финальная цена = стратегическая * коэффициент
+            target_price = round(strategy_price * ozon_coef)
 
             cost_price = product.get('cost_price', 0.0)
             current_margin = self.margin_calc.calculate_margin(target_price, cost_price)
 
             logger.info(
-                f"Товар {offer_id}: target={target_price:.2f}, "
-                f"margin={current_margin:.2f}%"
+                f"Товар {sku}: strategy={strategy_price:.2f}, coef={ozon_coef:.2f}, "
+                f"target={target_price:.2f}, margin={current_margin:.2f}%"
             )
 
             updates_for_ozon.append({
-                'offer_id': str(offer_id),
+                'product_id': product.get('product_id'),
+                'offer_id': '',
                 'price': f"{target_price:.2f}",
                 'old_price': f"{product.get('current_price', target_price):.2f}",
                 'min_price': f"{min_price:.2f}"
             })
 
             margin_items.append({
-                'offer_id': offer_id,
+                'sku': sku,
                 'target_price': target_price,
                 'margin': current_margin,
             })

@@ -14,11 +14,11 @@ class ProductsParser:
         real_prices = {}
         async with OzonParser() as parser:
             for product in products:
-                offer_id = product['offer_id']
-                price = await parser.fetch_price_by_sku(offer_id)
+                sku = product['sku']
+                price = await parser.fetch_price_by_sku(sku)
                 if price is not None:
-                    logger.info(f"Товар {offer_id}: реальная цена = {price}")
+                    logger.info(f"Товар {sku}: реальная цена = {price}")
                 else:
-                    logger.info(f"Товар {offer_id}: реальная цена не найдена")
-                real_prices[offer_id] = price
+                    logger.info(f"Товар {sku}: реальная цена не найдена")
+                real_prices[sku] = price
         return real_prices

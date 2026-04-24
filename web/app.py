@@ -5,7 +5,6 @@ import sys
 from pathlib import Path
 import plotly.graph_objects as go
 from typing import Dict, Any
-import pytz
 
 # Корень проекта для импортов
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -81,7 +80,7 @@ def run_full_cycle() -> Dict[str, Any]:
         return {"products_loaded": 0, "prices_updated": 0, "errors": ["Нет товаров"]}
     for p in products:
         db.upsert_product(p)
-        db.set_strategies(p['offer_id'], p['intervals'])
+        db.set_strategies(p['sku'], p['intervals'])
 
     async def fetch_real():
         prod_parser = ProductsParser()
@@ -111,7 +110,7 @@ def run_competitors_parser() -> Dict[str, Any]:
         products = loader.load()
         for p in products:
             db.upsert_product(p)
-            db.set_strategies(p['offer_id'], p['intervals'])
+            db.set_strategies(p['sku'], p['intervals'])
         comp_parser = CompetitorsParser(db)
         return await comp_parser.run(products)
     return _run_async_with_proactor(_run)
@@ -128,8 +127,8 @@ def run_pricemaker() -> Dict[str, Any]:
     products = loader.load()
     for p in products:
         db.upsert_product(p)
-        db.set_strategies(p['offer_id'], p['intervals'])
-    real_prices = {p['offer_id']: p.get('current_price') for p in products}
+        db.set_strategies(p['sku'], p['intervals'])
+    real_prices = {p['sku']: p.get('current_price') for p in products}
     pricemaker = PriceMaker(db)
     updates_for_ozon, margin_items = pricemaker.calculate(products, real_prices)
     updater = PriceUpdater(db, loader, dry_run=False)
@@ -251,22 +250,24 @@ with tab1:
 
         rows = []
         for p in products:
-            if sku_filter and sku_filter.lower() not in str(p['offer_id']).lower():
+            # Приводим фильтры к строковому SKU (в базе хранится как 'offer_id')
+            sku_str = str(p['offer_id'])
+            if sku_filter and sku_filter.lower() not in sku_str.lower():
                 continue
             if name_filter and name_filter.lower() not in (p['product_name'] or '').lower():
                 continue
 
-            hist = db.get_price_history(p['offer_id'])
+            hist = db.get_price_history(sku_str)
             last_price = None
             last_margin = None
             if hist:
                 last_entry = hist[-1]
                 last_price = last_entry.get('target_price')
                 last_margin = last_entry.get('margin')
-            avg_week = db.get_average_margin(p['offer_id'], 7)
-            avg_month = db.get_average_margin(p['offer_id'], 30)
+            avg_week = db.get_average_margin(sku_str, 7)
+            avg_month = db.get_average_margin(sku_str, 30)
 
-            strategies = db.get_strategies(p['offer_id'])
+            strategies = db.get_strategies(sku_str)
             strat_types = set(s['strategy_type'] for s in strategies)
             if len(strat_types) > 1:
                 strat_label = "Смешанная"
@@ -310,7 +311,7 @@ with tab1:
                 for s in strategies
             ]) if strategies else "Равная"
 
-            comps = db.get_competitors_for_product(p['offer_id'])
+            comps = db.get_competitors_for_product(sku_str)
             comp_prices = []
             for c in comps:
                 price_hist = db.get_competitor_price_history(c['id'])
@@ -321,7 +322,7 @@ with tab1:
             comp_prices_str = ", ".join(comp_prices) if comp_prices else "—"
 
             rows.append({
-                "SKU": p['offer_id'],
+                "SKU": sku_str,
                 "Название": p['product_name'],
                 "Себестоимость": p['cost_price'],
                 "Мин. цена (РИЦ)": p['min_price'],
@@ -374,7 +375,6 @@ with tab3:
             LIMIT 100
         ''', conn)
     if not hist_df.empty:
-        # Преобразуем timestamp в МСК
         hist_df['timestamp'] = pd.to_datetime(hist_df['timestamp'])
         hist_df['timestamp'] = hist_df['timestamp'].dt.tz_localize('UTC').dt.tz_convert(TIMEZONE)
         hist_df.rename(columns={'timestamp': 'Время (МСК)'}, inplace=True)

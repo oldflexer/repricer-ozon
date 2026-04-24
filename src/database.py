@@ -30,10 +30,11 @@ class Database:
         with self._get_connection() as conn:
             cursor = conn.cursor()
 
-            # Таблица товаров
+            # Таблица товаров (SKU как первичный ключ, плюс product_id из Ozon)
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS products (
-                    offer_id TEXT PRIMARY KEY,
+                    offer_id TEXT PRIMARY KEY,   -- здесь храним SKU
+                    product_id INTEGER,
                     product_name TEXT,
                     cost_price REAL,
                     min_price REAL,
@@ -109,10 +110,11 @@ class Database:
             with self._get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
-                    INSERT OR REPLACE INTO products (offer_id, product_name, cost_price, min_price, current_price)
-                    VALUES (?, ?, ?, ?, ?)
+                    INSERT OR REPLACE INTO products (offer_id, product_id, product_name, cost_price, min_price, current_price)
+                    VALUES (?, ?, ?, ?, ?, ?)
                 ''', (
-                    product.get('offer_id'),
+                    product.get('sku'),
+                    product.get('product_id'),
                     product.get('product_name'),
                     product.get('cost_price'),
                     product.get('min_price'),
@@ -121,7 +123,7 @@ class Database:
                 conn.commit()
                 return True
         except Exception as e:
-            logger.error(f"Ошибка сохранения товара {product.get('offer_id')}: {e}")
+            logger.error(f"Ошибка сохранения товара {product.get('sku')}: {e}")
             return False
 
     def get_all_products(self) -> List[Dict]:
@@ -132,17 +134,17 @@ class Database:
             return [dict(row) for row in rows]
 
     # --- Стратегии ---
-    def set_strategies(self, offer_id: str, intervals: List[Dict]) -> bool:
+    def set_strategies(self, sku: str, intervals: List[Dict]) -> bool:
         try:
             with self._get_connection() as conn:
                 cursor = conn.cursor()
-                cursor.execute('DELETE FROM product_strategies WHERE offer_id = ?', (offer_id,))
+                cursor.execute('DELETE FROM product_strategies WHERE offer_id = ?', (sku,))
                 for inv in intervals:
                     cursor.execute('''
                         INSERT INTO product_strategies (offer_id, start_time, end_time, strategy_type, percent)
                         VALUES (?, ?, ?, ?, ?)
                     ''', (
-                        offer_id,
+                        sku,
                         inv['start'],
                         inv['end'],
                         inv['strategy'],
@@ -151,10 +153,10 @@ class Database:
                 conn.commit()
                 return True
         except Exception as e:
-            logger.error(f"Ошибка сохранения стратегий для {offer_id}: {e}")
+            logger.error(f"Ошибка сохранения стратегий для {sku}: {e}")
             return False
 
-    def get_strategies(self, offer_id: str) -> List[Dict]:
+    def get_strategies(self, sku: str) -> List[Dict]:
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('''
@@ -162,7 +164,7 @@ class Database:
                 FROM product_strategies
                 WHERE offer_id = ?
                 ORDER BY start_time
-            ''', (offer_id,))
+            ''', (sku,))
             rows = cursor.fetchall()
             return [dict(row) for row in rows]
 
@@ -192,16 +194,16 @@ class Database:
                     raise RuntimeError("Не удалось получить lastrowid после INSERT")
                 return new_id
 
-    def link_product_competitor(self, offer_id: str, competitor_id: int, index: int) -> None:
+    def link_product_competitor(self, sku: str, competitor_id: int, index: int) -> None:
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('''
                 INSERT OR REPLACE INTO product_competitors (offer_id, competitor_id, competitor_index)
                 VALUES (?, ?, ?)
-            ''', (offer_id, competitor_id, index))
+            ''', (sku, competitor_id, index))
             conn.commit()
 
-    def get_competitors_for_product(self, offer_id: str) -> List[Dict]:
+    def get_competitors_for_product(self, sku: str) -> List[Dict]:
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('''
@@ -210,7 +212,7 @@ class Database:
                 JOIN product_competitors pc ON c.id = pc.competitor_id
                 WHERE pc.offer_id = ?
                 ORDER BY pc.competitor_index
-            ''', (offer_id,))
+            ''', (sku,))
             rows = cursor.fetchall()
             return [dict(row) for row in rows]
 
@@ -231,34 +233,34 @@ class Database:
             return [dict(row) for row in rows]
 
     # --- История цен товара ---
-    def save_price_record(self, offer_id: str, target_price: float, margin: float) -> bool:
+    def save_price_record(self, sku: str, target_price: float, margin: float) -> bool:
         try:
             with self._get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
                     INSERT INTO price_history (offer_id, target_price, margin)
                     VALUES (?, ?, ?)
-                ''', (offer_id, target_price, margin))
+                ''', (sku, target_price, margin))
                 conn.commit()
                 return True
         except Exception as e:
-            logger.error(f"Ошибка сохранения истории цены для {offer_id}: {e}")
+            logger.error(f"Ошибка сохранения истории цены для {sku}: {e}")
             return False
 
-    def get_average_margin(self, offer_id: str, days: int) -> Optional[float]:
+    def get_average_margin(self, sku: str, days: int) -> Optional[float]:
         cutoff = datetime.now() - timedelta(days=days)
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('''
                 SELECT AVG(margin) FROM price_history
                 WHERE offer_id = ? AND timestamp >= ?
-            ''', (offer_id, cutoff.isoformat()))
+            ''', (sku, cutoff.isoformat()))
             row = cursor.fetchone()
             if row and row[0] is not None:
                 return round(row[0], 2)
             return None
 
-    def get_price_history(self, offer_id: str) -> List[Dict]:
+    def get_price_history(self, sku: str) -> List[Dict]:
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('''
@@ -266,7 +268,7 @@ class Database:
                 FROM price_history
                 WHERE offer_id = ?
                 ORDER BY timestamp ASC
-            ''', (offer_id,))
+            ''', (sku,))
             rows = cursor.fetchall()
             return [dict(row) for row in rows]
 
@@ -296,20 +298,6 @@ class Database:
             ''', (competitor_id,))
             rows = cursor.fetchall()
             return [dict(row) for row in rows]
-        
-    def delete_old_records(self, days: int = 7) -> int:
-        """Удаляет записи из price_history и competitor_price_history старше указанного количества дней."""
-        cutoff = datetime.now() - timedelta(days=days)
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('DELETE FROM price_history WHERE timestamp < ?', (cutoff.isoformat(),))
-            deleted_price = cursor.rowcount
-            cursor.execute('DELETE FROM competitor_price_history WHERE timestamp < ?', (cutoff.isoformat(),))
-            deleted_comp = cursor.rowcount
-            conn.commit()
-            total = deleted_price + deleted_comp
-            logger.info(f"Удалено старых записей: {total} (price_history: {deleted_price}, competitor_price: {deleted_comp})")
-            return total
 
     # --- Вспомогательные методы ---
     def get_last_run_time(self) -> Optional[datetime]:
@@ -321,3 +309,20 @@ class Database:
                 dt = datetime.fromisoformat(row[0])
                 return dt.replace(tzinfo=timezone.utc)
             return None
+
+    def delete_old_records(self, days: int = 7) -> int:
+        cutoff = datetime.now() - timedelta(days=days)
+        total_deleted = 0
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('DELETE FROM price_history WHERE timestamp < ?', (cutoff.isoformat(),))
+                total_deleted += cursor.rowcount
+                cursor.execute('DELETE FROM competitor_price_history WHERE timestamp < ?', (cutoff.isoformat(),))
+                total_deleted += cursor.rowcount
+                conn.commit()
+            logger.info(f"Удалено {total_deleted} старых записей (старше {days} дней)")
+            return total_deleted
+        except Exception as e:
+            logger.error(f"Ошибка при удалении старых записей: {e}")
+            return 0

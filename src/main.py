@@ -15,6 +15,7 @@ from src.products_parser import ProductsParser
 from src.pricemaker import PriceMaker
 from src.price_updater import PriceUpdater
 from src.mail_notifier import MailNotifier
+from src.ozon_api import OzonApiClient
 
 logging.basicConfig(
     level=logging.INFO,
@@ -33,6 +34,7 @@ class Repricer:
         self.db = Database()
         self.loader = DataLoader(DATA_FILE)
         self.notifier = MailNotifier()
+        self.ozon_api = OzonApiClient()
 
     async def run(self) -> Dict[str, Any]:
         stats: Dict[str, Any] = {
@@ -44,7 +46,7 @@ class Repricer:
 
         logger.info(f"=== Запуск репрайсера {'(DRY-RUN)' if self.dry_run else ''} ===")
 
-        # 1. Загрузка товаров из Excel и сохранение стратегий
+        # 1. Загрузка товаров из Excel
         try:
             products = self.loader.load()
         except Exception as e:
@@ -59,16 +61,24 @@ class Repricer:
             self.notifier.notify_critical_event("Нет товаров в таблице или ошибка загрузки")
             return stats
 
-        # Сохраняем товары в БД
+        # 1.1 Получаем product_id по SKU
+        sku_list = [p['sku'] for p in products]
+        product_map = self.ozon_api.get_product_ids_by_skus(sku_list)
+        for p in products:
+            info = product_map.get(p['sku'], {})
+            p['product_id'] = info.get('product_id')
+            p['offer_id'] = info.get('offer_id')
+
+        # 1.2 Сохраняем товары и стратегии в БД
         for p in products:
             try:
                 self.db.upsert_product(p)
-                self.db.set_strategies(p['offer_id'], p['intervals'])
+                self.db.set_strategies(p['sku'], p['intervals'])
             except Exception as e:
-                logger.error(f"Ошибка сохранения товара {p['offer_id']}: {e}")
-                stats['errors'].append(f"Сохранение товара {p['offer_id']}: {e}")
+                logger.error(f"Ошибка сохранения товара {p['sku']}: {e}")
+                stats['errors'].append(f"Сохранение товара {p['sku']}: {e}")
 
-        # 2. Парсинг наших товаров (реальные цены)
+        # 2. Парсинг наших товаров
         real_prices: Dict[str, Optional[float]] = {}
         try:
             products_parser = ProductsParser()
@@ -109,7 +119,7 @@ class Repricer:
             stats['errors'].append(f"Отправка/сохранение: {e}")
             self.notifier.notify_critical_event(f"Ошибка отправки/сохранения: {e}")
 
-        # 6. Итоговое уведомление (всегда, независимо от dry_run)
+        # 6. Итоговое уведомление
         self.notifier.notify_cycle_complete(
             updated_count=stats['prices_updated'],
             errors=stats['errors'] if stats['errors'] else None

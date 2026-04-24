@@ -6,7 +6,7 @@ import json
 class PriceCalculator:
     @staticmethod
     def get_active_strategy(intervals: List[Dict]) -> Optional[Dict[str, Any]]:
-        """intervals: список словарей с start, end, strategy, percent."""
+        """Возвращает словарь {'strategy': int, 'percent': float} для текущего времени."""
         now = datetime.now().time()
         for inv in intervals:
             start = datetime.strptime(inv['start'], '%H:%M').time()
@@ -21,7 +21,7 @@ class PriceCalculator:
         intervals: List[Dict],
         min_price: float
     ) -> float:
-        """Рассчитывает цену только на основе стратегии и конкурентов."""
+        """Рассчитывает цену на основе минимальной цены конкурента и активной стратегии."""
         if min_price is None:
             min_price = 0.0
 
@@ -49,32 +49,17 @@ class PriceCalculator:
         return round(max(target, min_price))
 
     @staticmethod
-    def calculate_target_price(
-        competitor_prices: List[float],
-        intervals: List[Dict],
-        min_price: float,
-        real_price: Optional[float] = None
-    ) -> float:
+    def calculate_ozon_coefficient(real_price: Optional[float], min_price: float) -> float:
         """
-        Основной метод расчёта целевой цены с учётом реальной цены.
-        min_price – это РРЦ (цена РИЦ).
+        Вычисляет коэффициент Ozon.
+        Если реальная цена известна и она меньше РРЦ, возвращает отношение реальной цены к РРЦ,
+        иначе возвращает 0.75 (скидка 25%).
         """
-        if min_price is None:
-            min_price = 0.0
-
-        strategy_price = PriceCalculator.calculate_strategy_price(
-            competitor_prices, intervals, min_price
-        )
-
+        if min_price is None or min_price == 0:
+            return 0.75
         if real_price is not None and real_price > 0 and real_price < min_price:
-            # РРЦ выше реальной цены
-            rrp_diff_percent = (min_price - real_price) / real_price * 100
-            required_price = min_price * (1 + rrp_diff_percent / 100)
-            target = max(strategy_price, required_price)
-        else:
-            target = max(strategy_price, min_price)
-
-        return round(target)
+            return real_price / min_price
+        return 0.75
 
 
 class MarginCalculator:

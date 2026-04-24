@@ -21,7 +21,7 @@ class CompetitorsParser:
 
         async with OzonParser() as parser:
             for product in products:
-                offer_id = product['offer_id']
+                sku = product['sku']
                 urls = product.get('competitor_urls', [])
                 if not urls:
                     continue
@@ -30,13 +30,13 @@ class CompetitorsParser:
                 valid_prices = 0
                 for idx, (price, prod_name, shop_name) in enumerate(results):
                     comp_id = self.db.get_or_create_competitor(urls[idx], prod_name, shop_name)
-                    self.db.link_product_competitor(offer_id, comp_id, idx + 1)
+                    self.db.link_product_competitor(sku, comp_id, idx + 1)
                     if price is not None and comp_id not in self._saved_prices:
                         self.db.save_competitor_price(comp_id, price)
                         self._saved_prices.add(comp_id)
                         valid_prices += 1
 
                 stats['competitor_prices_parsed'] += valid_prices
-                logger.info(f"Товар {offer_id}: сохранено {valid_prices} цен конкурентов")
+                logger.info(f"Товар {sku}: сохранено {valid_prices} цен конкурентов")
 
         return stats

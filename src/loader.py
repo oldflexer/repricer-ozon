@@ -12,7 +12,7 @@ class DataLoader:
     """Загрузка данных из Excel-файла с таблицей товаров (новая структура)"""
 
     COLUMN_MAPPING = {
-        'offer_id': ['sku', 'артикул', 'article', 'id', 'offer_id'],
+        'sku': ['sku', 'артикул', 'article', 'id', 'offer_id'],
         'product_name': ['название', 'name', 'товар', 'product_name'],
         'cost_price': ['себестоимость', 'cost_price', 'cost'],
         'min_price': ['цена риц', 'минимальная цена', 'min_price', 'min'],
@@ -69,8 +69,8 @@ class DataLoader:
                         break
             product[std_name] = value
 
-        if not product.get('offer_id'):
-            logger.warning("Пропущена строка без SKU/offer_id")
+        if not product.get('sku'):
+            logger.warning("Пропущена строка без SKU")
             return None
 
         # 2. Ссылки конкурентов
@@ -87,7 +87,6 @@ class DataLoader:
 
         # 3. Интервалы стратегий
         intervals = []
-        # Сначала пытаемся собрать из отдельных колонок
         for i in range(1, self.SCHEDULE_INTERVALS_COUNT + 1):
             time_col = self._find_column(columns, [f'интервал {i}', f'промежуток {i}'])
             strategy_col = self._find_column(columns, [f'стратегия {i}', f'стратеги {i}'])
@@ -129,9 +128,7 @@ class DataLoader:
                 'percent': percent
             })
 
-        # Если интервалы не найдены, создаём один по умолчанию 00:00-23:59
         if not intervals:
-            # Проверяем, есть ли старые колонки "Стратегия" и "Процент"
             base_strategy = self._get_int(row, columns, ['стратегия', 'strategy'], 3)
             base_percent = self._get_float(row, columns, ['процент', 'percent'], 0.0)
             intervals.append({
@@ -140,9 +137,6 @@ class DataLoader:
                 'strategy': base_strategy,
                 'percent': base_percent
             })
-        else:
-            # Если интервалы есть, но базовая стратегия не задана – не страшно
-            pass
 
         product['intervals'] = intervals
 
@@ -156,6 +150,10 @@ class DataLoader:
                     product[field] = 0.0
             else:
                 product[field] = 0.0
+
+        # product_id и offer_id будут заполнены позже из Ozon API
+        product['product_id'] = None
+        product['offer_id'] = None
 
         return product
 
@@ -187,7 +185,7 @@ class DataLoader:
                     pass
         return default
 
-    def update_product_in_file(self, offer_id: str, updates: Dict[str, Any]) -> bool:
+    def update_product_in_file(self, sku: str, updates: Dict[str, Any]) -> bool:
         """Обновляет поля товара в Excel-файле (цена и маржа)."""
         try:
             from openpyxl import load_workbook
@@ -221,31 +219,26 @@ class DataLoader:
                 return False
 
             target_row = None
-            target_sku_int = None
-            try:
-                target_sku_int = int(offer_id)
-            except ValueError:
-                pass
-
             for row_idx in range(2, ws.max_row + 1):
                 sku_cell = ws.cell(row_idx, sku_col)
                 cell_value = sku_cell.value
                 if cell_value is None:
                     continue
                 cell_str = str(cell_value).strip()
-                if cell_str == offer_id:
+                # Ищем точное совпадение SKU (может быть строкой или числом)
+                if cell_str == str(sku):
                     target_row = row_idx
                     break
-                if target_sku_int is not None:
-                    try:
-                        if int(float(cell_str)) == target_sku_int:
-                            target_row = row_idx
-                            break
-                    except (ValueError, TypeError):
-                        pass
+                # Также пробуем сравнить как числа (для SKU без ведущих нулей)
+                try:
+                    if int(float(cell_str)) == int(float(sku)):
+                        target_row = row_idx
+                        break
+                except (ValueError, TypeError):
+                    pass
 
             if target_row is None:
-                logger.warning(f"SKU {offer_id} не найден в файле")
+                logger.warning(f"SKU {sku} не найден в файле")
                 return False
 
             for field, col_idx in col_map.items():
@@ -256,7 +249,7 @@ class DataLoader:
                     ws.cell(target_row, col_idx, value=value)
 
             wb.save(self.file_path)
-            logger.info(f"Обновлены поля {list(updates.keys())} для {offer_id}")
+            logger.info(f"Обновлены поля {list(updates.keys())} для SKU {sku}")
             return True
         except Exception as e:
             logger.error(f"Ошибка обновления Excel: {e}")
