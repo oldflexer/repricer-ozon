@@ -326,3 +326,10 @@ class Database:
         except Exception as e:
             logger.error(f"Ошибка при удалении старых записей: {e}")
             return 0
+    
+    def clear_competitor_links(self, sku: str) -> None:
+        """Удаляет все связи товар-конкурент для указанного SKU."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('DELETE FROM product_competitors WHERE offer_id = ?', (sku,))
+            conn.commit()

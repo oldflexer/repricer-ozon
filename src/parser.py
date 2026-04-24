@@ -24,7 +24,7 @@ class OzonParser:
             '--disable-blink-features=AutomationControlled',
             '--disable-gpu',
             '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36',
-        ]
+       ]
         # Запускаем с учётом флага HEADLESS из настроек
         self.browser = await uc.start(
             headless=HEADLESS,
@@ -51,7 +51,7 @@ class OzonParser:
                 await asyncio.sleep(PARSER_DELAY + random.uniform(0, 1))
                 timeout = base_timeout * (attempt + 1)
                 tab = await self.browser.get(url)
-                await asyncio.sleep(PARSER_DELAY + random.uniform(0, 1))
+                await asyncio.sleep(1)
 
                 # Проверка на заглушку "Такой страницы не существует"
                 page_text = await tab.evaluate('document.body.innerText')
@@ -60,7 +60,7 @@ class OzonParser:
                     self._cache[url] = (None, None, None)
                     return None, None, None
 
-                # Цена
+        		# Цена
                 price_elem = await tab.select('.pdp_bj', timeout=timeout)
                 price = None
                 if price_elem:

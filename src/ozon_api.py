@@ -21,8 +21,7 @@ class OzonApiClient:
 
     def get_product_ids_by_skus(self, skus: List[str]) -> Dict[str, dict]:
         """
-        Возвращает словарь: sku -> {"product_id": int, "offer_id": str}.
-        Обрабатывает SKU по одному, чтобы изолировать ошибки.
+        Возвращает словарь: sku -> {"product_id": int, "offer_id": str, "price": float}
         """
         url = f"{self.base_url}/v3/product/info/list"
         result = {}
@@ -40,9 +39,17 @@ class OzonApiClient:
                     items = data.get('items', [])
                     if items:
                         item = items[0]
+                        price_val = None
+                        price_str = item.get('price')
+                        if price_str:
+                            try:
+                                price_val = float(price_str)
+                            except ValueError:
+                                pass
                         result[sku_str] = {
                             'product_id': item.get('id'),
-                            'offer_id': item.get('offer_id', '')
+                            'offer_id': item.get('offer_id', ''),
+                            'price': price_val
                         }
                     else:
                         logger.warning(f"SKU {sku_str}: товар не найден в ответе")
@@ -50,7 +57,6 @@ class OzonApiClient:
                     logger.warning(f"SKU {sku_str}: статус {response.status_code}")
             except Exception as e:
                 logger.error(f"SKU {sku_str}: ошибка запроса — {e}")
-            # Задержка между запросами для соблюдения лимита (1 запрос в 1.5 сек)
             time.sleep(0.1)
 
         logger.info(f"Получены product_id для {len(result)}/{len(skus)} SKU")

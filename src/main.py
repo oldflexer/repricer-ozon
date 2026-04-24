@@ -17,14 +17,15 @@ from src.price_updater import PriceUpdater
 from src.mail_notifier import MailNotifier
 from src.ozon_api import OzonApiClient
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler(Path(__file__).parent.parent / 'repricer.log', mode='w', encoding='utf-8')
-    ]
-)
+if not logging.getLogger().handlers:
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.StreamHandler(),
+            logging.FileHandler(Path(__file__).parent.parent / 'repricer.log', mode='w', encoding='utf-8')
+        ]
+    )
 logger = logging.getLogger(__name__)
 
 
@@ -61,13 +62,14 @@ class Repricer:
             self.notifier.notify_critical_event("Нет товаров в таблице или ошибка загрузки")
             return stats
 
-        # 1.1 Получаем product_id по SKU
+        # 1.1 Получаем product_id и previous_price по SKU
         sku_list = [p['sku'] for p in products]
         product_map = self.ozon_api.get_product_ids_by_skus(sku_list)
         for p in products:
             info = product_map.get(p['sku'], {})
             p['product_id'] = info.get('product_id')
             p['offer_id'] = info.get('offer_id')
+            p['previous_price'] = info.get('price')   # ранее установленная цена на Ozon
 
         # 1.2 Сохраняем товары и стратегии в БД
         for p in products:
@@ -89,6 +91,9 @@ class Repricer:
 
         # 3. Парсинг конкурентов
         try:
+            for p in products:
+                self.db.clear_competitor_links(p['sku'])
+                
             comp_parser = CompetitorsParser(self.db)
             comp_stats = await comp_parser.run(products)
             stats['competitor_prices_parsed'] = comp_stats.get('competitor_prices_parsed', 0)

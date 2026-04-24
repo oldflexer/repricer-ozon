@@ -48,19 +48,6 @@ class PriceCalculator:
 
         return round(max(target, min_price))
 
-    @staticmethod
-    def calculate_ozon_coefficient(real_price: Optional[float], min_price: float) -> float:
-        """
-        Вычисляет коэффициент Ozon.
-        Если реальная цена известна и она меньше РРЦ, возвращает отношение реальной цены к РРЦ,
-        иначе возвращает 0.75 (скидка 25%).
-        """
-        if min_price is None or min_price == 0:
-            return 0.75
-        if real_price is not None and real_price > 0 and real_price < min_price:
-            return real_price / min_price
-        return 0.75
-
 
 class MarginCalculator:
     DEFAULT_COMMISSION = 0.15

@@ -29,6 +29,9 @@ class PriceMaker:
             if real_price is None:
                 real_price = product.get('current_price')
 
+            # Ранее установленная цена на Ozon (из API)
+            previous_price = product.get('previous_price')
+
             # Последние цены конкурентов из БД
             comps = self.db.get_competitors_for_product(sku)
             competitor_prices = []
@@ -47,8 +50,11 @@ class PriceMaker:
                 min_price=min_price
             )
 
-            # 2. Коэффициент Ozon (скидка)
-            ozon_coef = self.calculator.calculate_ozon_coefficient(real_price, min_price)
+            # 2. Коэффициент Ozon (скидка), основанный на реальной и предыдущей цене
+            if real_price is not None and real_price > 0 and previous_price is not None and previous_price > 0:
+                ozon_coef = real_price / previous_price
+            else:
+                ozon_coef = 0.7  # значение по умолчанию, если данных нет
 
             # 3. Финальная цена для Ozon = стратегическая / коэффициент
             target_price = round(strategy_price / ozon_coef)
@@ -58,16 +64,19 @@ class PriceMaker:
             local_margin = self.margin_calc.calculate_margin(strategy_price, cost_price)
 
             logger.info(
-                f"Товар {sku}: strategy={strategy_price:.2f}, target={target_price:.2f} (для Ozon), margin={local_margin:.2f}%"
+                f"Товар {sku}: strategy={strategy_price:.2f}, real_price={real_price}, "
+                f"previous_price={previous_price}, coef={ozon_coef:.3f}, "
+                f"target={target_price:.2f} (для Ozon), margin={local_margin:.2f}%"
             )
 
-            # Данные для отправки в Ozon (только price и идентификаторы)
+            # Данные для отправки в Ozon (только product_id и price)
             updates_for_ozon.append({
                 'product_id': product.get('product_id'),
                 'offer_id': '',
                 'price': f"{target_price:.2f}",
             })
 
+            # Данные для локального сохранения (чистая стратегическая цена)
             margin_items.append({
                 'sku': sku,
                 'target_price': strategy_price,   # сохраняем чистую стратегическую цену

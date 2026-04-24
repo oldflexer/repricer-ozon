@@ -12,6 +12,7 @@ load_dotenv(BASE_DIR / '.env')
 OZON_CLIENT_ID = os.getenv('OZON_CLIENT_ID')
 OZON_API_KEY = os.getenv('OZON_API_KEY')
 OZON_API_URL = 'https://api-seller.ozon.ru'
+
 # Email
 SMTP_HOST = os.getenv('SMTP_HOST', 'smtp.yandex.ru')
 SMTP_PORT = int(os.getenv('SMTP_PORT', '587'))
@@ -26,7 +27,7 @@ PARSER_TIMEOUT = int(os.getenv('PARSER_TIMEOUT', '10'))
 MAX_RETRIES = int(os.getenv('MAX_RETRIES', '3'))
 
 # Headless
-HEADLESS = os.getenv('HEADLESS', 'false').lower() == 'true'
+HEADLESS = bool(os.getenv('HEADLESS', 'False'))
 
 # Данные
 DATA_FILE = Path(os.getenv('DATA_FILE', BASE_DIR / 'data' / 'products.xlsx'))

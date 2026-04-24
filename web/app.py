@@ -20,15 +20,16 @@ from src.loader import DataLoader
 from src.mail_notifier import MailNotifier
 from src.ozon_api import OzonApiClient
 
-# Явная настройка файлового логирования (перезапись при каждом запуске)
-log_file = Path(__file__).parent.parent / 'repricer.log'
-file_handler = logging.FileHandler(log_file, mode='w', encoding='utf-8')
-file_handler.setLevel(logging.INFO)
-file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
-
-root_logger = logging.getLogger()
-root_logger.setLevel(logging.INFO)
-root_logger.addHandler(file_handler)
+if not logging.getLogger().handlers:
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.StreamHandler(),
+            logging.FileHandler(Path(__file__).parent.parent / 'repricer.log', mode='w', encoding='utf-8')
+        ]
+    )
+logger = logging.getLogger(__name__)
 
 st.set_page_config(page_title="Репрайсер Ozon", layout="wide", page_icon="📊")
 st.title("🔄 Репрайсер Ozon")
@@ -46,30 +47,30 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- Аутентификация ---
-def check_password():
-    import os
-    from dotenv import load_dotenv
-    load_dotenv()
-    WEB_USER = os.getenv("WEB_USER", "admin")
-    WEB_PASS = os.getenv("WEB_PASS", "admin")
-    if "authenticated" not in st.session_state:
-        st.session_state.authenticated = False
-    if not st.session_state.authenticated:
-        with st.form("login"):
-            username = st.text_input("Логин")
-            password = st.text_input("Пароль", type="password")
-            submit = st.form_submit_button("Войти")
-            if submit:
-                if username == WEB_USER and password == WEB_PASS:
-                    st.session_state.authenticated = True
-                    st.rerun()
-                else:
-                    st.error("Неверный логин или пароль")
-        return False
-    return True
+# def check_password():
+#     import os
+#     from dotenv import load_dotenv
+#     load_dotenv()
+#     WEB_USER = os.getenv("WEB_USER", "admin")
+#     WEB_PASS = os.getenv("WEB_PASS", "admin")
+#     if "authenticated" not in st.session_state:
+#         st.session_state.authenticated = False
+#     if not st.session_state.authenticated:
+#         with st.form("login"):
+#             username = st.text_input("Логин")
+#             password = st.text_input("Пароль", type="password")
+#             submit = st.form_submit_button("Войти")
+#             if submit:
+#                 if username == WEB_USER and password == WEB_PASS:
+#                     st.session_state.authenticated = True
+#                     st.rerun()
+#                 else:
+#                     st.error("Неверный логин или пароль")
+#         return False
+#     return True
 
-if not check_password():
-    st.stop()
+# if not check_password():
+#     st.stop()
 
 db = Database(DATABASE_PATH)
 loader = DataLoader(DATA_FILE)
@@ -97,18 +98,22 @@ def run_full_cycle() -> Dict[str, Any]:
         db.upsert_product(p)
         db.set_strategies(p['sku'], p['intervals'])
 
-    # Получаем product_id по SKU
+    # Получаем product_id и previous_price по SKU
     sku_list = [p['sku'] for p in products]
     product_map = ozon_api.get_product_ids_by_skus(sku_list)
     for p in products:
         info = product_map.get(p['sku'], {})
         p['product_id'] = info.get('product_id')
         p['offer_id'] = info.get('offer_id')
+        p['previous_price'] = info.get('price')
 
     async def fetch_real():
         prod_parser = ProductsParser()
         return await prod_parser.fetch_real_prices(products)
     real_prices = _run_async_with_proactor(fetch_real)
+
+    for p in products:
+        db.clear_competitor_links(p['sku'])
 
     async def parse_competitors():
         comp_parser = CompetitorsParser(db)
@@ -128,7 +133,6 @@ def run_full_cycle() -> Dict[str, Any]:
         "competitor_prices_parsed": comp_stats.get('competitor_prices_parsed', 0)
     }
 
-    # Отправляем уведомление (если SMTP настроен, письмо уйдёт)
     notifier.notify_cycle_complete(
         updated_count=result["prices_updated"],
         errors=result["errors"] if result["errors"] else None
@@ -142,6 +146,7 @@ def run_competitors_parser() -> Dict[str, Any]:
         for p in products:
             db.upsert_product(p)
             db.set_strategies(p['sku'], p['intervals'])
+            db.clear_competitor_links(p['sku'])
         comp_parser = CompetitorsParser(db)
         return await comp_parser.run(products)
     return _run_async_with_proactor(_run)
@@ -156,21 +161,25 @@ def run_products_parser() -> Dict[str, Any]:
 
 def run_pricemaker() -> Dict[str, Any]:
     products = loader.load()
+
     if not products:
         return {"prices_updated": 0, "errors": ["Нет товаров"]}
     for p in products:
         db.upsert_product(p)
         db.set_strategies(p['sku'], p['intervals'])
 
-    # Получаем product_id по SKU
+    # Получаем product_id и previous_price по SKU
     sku_list = [p['sku'] for p in products]
     product_map = ozon_api.get_product_ids_by_skus(sku_list)
     for p in products:
         info = product_map.get(p['sku'], {})
         p['product_id'] = info.get('product_id')
         p['offer_id'] = info.get('offer_id')
+        p['previous_price'] = info.get('price')
 
-    # Парсим реальные цены с витрины Ozon
+    for p in products:
+        db.clear_competitor_links(p['sku'])
+
     async def fetch_real():
         prod_parser = ProductsParser()
         return await prod_parser.fetch_real_prices(products)
@@ -188,7 +197,6 @@ def run_pricemaker() -> Dict[str, Any]:
         "errors": price_stats.get('errors', []),
     }
 
-    # Уведомление
     notifier.notify_cycle_complete(
         updated_count=result["prices_updated"],
         errors=result["errors"] if result["errors"] else None
