@@ -51,7 +51,7 @@ class OzonParser:
                 await asyncio.sleep(PARSER_DELAY + random.uniform(0, 1))
                 timeout = base_timeout * (attempt + 1)
                 tab = await self.browser.get(url)
-                await asyncio.sleep(1)
+                await asyncio.sleep(PARSER_DELAY + random.uniform(0, 1))
 
                 # Проверка на заглушку "Такой страницы не существует"
                 page_text = await tab.evaluate('document.body.innerText')
