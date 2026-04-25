@@ -24,6 +24,7 @@ class OzonParser:
             '--disable-blink-features=AutomationControlled',
             '--disable-gpu',
             f'--user-agent={USER_AGENT}',
+            '--no_sandbox=True',
        ]
         # Запускаем с учётом флага HEADLESS из настроек
         self.browser = await uc.start(
