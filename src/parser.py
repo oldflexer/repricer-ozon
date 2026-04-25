@@ -11,46 +11,48 @@ logger = logging.getLogger(__name__)
 
 
 class OzonParser:
-    """Асинхронный парсер цен Ozon с извлечением названия товара и продавца"""
+    """Асинхронный парсер цен Ozon (браузер запускается отдельно для каждого запроса)"""
 
     def __init__(self):
-        self.browser: Optional[uc.Browser] = None
         self._cache: Dict[str, Tuple[Optional[float], Optional[str], Optional[str]]] = {}
-
-    async def __aenter__(self) -> 'OzonParser':
-        browser_args = [
+        self._shared_browser_args = [
             '--window-size=1920,1080',
             '--disable-blink-features=AutomationControlled',
             f'--user-agent={USER_AGENT}',
-            '--lang=ru-RU',
         ]
 
-        self.browser = await uc.start(
-            headless=HEADLESS,
-            browser_args=browser_args
-        )
-
+    async def __aenter__(self) -> 'OzonParser':
+        # Браузер больше не создаётся при входе в контекст
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        if self.browser:
-            self.browser.stop()
+        # Нечего останавливать
+        pass
+
+    async def _create_browser(self) -> uc.Browser:
+        """Создаёт новый браузер с нужными параметрами."""
+        return await uc.start(
+            headless=HEADLESS,
+            browser_args=self._shared_browser_args
+        )
 
     async def fetch_price_and_info(self, url: str) -> Tuple[Optional[float], Optional[str], Optional[str]]:
         """Возвращает (цена, название товара, магазин)."""
-        if self.browser is None:
-            raise RuntimeError("Браузер не инициализирован")
-
         if url in self._cache:
             logger.debug(f"Использовано кэшированное значение для {url}")
             return self._cache[url]
 
         base_timeout = PARSER_TIMEOUT
         for attempt in range(MAX_RETRIES):
+            browser = None
+            tab = None
             try:
                 await asyncio.sleep(PARSER_DELAY + random.uniform(0, 1))
                 timeout = base_timeout * (attempt + 1)
-                tab = await self.browser.get(url)
+
+                # Запускаем свежий браузер
+                browser = await self._create_browser()
+                tab = await browser.get(url)
                 await asyncio.sleep(1)
 
                 # Проверка на заглушку "Такой страницы не существует"
@@ -60,7 +62,7 @@ class OzonParser:
                     self._cache[url] = (None, None, None)
                     return None, None, None
 
-        		# Цена
+                # Цена
                 price_elem = await tab.select('.pdp_bj', timeout=timeout)
                 price = None
                 if price_elem:
@@ -88,6 +90,13 @@ class OzonParser:
                     logger.warning(f"CDP-ошибка для {url}, повтор...")
                 else:
                     logger.error(f"Ошибка парсинга {url}: {e}")
+            finally:
+                # Закрываем браузер в любом случае
+                if browser:
+                    try:
+                        browser.stop()
+                    except Exception as stop_e:
+                        logger.debug(f"Ошибка при остановке браузера: {stop_e}")
 
             await asyncio.sleep(1)
 
@@ -96,7 +105,6 @@ class OzonParser:
         return None, None, None
 
     async def fetch_price_by_sku(self, sku: str) -> Optional[float]:
-        """Получает цену товара по прямой ссылке https://www.ozon.ru/product/{sku}"""
         url = f"https://www.ozon.ru/product/{sku}"
         price, _, _ = await self.fetch_price_and_info(url)
         return price
@@ -107,25 +115,3 @@ class OzonParser:
             res = await self.fetch_price_and_info(url)
             results.append(res)
         return results
-
-
-class SyncOzonParser:
-    """Синхронная обёртка"""
-    def __enter__(self):
-        self.parser = OzonParser()
-        self.loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(self.loop)
-        self.loop.run_until_complete(self.parser.__aenter__())
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.loop.run_until_complete(self.parser.__aexit__(exc_type, exc_val, exc_tb))
-        self.loop.close()
-
-    def fetch_price(self, url: str) -> Optional[float]:
-        price, _, _ = self.loop.run_until_complete(self.parser.fetch_price_and_info(url))
-        return price
-
-    def get_prices(self, urls: List[str]) -> List[Optional[float]]:
-        results = self.loop.run_until_complete(self.parser.get_prices(urls))
-        return [r[0] for r in results]
