@@ -3,8 +3,11 @@ set -e
 
 cd "$(dirname "$0")"
 
+echo "=== Ветка server ==="
+git checkout server
+
 echo "=== Обновление кода ==="
-git pull origin main
+git pull origin server
 
 echo "=== Активация venv и установка зависимостей ==="
 source venv/bin/activate
