@@ -1,0 +1,5 @@
+# Полный цикл каждые 4 часа
+0 */4 * * * cd /home/user/repricer-ozon && ./deploy.sh >> /var/log/repricer-deploy.log 2>&1 && xvfb-run -a venv/bin/python src/main.py >> /var/log/repricer.log 2>&1
+
+# Только пересчёт и отправка цен каждый час (лёгкий режим без парсинга)
+0 * * * * cd /home/user/repricer-ozon && venv/bin/python src/pricemaker.py --fast >> /var/log/repricer-fast.log 2>&1

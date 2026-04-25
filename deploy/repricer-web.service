@@ -1,0 +1,13 @@
+[Unit]
+Description=Repricer Web Dashboard
+After=network.target
+
+[Service]
+User=user
+WorkingDirectory=/home/user/repricer-ozon
+ExecStart=/home/user/repricer-ozon/venv/bin/streamlit run web/app.py --server.port 8501 --server.address 0.0.0.0
+Restart=always
+EnvironmentFile=/home/user/repricer-ozon/.env
+
+[Install]
+WantedBy=multi-user.target
