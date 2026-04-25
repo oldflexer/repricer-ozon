@@ -27,7 +27,7 @@ PARSER_TIMEOUT = int(os.getenv('PARSER_TIMEOUT', '10'))
 MAX_RETRIES = int(os.getenv('MAX_RETRIES', '3'))
 
 # Headless
-HEADLESS = bool(os.getenv('HEADLESS', 'False'))
+HEADLESS = True if os.getenv('HEADLESS', 'True').strip().lower() in ('true', '1') else None
 
 # Данные
 DATA_FILE = Path(os.getenv('DATA_FILE', BASE_DIR / 'data' / 'products.xlsx'))
