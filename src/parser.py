@@ -20,6 +20,7 @@ class OzonParser:
     async def __aenter__(self) -> 'OzonParser':
         # Собираем аргументы Chrome
         browser_args = [
+            '--no-sandbox',
             '--window-size=1920,1080',
             '--disable-blink-features=AutomationControlled',
             '--disable-gpu',
@@ -28,8 +29,7 @@ class OzonParser:
         # Запускаем с учётом флага HEADLESS из настроек
         self.browser = await uc.start(
             headless=HEADLESS,
-            browser_args=browser_args,
-            sandbox=False
+            browser_args=browser_args
         )
         return self
 
