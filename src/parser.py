@@ -23,6 +23,7 @@ class OzonParser:
             '--disable-blink-features=AutomationControlled',
             '--disable-gpu',
             f'--user-agent={USER_AGENT}',
+            '--lang=ru-RU',
         ]
 
         self.browser = await uc.start(
