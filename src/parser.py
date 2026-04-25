@@ -18,19 +18,19 @@ class OzonParser:
         self._cache: Dict[str, Tuple[Optional[float], Optional[str], Optional[str]]] = {}
 
     async def __aenter__(self) -> 'OzonParser':
-        # Собираем аргументы Chrome
         browser_args = [
-            '--no-sandbox',
             '--window-size=1920,1080',
             '--disable-blink-features=AutomationControlled',
             '--disable-gpu',
             f'--user-agent={USER_AGENT}',
-       ]
-        # Запускаем с учётом флага HEADLESS из настроек
+        ]
+
         self.browser = await uc.start(
             headless=HEADLESS,
-            browser_args=browser_args
+            browser_args=browser_args,
+            no_sandbox=True  # type: ignore[arg-type]
         )
+
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
