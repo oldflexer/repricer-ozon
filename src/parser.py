@@ -27,8 +27,7 @@ class OzonParser:
 
         self.browser = await uc.start(
             headless=HEADLESS,
-            browser_args=browser_args,
-            no_sandbox=True  # type: ignore[arg-type]
+            browser_args=browser_args
         )
 
         return self
