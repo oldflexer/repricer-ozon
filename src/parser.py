@@ -5,7 +5,7 @@ import random
 
 import nodriver as uc
 
-from config.settings import PARSER_DELAY, PARSER_TIMEOUT, MAX_RETRIES, HEADLESS
+from config.settings import PARSER_DELAY, PARSER_TIMEOUT, MAX_RETRIES, HEADLESS, USER_AGENT
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +23,7 @@ class OzonParser:
             '--window-size=1920,1080',
             '--disable-blink-features=AutomationControlled',
             '--disable-gpu',
-            '--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36',
+            f'--user-agent={USER_AGENT}',
        ]
         # Запускаем с учётом флага HEADLESS из настроек
         self.browser = await uc.start(

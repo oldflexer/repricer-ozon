@@ -25,9 +25,8 @@ RECIPIENT_EMAIL = os.getenv('RECIPIENT_EMAIL')
 PARSER_DELAY = float(os.getenv('PARSER_DELAY', '1.5'))
 PARSER_TIMEOUT = int(os.getenv('PARSER_TIMEOUT', '10'))
 MAX_RETRIES = int(os.getenv('MAX_RETRIES', '3'))
-
-# Headless
 HEADLESS = True if os.getenv('HEADLESS', 'True').strip().lower() in ('true', '1') else None
+USER_AGENT = os.getenv('USER_AGENT', '')
 
 # Данные
 DATA_FILE = Path(os.getenv('DATA_FILE', BASE_DIR / 'data' / 'products.xlsx'))
