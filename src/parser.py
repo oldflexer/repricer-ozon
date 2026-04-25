@@ -21,7 +21,6 @@ class OzonParser:
         browser_args = [
             '--window-size=1920,1080',
             '--disable-blink-features=AutomationControlled',
-            '--disable-gpu',
             f'--user-agent={USER_AGENT}',
             '--lang=ru-RU',
         ]
