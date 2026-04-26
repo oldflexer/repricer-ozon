@@ -25,8 +25,15 @@ RECIPIENT_EMAIL = os.getenv('RECIPIENT_EMAIL')
 PARSER_DELAY = float(os.getenv('PARSER_DELAY', '1.5'))
 PARSER_TIMEOUT = int(os.getenv('PARSER_TIMEOUT', '10'))
 MAX_RETRIES = int(os.getenv('MAX_RETRIES', '3'))
-HEADLESS = True if os.getenv('HEADLESS', 'True').strip().lower() in ('true', '1') else None
 USER_AGENT = os.getenv('USER_AGENT', '')
+
+HEADLESS_RAW = os.getenv('HEADLESS', 'True').strip().lower()
+if HEADLESS_RAW in ('true', '1'):
+    HEADLESS = True
+elif HEADLESS_RAW in ('false', '0'):
+    HEADLESS = False
+else:
+    HEADLESS = True  # fallback
 
 # Данные
 DATA_FILE = Path(os.getenv('DATA_FILE', BASE_DIR / 'data' / 'products.xlsx'))
