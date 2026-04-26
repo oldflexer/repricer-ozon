@@ -3,7 +3,7 @@ import logging
 import random
 from typing import List, Optional, Dict, Tuple
 
-import nodriver as uc
+import zendriver as zd
 
 from config.settings import PARSER_DELAY, PARSER_TIMEOUT, MAX_RETRIES, HEADLESS, USER_AGENT
 
@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 class OzonParser:
-    """Асинхронный парсер цен Ozon с долгоживущим браузером и разогревом сессии"""
+    """Асинхронный парсер цен Ozon на базе zendriver (форк nodriver)"""
 
     PRICE_SELECTORS = [
         '.pdp_bj',
@@ -20,8 +20,8 @@ class OzonParser:
     ]
 
     def __init__(self):
-        self.browser: Optional[uc.Browser] = None
-        self.main_tab: Optional[uc.Tab] = None
+        self.browser: Optional[zd.Browser] = None
+        self.main_tab: Optional[zd.Tab] = None
         self._cache: Dict[str, Tuple[Optional[float], Optional[str], Optional[str]]] = {}
         self._shared_browser_args = [
             '--window-size=1920,1080',
@@ -32,18 +32,25 @@ class OzonParser:
             self._shared_browser_args.append(f'--user-agent={USER_AGENT}')
 
     async def __aenter__(self) -> 'OzonParser':
-        self.browser = await uc.start(
+
+        # Собираем конфигурацию
+        config = zd.Config(
             headless=HEADLESS,
-            browser_args=self._shared_browser_args
+            browser_args=self._shared_browser_args,
+            user_agent=USER_AGENT if USER_AGENT else None,
         )
+
+        self.browser = await zd.start(config=config)
+
         try:
             logger.debug("Разогрев сессии: открываем ya.ru")
             self.main_tab = await self.browser.get('https://ya.ru')
-            await asyncio.sleep(2)
+            await asyncio.sleep(3)
 
             logger.debug("Разогрев сессии: переходим на ozon.ru")
-            await self.main_tab.get('https://www.ozon.ru')
+            self.main_tab = await self.browser.get('https://www.ozon.ru')
             await asyncio.sleep(3)
+            
             logger.debug("Сессия разогрета, вкладка Ozon оставлена открытой")
         except Exception as e:
             logger.warning(f"Не удалось разогреть сессию: {e}")
@@ -52,19 +59,21 @@ class OzonParser:
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         if self.browser:
-            self.browser.stop()
+            await self.browser.stop()
 
-    def _ensure_browser(self) -> uc.Browser:
+    def _ensure_browser(self) -> zd.Browser:
         if self.browser is None:
-            raise RuntimeError("Браузер не инициализирован. Используйте 'async with OzonParser() as parser'")
+            raise RuntimeError(
+                "Браузер не инициализирован. Используйте 'async with OzonParser() as parser'"
+            )
         return self.browser
 
-    async def _safe_select(self, tab: uc.Tab, selector: str, timeout: float = 5) -> Optional[uc.Element]:
+    async def _safe_select(self, tab: zd.Tab, selector: str, timeout: float = 5) -> Optional[zd.Element]:
         try:
             elem = await tab.select(selector, timeout=timeout)
             return elem
-        except StopIteration:
-            logger.debug(f"Элемент '{selector}' не найден (StopIteration)")
+        except asyncio.TimeoutError:
+            logger.debug(f"Элемент '{selector}' не найден (timeout)")
             return None
         except Exception as e:
             if "Could not find node" in str(e) or "code: -32000" in str(e):
@@ -74,16 +83,16 @@ class OzonParser:
             return None
 
     async def fetch_price_and_info(self, url: str) -> Tuple[Optional[float], Optional[str], Optional[str]]:
+        # Гарантируем, что browser не None, присваивая локальной переменной
         browser = self._ensure_browser()
 
         if url in self._cache:
             logger.debug(f"Использовано кэшированное значение для {url}")
             return self._cache[url]
 
-        tab = self.main_tab
-        if tab is None:
-            tab = await browser.get('about:blank')
-            self.main_tab = tab
+        # Если вкладка ещё не создана, создаём её
+        if self.main_tab is None:
+            self.main_tab = await browser.get('about:blank')
 
         base_timeout = PARSER_TIMEOUT
         for attempt in range(MAX_RETRIES):
@@ -91,18 +100,21 @@ class OzonParser:
                 await asyncio.sleep(PARSER_DELAY + random.uniform(0, 1))
                 timeout = base_timeout * (attempt + 1)
 
-                await tab.get(url)
+                # В zendriver навигация идёт через browser.get()
+                self.main_tab = await browser.get(url)
                 await asyncio.sleep(1)
 
-                await tab.evaluate("""
+                # Эмуляция человеческого поведения: плавный скролл
+                await self.main_tab.evaluate("""
                     window.scrollTo({ top: document.body.scrollHeight * 0.3, behavior: 'smooth' });
                 """)
                 await asyncio.sleep(0.8)
-                await tab.evaluate("""
+                await self.main_tab.evaluate("""
                     window.scrollTo({ top: document.body.scrollHeight * 0.6, behavior: 'smooth' });
                 """)
                 await asyncio.sleep(0.8)
-                await tab.evaluate("""
+                # Небольшое случайное движение мыши
+                await self.main_tab.evaluate("""
                     document.dispatchEvent(new MouseEvent('mousemove', {
                         clientX: Math.random() * window.innerWidth,
                         clientY: Math.random() * window.innerHeight,
@@ -111,23 +123,26 @@ class OzonParser:
                 """)
                 await asyncio.sleep(0.5)
 
-                page_text = await tab.evaluate('document.body.innerText')
+                # Проверка на несуществующую страницу
+                page_text = await self.main_tab.evaluate('document.body.innerText')
                 if page_text and "Такой страницы не существует" in page_text:
                     logger.warning(f"Страница не существует (заглушка) для {url}")
                     self._cache[url] = (None, None, None)
                     return None, None, None
 
+                # Проверка на капчу
                 captcha = await self._safe_select(
-                    tab, 'form[action*="checkcaptcha"]', timeout=2
+                    self.main_tab, 'form[action*="checkcaptcha"]', timeout=2
                 )
                 if captcha:
                     logger.warning("Обнаружена капча, нужна ручная разгадка")
                     self._cache[url] = (None, None, None)
                     return None, None, None
 
+                # Поиск цены по нескольким селекторам
                 price = None
                 for selector in self.PRICE_SELECTORS:
-                    price_elem = await self._safe_select(tab, selector, timeout=timeout)
+                    price_elem = await self._safe_select(self.main_tab, selector, timeout=timeout)
                     if price_elem:
                         price_text = price_elem.text
                         price_text = ''.join(c for c in price_text if c.isdigit() or c in '.,')
@@ -142,11 +157,13 @@ class OzonParser:
                 if price is None:
                     logger.debug("Цена не найдена ни по одному селектору")
 
-                title_elem = await self._safe_select(tab, 'h1', timeout=5)
+                # Название товара
+                title_elem = await self._safe_select(self.main_tab, 'h1', timeout=5)
                 product_name = title_elem.text.strip() if title_elem else None
 
+                # Магазин (подбираем по частому классу)
                 shop_elem = await self._safe_select(
-                    tab, 'span[class*="b35_3_30-b7"]', timeout=5
+                    self.main_tab, 'span[class*="b35_3_30-b7"]', timeout=5
                 )
                 shop_name = shop_elem.text.strip() if shop_elem else None
 
