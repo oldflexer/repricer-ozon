@@ -19,6 +19,7 @@ from src.price_updater import PriceUpdater
 from src.loader import DataLoader
 from src.mail_notifier import MailNotifier
 from src.ozon_api import OzonApiClient
+from src.parser import OzonParser
 
 if not logging.getLogger().handlers:
     logging.basicConfig(
@@ -107,18 +108,24 @@ def run_full_cycle() -> Dict[str, Any]:
         p['offer_id'] = info.get('offer_id')
         p['previous_price'] = info.get('price')
 
-    async def fetch_real():
-        prod_parser = ProductsParser()
-        return await prod_parser.fetch_real_prices(products)
-    real_prices = _run_async_with_proactor(fetch_real)
+    real_prices = {}
+    comp_stats = {'competitor_prices_parsed': 0}
 
-    for p in products:
-        db.clear_competitor_links(p['sku'])
+    # Единый браузер в асинхронном блоке
+    async def _parse_with_single_browser():
+        nonlocal real_prices, comp_stats
+        async with OzonParser() as parser:
+            # Парсинг своих товаров
+            products_parser = ProductsParser()
+            real_prices = await products_parser.fetch_real_prices(products, parser=parser)
 
-    async def parse_competitors():
-        comp_parser = CompetitorsParser(db)
-        return await comp_parser.run(products)
-    comp_stats = _run_async_with_proactor(parse_competitors)
+            # Очистка старых связей и парсинг конкурентов
+            for p in products:
+                db.clear_competitor_links(p['sku'])
+            comp_parser = CompetitorsParser(db)
+            comp_stats = await comp_parser.run(products, parser=parser)
+
+    _run_async_with_proactor(_parse_with_single_browser)
 
     pricemaker = PriceMaker(db)
     updates_for_ozon, margin_items = pricemaker.calculate(products, real_prices)
