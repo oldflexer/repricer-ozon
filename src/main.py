@@ -16,6 +16,7 @@ from src.pricemaker import PriceMaker
 from src.price_updater import PriceUpdater
 from src.mail_notifier import MailNotifier
 from src.ozon_api import OzonApiClient
+from src.parser import OzonParser
 
 if not logging.getLogger().handlers:
     logging.basicConfig(
@@ -69,7 +70,7 @@ class Repricer:
             info = product_map.get(p['sku'], {})
             p['product_id'] = info.get('product_id')
             p['offer_id'] = info.get('offer_id')
-            p['previous_price'] = info.get('price')   # ранее установленная цена на Ozon
+            p['previous_price'] = info.get('price')
 
         # 1.2 Сохраняем товары и стратегии в БД
         for p in products:
@@ -80,27 +81,34 @@ class Repricer:
                 logger.error(f"Ошибка сохранения товара {p['sku']}: {e}")
                 stats['errors'].append(f"Сохранение товара {p['sku']}: {e}")
 
-        # 2. Парсинг наших товаров
+        # ===== ЕДИНЫЙ БРАУЗЕР ДЛЯ ПАРСИНГА =====
         real_prices: Dict[str, Optional[float]] = {}
         try:
-            products_parser = ProductsParser()
-            real_prices = await products_parser.fetch_real_prices(products)
-        except Exception as e:
-            logger.error(f"Ошибка парсинга своих товаров: {e}")
-            stats['errors'].append(f"Парсинг своих товаров: {e}")
+            # Максимальное количество пересозданий браузера при фатальных ошибках
+            max_browser_attempts = 2
+            for browser_attempt in range(max_browser_attempts):
+                try:
+                    async with OzonParser() as parser:
+                        # 2. Парсинг своих товаров
+                        products_parser = ProductsParser()
+                        real_prices = await products_parser.fetch_real_prices(products, parser=parser)
 
-        # 3. Парсинг конкурентов
-        try:
-            for p in products:
-                self.db.clear_competitor_links(p['sku'])
-                
-            comp_parser = CompetitorsParser(self.db)
-            comp_stats = await comp_parser.run(products)
-            stats['competitor_prices_parsed'] = comp_stats.get('competitor_prices_parsed', 0)
-            logger.info(f"Спарсено цен конкурентов: {stats['competitor_prices_parsed']}")
+                        # 3. Парсинг конкурентов
+                        for p in products:
+                            self.db.clear_competitor_links(p['sku'])
+                        comp_parser = CompetitorsParser(self.db)
+                        comp_stats = await comp_parser.run(products, parser=parser)
+                        stats['competitor_prices_parsed'] = comp_stats.get('competitor_prices_parsed', 0)
+                        logger.info(f"Спарсено цен конкурентов: {stats['competitor_prices_parsed']}")
+                    break   # успешно – выходим из цикла попыток
+                except Exception as e:
+                    logger.error(f"Ошибка в цикле парсинга (попытка {browser_attempt+1}): {e}")
+                    if browser_attempt == max_browser_attempts - 1:
+                        raise   # последняя попытка, пробрасываем исключение
+                    # Иначе попробуем заново с новым браузером
         except Exception as e:
-            logger.error(f"Ошибка парсинга конкурентов: {e}")
-            stats['errors'].append(f"Парсинг конкурентов: {e}")
+            logger.error(f"Парсинг не удался после всех попыток: {e}")
+            stats['errors'].append(f"Парсинг: {e}")
 
         # 4. Расчёт цен
         try:
