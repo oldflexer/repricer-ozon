@@ -18,7 +18,6 @@ class OzonParser:
         self._shared_browser_args = [
             '--window-size=1920,1080',
             '--disable-blink-features=AutomationControlled',
-            f'--user-agent={USER_AGENT}',
         ]
 
     async def __aenter__(self) -> 'OzonParser':
