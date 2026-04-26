@@ -29,7 +29,3 @@ fi
 x11vnc -display :${DISPLAY_NUM} -bg -nopw -listen localhost -xkb
 sleep 1
 echo "x11vnc для :${DISPLAY_NUM} запущен"
-
-# ---------- Экспорт DISPLAY ----------
-export DISPLAY=:${DISPLAY_NUM}
-echo "DISPLAY установлен в :${DISPLAY_NUM}"
