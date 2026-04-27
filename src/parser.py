@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import random
 from typing import List, Optional, Dict, Tuple
@@ -27,6 +28,9 @@ class OzonParser:
             '--window-size=1920,1080',
             '--disable-blink-features=AutomationControlled',
             '--disable-gpu',
+            '--lang=ru-RU',
+            '--timezone=Europe/Moscow',
+            '--disable-features=TranslateUI',
         ]
 
     async def __aenter__(self) -> 'OzonParser':
@@ -49,7 +53,9 @@ class OzonParser:
             self.main_tab = await self.browser.get('https://www.ozon.ru')
             await asyncio.sleep(3)
             
-            logger.debug("Сессия разогрета, вкладка Ozon оставлена открытой")
+            await self.load_cookies(self.main_tab)
+        
+            logger.debug("Сессия разогрета, куки загружены")
         except Exception as e:
             logger.warning(f"Не удалось разогреть сессию: {e}")
             self.main_tab = await self.browser.get('about:blank')
@@ -195,3 +201,41 @@ class OzonParser:
             res = await self.fetch_price_and_info(url)
             results.append(res)
         return results
+
+    async def load_cookies(self, tab: zd.Tab, cookie_file: str = "ozon_cookies.json"):
+        try:
+            with open(cookie_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except FileNotFoundError:
+            logger.warning(f"Файл куки {cookie_file} не найден – работаем без предустановленных кук")
+            return
+        except Exception as e:
+            logger.error(f"Ошибка чтения файла кук: {e}")
+            return
+
+        # Нормализуем: ожидаем список словарей {name, value, domain...}
+        if isinstance(data, list):
+            cookies = data
+        elif isinstance(data, dict):
+            # Некоторые расширения сохраняют { "cookies": [...] } или { "cookie": [...] }
+            cookies = data.get("cookies") or data.get("cookie") or []
+            if not cookies:
+                logger.error("Формат кук не распознан (нет ключа 'cookies')")
+                return
+        else:
+            logger.error(f"Непонятный формат кук: {type(data)}")
+            return
+
+        # Устанавливаем каждую куку через JS на текущей вкладке
+        for c in cookies:
+            try:
+                script = (
+                    f'document.cookie = "{c["name"]}={c["value"]}; '
+                    f'domain={c.get("domain", ".ozon.ru")}; '
+                    f'path={c.get("path", "/")}; '
+                    f'{"secure;" if c.get("secure") else ""}"'
+                )
+                await tab.evaluate(script)
+            except Exception as e:
+                logger.error(f"Не удалось установить куку {c.get('name', '?')}: {e}")
+        logger.info(f"Загружено {len(cookies)} кук из {cookie_file}")
