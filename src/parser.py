@@ -27,7 +27,6 @@ class OzonParser:
         self._shared_browser_args = [
             '--window-size=1920,1080',
             '--disable-blink-features=AutomationControlled',
-            '--disable-gpu',
             '--lang=ru-RU',
             '--timezone=Europe/Moscow',
             '--disable-features=TranslateUI',
