@@ -19,4 +19,7 @@ pip install -r requirements.txt
 echo "=== Перезапуск веб-интерфейса ==="
 sudo systemctl restart repricer-web
 
+echo "=== Установка флагов +x для скриптов ==="
+chmod +x /home/user/repricer-ozon/*.sh
+
 echo "=== Готово! ==="
