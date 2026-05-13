@@ -16,8 +16,8 @@ from src.competitors_parser import CompetitorsParser
 from src.products_parser import ProductsParser
 from src.pricemaker import PriceMaker
 from src.price_updater import PriceUpdater
-from src.loader import DataLoader
-from src.mail_notifier import MailNotifier
+from infrastructure.loader import DataLoader
+from infrastructure.mail_notifier import MailNotifier
 from src.ozon_api import OzonApiClient
 from src.parser import OzonParser
 
