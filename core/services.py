@@ -63,8 +63,9 @@ class PriceCalculationService:
             result_target_price = target_min_price
 
         # 6. Маржинальность
-        if pricing.net_price and result_target_price:
-            marginality = (result_target_price - pricing.net_price) / result_target_price
+        real_price = result_target_price * discount_coef
+        if pricing.net_price and real_price:
+            marginality = (real_price - pricing.net_price) / real_price
         else:
             marginality = 0.0
 

@@ -11,7 +11,7 @@ logging.basicConfig(level=logging.INFO)
 def test_load_products():
     data_file = Path(__file__).parent.parent / 'data' / 'products.xlsx'
     if not data_file.exists():
-        print(f"❌ Файл {data_file} не найден!")
+        print(f"❌ Файл {data_file} не найден, пропускаем тест.")
         return
 
     loader = DataLoader(data_file)
@@ -19,15 +19,17 @@ def test_load_products():
     print(f"\n📦 Загружено товаров: {len(products)}\n")
 
     for idx, product in enumerate(products, 1):
-        assert isinstance(product, ProductInfo), "Товар должен быть ProductInfo"
+        assert isinstance(product, ProductInfo)
         print(f"=== Товар #{idx} ===")
         print(f"SKU: {product.sku}")
-        print(f"Название: {product.product_name}")
+        # product_name не загружается из Excel – должно быть None
+        assert product.product_name is None
+        print(f"Название: {product.product_name} (будет получено из API)")
         print(f"Себестоимость: {product.cost_price} ₽")
-        print(f"Мин. цена: {product.min_price} ₽")
-        print(f"Текущая цена: {product.current_price} ₽")
+        print(f"Мин. цена (РИЦ): {product.min_price} ₽")
+        print(f"Текущая цена (не загружается): {product.current_price}")
         intervals = loader.get_strategy_intervals(product)
-        assert all(isinstance(inv, StrategyInterval) for inv in intervals), "Интервалы должны быть StrategyInterval"
+        assert all(isinstance(inv, StrategyInterval) for inv in intervals)
         print(f"Интервалы стратегий: {intervals}")
         print()
 

@@ -70,16 +70,26 @@ class SQLiteRepository(IProductRepository):
     # ------------------- Товары -------------------
     def get_all_products(self) -> List[ProductInfo]:
         with self._get_connection() as conn:
-            rows = conn.execute("SELECT product_id, offer_id, sku, product_name FROM product").fetchall()
-            return [ProductInfo(sku=r['sku'], product_name=r['product_name'],
-                                product_id=r['product_id'], offer_id=r['offer_id']) for r in rows]
+            rows = conn.execute("SELECT product_id, offer_id, sku, product_name, rip, net_price FROM product").fetchall()
+            return [
+                ProductInfo(
+                    sku=r['sku'],
+                    product_name=r['product_name'],
+                    product_id=r['product_id'],
+                    offer_id=r['offer_id'],
+                    min_price=r['rip'] or 0.0,
+                    cost_price=r['net_price'] or 0.0
+                )
+                for r in rows
+            ]
 
     def upsert_product(self, product: ProductInfo) -> bool:
         with self._get_connection() as conn:
             conn.execute("""
                 INSERT OR REPLACE INTO product (product_id, offer_id, sku, product_name, rip, net_price)
                 VALUES (?, ?, ?, ?, ?, ?)
-            """, (product.product_id, product.offer_id, product.sku, product.product_name, product.min_price, product.cost_price))
+            """, (product.product_id, product.offer_id, product.sku, product.product_name,
+                  product.min_price, product.cost_price))
             conn.commit()
             return True
 
@@ -93,13 +103,18 @@ class SQLiteRepository(IProductRepository):
                 WHERE p.sku = ?
                 ORDER BY ps.interval_start
             """, (sku,)).fetchall()
-            return [StrategyInterval(start=r['interval_start'], end=r['interval_stop'],
-                                     strategy_type=r['strategy_id'], percent=r['strategy_percent'])
-                    for r in rows]
+            return [
+                StrategyInterval(
+                    start=r['interval_start'],
+                    end=r['interval_stop'],
+                    strategy_type=r['strategy_id'],
+                    percent=r['strategy_percent']
+                )
+                for r in rows
+            ]
 
     def set_strategies(self, sku: str, intervals: List[StrategyInterval]) -> bool:
         with self._get_connection() as conn:
-            # получаем product_id
             product_id = conn.execute("SELECT product_id FROM product WHERE sku=?", (sku,)).fetchone()
             if not product_id:
                 return False
@@ -149,6 +164,28 @@ class SQLiteRepository(IProductRepository):
             conn.commit()
             return True
 
+    def get_price_history(self, sku: str) -> List[dict]:
+        with self._get_connection() as conn:
+            rows = conn.execute("""
+                SELECT 
+                    ph.timestamp, 
+                    ph.result_target_price,
+                    ph.discount_coef,
+                    ph.marginality
+                FROM product_price_history ph
+                JOIN product p ON p.product_id = ph.product_id
+                WHERE p.sku = ?
+                ORDER BY ph.timestamp
+            """, (sku,)).fetchall()
+            return [
+                {
+                    "timestamp": row["timestamp"],
+                    "customer_price": row["result_target_price"] * row["discount_coef"],
+                    "marginality": row["marginality"]
+                }
+                for row in rows
+            ]
+
     # ------------------- Маржинальность -------------------
     def save_marginality(self, sku: str, marginality: float,
                          marginality_week: float, marginality_month: float) -> bool:
@@ -175,7 +212,7 @@ class SQLiteRepository(IProductRepository):
                 SELECT AVG(marginality) FROM product_marginality_history
                 WHERE product_id=? AND timestamp >= ?
             """, (pid, cutoff.isoformat())).fetchone()
-            return round(row[0], 2) if row and row[0] else None
+            return row[0] if row and row[0] else None
 
     def get_last_run_time(self) -> Optional[datetime]:
         with self._get_connection() as conn:
@@ -183,3 +220,17 @@ class SQLiteRepository(IProductRepository):
             if row and row[0]:
                 return datetime.fromisoformat(row[0]).replace(tzinfo=timezone.utc)
             return None
+
+    # ------------------- Обслуживание -------------------
+    def delete_old_records(self, days: int) -> int:
+        """Удаляет записи из истории цен и маржинальности старше N дней."""
+        with self._get_connection() as conn:
+            cutoff = datetime.now() - timedelta(days=days)
+            deleted_price = conn.execute(
+                "DELETE FROM product_price_history WHERE timestamp < ?", (cutoff,)
+            ).rowcount
+            deleted_margin = conn.execute(
+                "DELETE FROM product_marginality_history WHERE timestamp < ?", (cutoff,)
+            ).rowcount
+            conn.commit()
+            return deleted_price + deleted_margin

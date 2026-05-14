@@ -24,6 +24,8 @@ class RepricingUseCase:
         stats['products_loaded'] = len(products)
         if not products:
             logger.warning("Нет товаров для обработки")
+            # Отправляем уведомление о завершении с нулевым счётчиком
+            self.notifier.notify_cycle_complete(updated_count=0, errors=None)
             return stats
 
         # 2. Получение product_id через API для всех SKU
@@ -68,7 +70,8 @@ class RepricingUseCase:
             self.repo.save_marginality(product.sku, result.marginality, marginality_week, marginality_month)
 
             discount_coef = result.log_details.get('discount_coef', 1.0)
-            current_price_excel = int(round(result.result_target_price * discount_coef))
+            real_price = result.result_target_price * discount_coef
+            current_price_excel = int(round(real_price))
             min_price_excel = int(round(product.min_price))
             old_price_api = pricing.old_price if pricing.old_price else None
             if old_price_api is not None:
