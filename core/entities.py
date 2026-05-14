@@ -7,16 +7,16 @@ class ProductInfo:
     sku: str
     product_name: Optional[str] = None
     cost_price: float = 0.0
-    min_price: float = 0.0  # РИЦ (rip)
+    min_price: float = 0.0
     current_price: float = 0.0
     product_id: Optional[int] = None
     offer_id: Optional[str] = None
 
 @dataclass
 class StrategyInterval:
-    start: str      # "HH:MM"
-    end: str        # "HH:MM"
-    strategy_type: int  # 1-ниже, 2-выше, 3-равная
+    start: str
+    end: str
+    strategy_type: int
     percent: float = 0.0
 
 @dataclass
@@ -33,11 +33,20 @@ class PricingData:
     ozon_index_data_index: Optional[float] = None
     self_marketplaces_index_data_price: Optional[float] = None
     self_marketplaces_index_data_index: Optional[float] = None
+    # Новые поля для FBS комиссий
+    sales_percent_fbs: float = 0.0
+    acquiring: float = 0.0
+    fbs_first_mile_min_amount: float = 0.0
+    fbs_first_mile_max_amount: float = 0.0
+    fbs_direct_flow_trans_min_amount: float = 0.0
+    fbs_direct_flow_trans_max_amount: float = 0.0
+    fbs_deliv_to_customer_amount: float = 0.0
 
     @classmethod
     def from_api_response(cls, data: dict) -> 'PricingData':
         price_obj = data.get('price', {})
         indexes = data.get('price_indexes', {})
+        commissions = data.get('commissions', {})
 
         def _get_index(index_name: str) -> tuple[Optional[float], Optional[float]]:
             idx = indexes.get(index_name)
@@ -77,7 +86,15 @@ class PricingData:
             ozon_index_data_price=ozon_price,
             ozon_index_data_index=ozon_index,
             self_marketplaces_index_data_price=self_price,
-            self_marketplaces_index_data_index=self_index
+            self_marketplaces_index_data_index=self_index,
+            # Новые поля
+            sales_percent_fbs=float(commissions.get('sales_percent_fbs', 0)),
+            acquiring=float(data.get('acquiring', 0)),
+            fbs_first_mile_min_amount=float(commissions.get('fbs_first_mile_min_amount', 0)),
+            fbs_first_mile_max_amount=float(commissions.get('fbs_first_mile_max_amount', 0)),
+            fbs_direct_flow_trans_min_amount=float(commissions.get('fbs_direct_flow_trans_min_amount', 0)),
+            fbs_direct_flow_trans_max_amount=float(commissions.get('fbs_direct_flow_trans_max_amount', 0)),
+            fbs_deliv_to_customer_amount=float(commissions.get('fbs_deliv_to_customer_amount', 0)),
         )
 
 @dataclass

@@ -56,6 +56,13 @@ class SQLiteRepository(IProductRepository):
                     ozon_index_data_price REAL, ozon_index_data_index REAL,
                     self_marketplaces_index_data_price REAL, self_marketplaces_index_data_index REAL,
                     result_target_price REAL, discount_coef REAL, marginality REAL,
+                    sales_percent_fbs REAL,
+                    acquiring REAL,
+                    fbs_first_mile_min_amount REAL,
+                    fbs_first_mile_max_amount REAL,
+                    fbs_direct_flow_trans_min_amount REAL,
+                    fbs_direct_flow_trans_max_amount REAL,
+                    fbs_deliv_to_customer_amount REAL,
                     log_details TEXT, timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
                 CREATE TABLE IF NOT EXISTS product_marginality_history (
@@ -142,8 +149,13 @@ class SQLiteRepository(IProductRepository):
                     external_index_data_price, external_index_data_index,
                     ozon_index_data_price, ozon_index_data_index,
                     self_marketplaces_index_data_price, self_marketplaces_index_data_index,
-                    result_target_price, discount_coef, marginality, log_details
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    result_target_price, discount_coef, marginality,
+                    sales_percent_fbs, acquiring,
+                    fbs_first_mile_min_amount, fbs_first_mile_max_amount,
+                    fbs_direct_flow_trans_min_amount, fbs_direct_flow_trans_max_amount,
+                    fbs_deliv_to_customer_amount,
+                    log_details
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 pid,
                 pricing.min_price,
@@ -159,6 +171,13 @@ class SQLiteRepository(IProductRepository):
                 result.result_target_price,
                 result.log_details.get('discount_coef', 0),
                 result.marginality,
+                pricing.sales_percent_fbs,
+                pricing.acquiring,
+                pricing.fbs_first_mile_min_amount,
+                pricing.fbs_first_mile_max_amount,
+                pricing.fbs_direct_flow_trans_min_amount,
+                pricing.fbs_direct_flow_trans_max_amount,
+                pricing.fbs_deliv_to_customer_amount,
                 json.dumps(result.log_details, ensure_ascii=False)
             ))
             conn.commit()

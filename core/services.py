@@ -62,14 +62,29 @@ class PriceCalculationService:
         else:
             result_target_price = target_min_price
 
-        # 6. Маржинальность
-        real_price = result_target_price * discount_coef
-        if pricing.net_price and real_price:
-            marginality = (real_price - pricing.net_price) / real_price
+        # Округление для API
+        result_target_price = round(result_target_price)
+
+        # 6. Расчёт маржинальности по новой формуле (FBS)
+        sales_commission_fbs = result_target_price * (pricing.sales_percent_fbs / 100)
+        fbs_first_mile_avg = (pricing.fbs_first_mile_min_amount + pricing.fbs_first_mile_max_amount) / 2
+        fbs_direct_flow_trans_avg = (pricing.fbs_direct_flow_trans_min_amount + pricing.fbs_direct_flow_trans_max_amount) / 2
+        
+        total_costs = (
+            sales_commission_fbs +
+            fbs_first_mile_avg +
+            fbs_direct_flow_trans_avg +
+            pricing.fbs_deliv_to_customer_amount +
+            pricing.net_price
+        )
+        
+        if result_target_price > 0:
+            marginality = (result_target_price - total_costs) / result_target_price
         else:
             marginality = 0.0
 
-        result_target_price = round(result_target_price)
+        # Реальная цена для покупателя (с учётом коэффициента, но не используется в марже)
+        real_price = result_target_price * discount_coef
 
         log_details = {
             "approx_real_price": approx_real_price,
@@ -79,9 +94,19 @@ class PriceCalculationService:
             "strategy_type": strategy_type,
             "strategy_price": strategy_price,
             "target_strategy_price": target_strategy_price,
+            "result_target_price": result_target_price,
+            "real_price": real_price,
             "ozon_index_data_price": pricing.ozon_index_data_price,
             "intervals_used": len(intervals),
             "index_prices_count": len(index_prices),
+            "marginality_components": {
+                "sales_commission_fbs": sales_commission_fbs,
+                "fbs_first_mile_avg": fbs_first_mile_avg,
+                "fbs_direct_flow_trans_avg": fbs_direct_flow_trans_avg,
+                "fbs_deliv_to_customer": pricing.fbs_deliv_to_customer_amount,
+                "net_price": pricing.net_price,
+                "total_costs": total_costs,
+            }
         }
 
         return PriceCalculationResult(
