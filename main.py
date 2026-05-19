@@ -14,7 +14,15 @@ from infrastructure.mail_notifier import MailNotifier
 from core.services import PriceCalculationService
 from core.use_cases import RepricingUseCase
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+log_file = Path(__file__).parent / 'repricer.log'
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler(log_file, mode='w', encoding='utf-8')
+    ]
+)
 logger = logging.getLogger(__name__)
 
 def main():

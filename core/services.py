@@ -15,15 +15,25 @@ class PriceCalculationService:
                   intervals: List[StrategyInterval]) -> PriceCalculationResult:
         # 1. Приблизительная реальная цена на основе индексов
         index_prices = []
+        index_data = []
+        approx_index_price = None
+        approx_index_data = None
         if pricing.external_index_data_index and pricing.external_index_data_index != 0:
             index_prices.append(pricing.external_index_data_price)
+            index_data.append(pricing.external_index_data_index)
         if pricing.ozon_index_data_index and pricing.ozon_index_data_index != 0:
             index_prices.append(pricing.ozon_index_data_price)
+            index_data.append(pricing.ozon_index_data_index)
         if pricing.self_marketplaces_index_data_index and pricing.self_marketplaces_index_data_index != 0:
             index_prices.append(pricing.self_marketplaces_index_data_price)
+            index_data.append(pricing.self_marketplaces_index_data_index)
 
-        if index_prices:
-            approx_real_price = sum(index_prices) / len(index_prices)
+        if index_prices and index_data:
+            approx_index_price = sum(index_prices) / len(index_prices)
+            approx_index_data = sum(index_data) / len(index_data)
+
+        if approx_index_price and approx_index_data:
+            approx_real_price = approx_index_price * approx_index_data
         else:
             approx_real_price = None
 

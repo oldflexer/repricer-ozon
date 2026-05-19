@@ -77,6 +77,9 @@ class RepricingUseCase:
             if old_price_api is not None:
                 old_price_api = int(round(old_price_api))
 
+            # Минимальная цена для API с учётом коэффициента
+            min_price_for_api = int(round(product.min_price / discount_coef)) if discount_coef else int(round(product.min_price))
+
             self.loader.update_product_in_file(product.sku, {
                 'current_price': current_price_excel,
                 'min_price': min_price_excel,
@@ -90,7 +93,7 @@ class RepricingUseCase:
                 'product_id': product.product_id,
                 'offer_id': product.offer_id or '',
                 'price': f"{int(round(result.result_target_price))}",
-                'min_price': f"{int(round(product.min_price))}",
+                'min_price': f"{min_price_for_api}",
                 'net_price': f"{int(round(pricing.net_price))}" if pricing.net_price else None,
                 'old_price': f"{int(round(pricing.old_price))}" if pricing.old_price else None,
             })

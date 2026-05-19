@@ -19,15 +19,15 @@ from core.use_cases import RepricingUseCase
 from core.entities import ProductInfo, StrategyInterval
 
 # Настройка логирования
-if not logging.getLogger().handlers:
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.StreamHandler(),
-            logging.FileHandler(Path(__file__).parent / 'repricer.log', mode='w', encoding='utf-8')
-        ]
-    )
+log_file = Path(__file__).parent / 'repricer.log'
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler(log_file, mode='w', encoding='utf-8')
+    ]
+)
 logger = logging.getLogger(__name__)
 
 st.set_page_config(page_title="Репрайсер Ozon", layout="wide", page_icon="📊")
