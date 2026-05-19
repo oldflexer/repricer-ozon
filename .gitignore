@@ -1,7 +1,6 @@
-.venv
-.env
-__pycache__
+.venv/
+.pytest_cache/
 data/*
-debug_pages/*
+*__pycache__*
+.env
 *.log
-*cookies*.json

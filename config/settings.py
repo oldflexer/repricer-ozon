@@ -1,3 +1,4 @@
+# config/settings.py
 import os
 from pathlib import Path
 from dotenv import load_dotenv
@@ -21,11 +22,8 @@ SMTP_PASSWORD = os.getenv('SMTP_PASSWORD')
 SENDER_EMAIL = os.getenv('SENDER_EMAIL', SMTP_USER)
 RECIPIENT_EMAIL = os.getenv('RECIPIENT_EMAIL')
 
-# Парсинг
-PARSER_DELAY = float(os.getenv('PARSER_DELAY', '1.5'))
-PARSER_TIMEOUT = int(os.getenv('PARSER_TIMEOUT', '10'))
-MAX_RETRIES = int(os.getenv('MAX_RETRIES', '3'))
-USER_AGENT = os.getenv('USER_AGENT', '')
+# Расчёт цен
+COEFFICIENT_OZON = float(os.getenv('COEFFICIENT_OZON', '0.5'))
 
 HEADLESS_RAW = os.getenv('HEADLESS', 'True').strip().lower()
 if HEADLESS_RAW in ('true', '1'):
