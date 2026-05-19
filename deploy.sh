@@ -44,9 +44,11 @@ CRON_TMP="/tmp/repricer_cron_$$"
 
 if [ -f "$CRON_TEMPLATE" ]; then
     echo "=== Установка cron задач из $CRON_TEMPLATE ==="
+    # Заменяем плейсхолдер и добавляем новую строку в конце
     sed -e "s|{{WORKING_DIR}}|$WORKING_DIR|g" "$CRON_TEMPLATE" > "$CRON_TMP"
-    # Заменяем все текущие задачи, помеченные как "Repricer cron jobs"
-    crontab -l 2>/dev/null | grep -v "Repricer cron jobs" > "$CRON_TMP.old" || true
+    echo "" >> "$CRON_TMP"   # добавляем пустую строку в конце
+    # Удаляем старые строки, содержащие "# Repricer cron jobs"
+    crontab -l 2>/dev/null | grep -v "# Repricer cron jobs" > "$CRON_TMP.old" || true
     cat "$CRON_TMP" >> "$CRON_TMP.old"
     crontab "$CRON_TMP.old"
     rm -f "$CRON_TMP" "$CRON_TMP.old"
