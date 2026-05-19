@@ -19,11 +19,40 @@ source .venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt
 
-echo "=== Перезапуск веб-интерфейса ==="
-if systemctl list-units --full --all | grep -q repricer-web.service; then
+# --- Создание/обновление systemd сервиса из шаблона ---
+SERVICE_TEMPLATE="deploy/repricer-web.service"
+SERVICE_FILE="/etc/systemd/system/repricer-web.service"
+CURRENT_USER=$(whoami)
+WORKING_DIR=$(pwd)
+
+if [ -f "$SERVICE_TEMPLATE" ]; then
+    echo "=== Установка systemd сервиса из $SERVICE_TEMPLATE ==="
+    sed -e "s|{{USER}}|$CURRENT_USER|g" \
+        -e "s|{{WORKING_DIR}}|$WORKING_DIR|g" \
+        "$SERVICE_TEMPLATE" | sudo tee "$SERVICE_FILE" > /dev/null
+    sudo systemctl daemon-reload
+    sudo systemctl enable repricer-web
     sudo systemctl restart repricer-web
+    echo "✅ Сервис обновлён и перезапущен"
 else
-    echo "Сервис repricer-web не найден, пропускаем перезапуск"
+    echo "⚠️ Файл $SERVICE_TEMPLATE не найден, пропускаем установку сервиса"
+fi
+
+# --- Установка/обновление cron из шаблона ---
+CRON_TEMPLATE="deploy/cron.example"
+CRON_TMP="/tmp/repricer_cron_$$"
+
+if [ -f "$CRON_TEMPLATE" ]; then
+    echo "=== Установка cron задач из $CRON_TEMPLATE ==="
+    sed -e "s|{{WORKING_DIR}}|$WORKING_DIR|g" "$CRON_TEMPLATE" > "$CRON_TMP"
+    # Заменяем все текущие задачи, помеченные как "Repricer cron jobs"
+    crontab -l 2>/dev/null | grep -v "Repricer cron jobs" > "$CRON_TMP.old" || true
+    cat "$CRON_TMP" >> "$CRON_TMP.old"
+    crontab "$CRON_TMP.old"
+    rm -f "$CRON_TMP" "$CRON_TMP.old"
+    echo "✅ Cron задачи обновлены"
+else
+    echo "⚠️ Файл $CRON_TEMPLATE не найден, пропускаем установку cron"
 fi
 
 echo "=== Установка прав на выполнение ==="

@@ -1,2 +1,2 @@
-# Полный цикл каждый час
-0 * * * * cd /home/user/repricer-ozon && /home/user/repricer-ozon/venv/bin/python main.py >> /var/log/repricer.log 2>&1
+# Full cycle every hour
+0 * * * * cd {{WORKING_DIR}} && {{WORKING_DIR}}/.venv/bin/python main.py >> /var/log/repricer.log 2>&1
