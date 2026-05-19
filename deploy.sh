@@ -20,7 +20,11 @@ pip install --upgrade pip
 pip install -r requirements.txt
 
 echo "=== Перезапуск веб-интерфейса ==="
-sudo systemctl restart repricer-web
+if systemctl list-units --full --all | grep -q repricer-web.service; then
+    sudo systemctl restart repricer-web
+else
+    echo "Сервис repricer-web не найден, пропускаем перезапуск"
+fi
 
 echo "=== Установка прав на выполнение ==="
 chmod +x deploy.sh
