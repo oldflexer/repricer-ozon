@@ -11,7 +11,7 @@ git pull origin server
 # --- Автоматическое создание venv ---
 if [ ! -d ".venv" ]; then
     echo "=== Виртуальное окружение не найдено, создаём... ==="
-    python3 -m .venv .venv
+    python3 -m venv .venv
 fi
 
 echo "=== Активация venv и установка зависимостей ==="
