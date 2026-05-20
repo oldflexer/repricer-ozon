@@ -11,7 +11,11 @@ from config.settings import DATABASE_PATH
 
 logger = logging.getLogger(__name__)
 
+
 class SQLiteRepository(IProductRepository):
+    # Текущая версия схемы БД (увеличивать при добавлении миграций)
+    SCHEMA_VERSION = 2
+
     def __init__(self, db_path: Path = DATABASE_PATH):
         self.db_path = db_path
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -22,8 +26,23 @@ class SQLiteRepository(IProductRepository):
         conn.row_factory = sqlite3.Row
         return conn
 
-    def _init_tables(self):
-        with self._get_connection() as conn:
+    def _get_schema_version(self, conn) -> int:
+        """Возвращает текущую версию схемы БД."""
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS schema_version (
+                version INTEGER PRIMARY KEY
+            )
+        """)
+        row = conn.execute("SELECT MAX(version) FROM schema_version").fetchone()
+        return row[0] if row[0] is not None else 0
+
+    def _apply_migrations(self, conn):
+        """Применяет миграции от текущей версии до целевой."""
+        current = self._get_schema_version(conn)
+
+        if current == 0:
+            # Первоначальное создание всех таблиц (безопасно, даже если уже есть)
+            logger.info("Применяем миграцию 0 -> 1: создание таблиц (если их нет)")
             conn.executescript("""
                 CREATE TABLE IF NOT EXISTS product (
                     product_id INTEGER PRIMARY KEY,
@@ -69,30 +88,45 @@ class SQLiteRepository(IProductRepository):
                     timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
             """)
-            conn.commit()
-            self._migrate_tables(conn)
+            conn.execute("INSERT OR IGNORE INTO schema_version (version) VALUES (1)")
+            current = self._get_schema_version(conn)  # перечитаем версию (теперь 1)
 
-    def _migrate_tables(self, conn):
-        """Добавляет недостающие колонки для миграции старой БД."""
-        # Добавляем real_customer_price в product
-        try:
-            conn.execute("ALTER TABLE product ADD COLUMN real_customer_price REAL")
-            logger.info("Добавлена колонка real_customer_price в таблицу product")
-        except sqlite3.OperationalError as e:
-            if "duplicate column name" not in str(e):
-                raise
-        # Добавляем real_price в product_price_history
-        try:
-            conn.execute("ALTER TABLE product_price_history ADD COLUMN real_price REAL")
-            logger.info("Добавлена колонка real_price в таблицу product_price_history")
-        except sqlite3.OperationalError as e:
-            if "duplicate column name" not in str(e):
-                raise
+        if current == 1:
+            # Миграция 1 -> 2: добавить колонку real_customer_price в product
+            logger.info("Применяем миграцию 1 -> 2: добавление колонки real_customer_price и real_price")
+            # Проверяем существование колонок, чтобы избежать ошибок при повторном запуске
+            columns_product = [row[1] for row in conn.execute("PRAGMA table_info(product)")]
+            if 'real_customer_price' not in columns_product:
+                conn.execute("ALTER TABLE product ADD COLUMN real_customer_price REAL")
+            columns_history = [row[1] for row in conn.execute("PRAGMA table_info(product_price_history)")]
+            if 'real_price' not in columns_history:
+                conn.execute("ALTER TABLE product_price_history ADD COLUMN real_price REAL")
+            conn.execute("INSERT OR IGNORE INTO schema_version (version) VALUES (2)")
+            current = self._get_schema_version(conn)
+
+        # Если в будущем понадобятся новые миграции, добавляем блоки:
+        # if current == 2:
+        #     logger.info("Применяем миграцию 2 -> 3: ...")
+        #     conn.execute(...)
+        #     conn.execute("INSERT OR IGNORE INTO schema_version (version) VALUES (3)")
+
+        if current < self.SCHEMA_VERSION:
+            logger.error(f"Текущая версия {current} ниже целевой {self.SCHEMA_VERSION}, но миграций больше нет")
+        elif current > self.SCHEMA_VERSION:
+            logger.warning(f"Версия БД ({current}) выше целевой ({self.SCHEMA_VERSION}). Возможно, вы используете старую версию кода.")
+
+    def _init_tables(self):
+        """Инициализация БД через миграции."""
+        with self._get_connection() as conn:
+            self._apply_migrations(conn)
 
     # ------------------- Товары -------------------
     def get_all_products(self) -> List[ProductInfo]:
         with self._get_connection() as conn:
-            rows = conn.execute("SELECT product_id, offer_id, sku, product_name, rip, net_price, real_customer_price FROM product").fetchall()
+            rows = conn.execute("""
+                SELECT product_id, offer_id, sku, product_name, rip, net_price, real_customer_price
+                FROM product
+            """).fetchall()
             return [
                 ProductInfo(
                     sku=r['sku'],
@@ -210,6 +244,8 @@ class SQLiteRepository(IProductRepository):
             return True
 
     def get_price_history(self, sku: str) -> List[dict]:
+        """Возвращает историю цен. Если есть real_price (после отправки), использует её,
+        иначе вычисляет customer_price = result_target_price * discount_coef."""
         with self._get_connection() as conn:
             rows = conn.execute("""
                 SELECT 
