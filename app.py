@@ -175,13 +175,17 @@ with tab1:
             if name_filter and name_filter.lower() not in (p.product_name or '').lower():
                 continue
 
-            hist = repo.get_price_history(p.sku)
-            last_price = None
+            # Берём цену покупателя: сначала из product.real_customer_price, иначе из истории
+            if p.real_customer_price is not None:
+                last_price = p.real_customer_price
+            else:
+                hist = repo.get_price_history(p.sku)
+                last_price = hist[-1].get('customer_price') if hist else None
+
             last_margin = None
+            hist = repo.get_price_history(p.sku)
             if hist:
-                last_entry = hist[-1]
-                last_price = last_entry.get('customer_price')
-                last_margin = last_entry.get('marginality')
+                last_margin = hist[-1].get('marginality')
             avg_week = repo.get_average_marginality(p.sku, 7)
             avg_month = repo.get_average_marginality(p.sku, 30)
 

@@ -56,12 +56,9 @@ class SQLiteRepository(IProductRepository):
                     ozon_index_data_price REAL, ozon_index_data_index REAL,
                     self_marketplaces_index_data_price REAL, self_marketplaces_index_data_index REAL,
                     result_target_price REAL, discount_coef REAL, marginality REAL,
-                    sales_percent_fbs REAL,
-                    acquiring REAL,
-                    fbs_first_mile_min_amount REAL,
-                    fbs_first_mile_max_amount REAL,
-                    fbs_direct_flow_trans_min_amount REAL,
-                    fbs_direct_flow_trans_max_amount REAL,
+                    sales_percent_fbs REAL, acquiring REAL,
+                    fbs_first_mile_min_amount REAL, fbs_first_mile_max_amount REAL,
+                    fbs_direct_flow_trans_min_amount REAL, fbs_direct_flow_trans_max_amount REAL,
                     fbs_deliv_to_customer_amount REAL,
                     log_details TEXT, timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
@@ -73,11 +70,29 @@ class SQLiteRepository(IProductRepository):
                 );
             """)
             conn.commit()
+            self._migrate_tables(conn)
+
+    def _migrate_tables(self, conn):
+        """Добавляет недостающие колонки для миграции старой БД."""
+        # Добавляем real_customer_price в product
+        try:
+            conn.execute("ALTER TABLE product ADD COLUMN real_customer_price REAL")
+            logger.info("Добавлена колонка real_customer_price в таблицу product")
+        except sqlite3.OperationalError as e:
+            if "duplicate column name" not in str(e):
+                raise
+        # Добавляем real_price в product_price_history
+        try:
+            conn.execute("ALTER TABLE product_price_history ADD COLUMN real_price REAL")
+            logger.info("Добавлена колонка real_price в таблицу product_price_history")
+        except sqlite3.OperationalError as e:
+            if "duplicate column name" not in str(e):
+                raise
 
     # ------------------- Товары -------------------
     def get_all_products(self) -> List[ProductInfo]:
         with self._get_connection() as conn:
-            rows = conn.execute("SELECT product_id, offer_id, sku, product_name, rip, net_price FROM product").fetchall()
+            rows = conn.execute("SELECT product_id, offer_id, sku, product_name, rip, net_price, real_customer_price FROM product").fetchall()
             return [
                 ProductInfo(
                     sku=r['sku'],
@@ -85,7 +100,8 @@ class SQLiteRepository(IProductRepository):
                     product_id=r['product_id'],
                     offer_id=r['offer_id'],
                     min_price=r['rip'] or 0.0,
-                    cost_price=r['net_price'] or 0.0
+                    cost_price=r['net_price'] or 0.0,
+                    real_customer_price=r['real_customer_price']
                 )
                 for r in rows
             ]
@@ -93,10 +109,19 @@ class SQLiteRepository(IProductRepository):
     def upsert_product(self, product: ProductInfo) -> bool:
         with self._get_connection() as conn:
             conn.execute("""
-                INSERT OR REPLACE INTO product (product_id, offer_id, sku, product_name, rip, net_price)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT OR REPLACE INTO product (product_id, offer_id, sku, product_name, rip, net_price, real_customer_price)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
             """, (product.product_id, product.offer_id, product.sku, product.product_name,
-                  product.min_price, product.cost_price))
+                  product.min_price, product.cost_price, product.real_customer_price))
+            conn.commit()
+            return True
+
+    def update_real_customer_price(self, sku: str, real_price: float) -> bool:
+        with self._get_connection() as conn:
+            conn.execute("""
+                UPDATE product SET real_customer_price = ?, last_updated = CURRENT_TIMESTAMP
+                WHERE sku = ?
+            """, (real_price, sku))
             conn.commit()
             return True
 
@@ -136,7 +161,7 @@ class SQLiteRepository(IProductRepository):
             return True
 
     # ------------------- История цен -------------------
-    def save_price_history(self, sku: str, pricing: PricingData, result: PriceCalculationResult) -> bool:
+    def save_price_history(self, sku: str, pricing: PricingData, result: PriceCalculationResult, real_price: Optional[float] = None) -> bool:
         with self._get_connection() as conn:
             product_id = conn.execute("SELECT product_id FROM product WHERE sku=?", (sku,)).fetchone()
             if not product_id:
@@ -154,8 +179,8 @@ class SQLiteRepository(IProductRepository):
                     fbs_first_mile_min_amount, fbs_first_mile_max_amount,
                     fbs_direct_flow_trans_min_amount, fbs_direct_flow_trans_max_amount,
                     fbs_deliv_to_customer_amount,
-                    log_details
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    real_price, log_details
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 pid,
                 pricing.min_price,
@@ -178,6 +203,7 @@ class SQLiteRepository(IProductRepository):
                 pricing.fbs_direct_flow_trans_min_amount,
                 pricing.fbs_direct_flow_trans_max_amount,
                 pricing.fbs_deliv_to_customer_amount,
+                real_price,
                 json.dumps(result.log_details, ensure_ascii=False)
             ))
             conn.commit()
@@ -190,20 +216,25 @@ class SQLiteRepository(IProductRepository):
                     ph.timestamp, 
                     ph.result_target_price,
                     ph.discount_coef,
+                    ph.real_price,
                     ph.marginality
                 FROM product_price_history ph
                 JOIN product p ON p.product_id = ph.product_id
                 WHERE p.sku = ?
                 ORDER BY ph.timestamp
             """, (sku,)).fetchall()
-            return [
-                {
+            result = []
+            for row in rows:
+                if row['real_price'] is not None:
+                    customer_price = row['real_price']
+                else:
+                    customer_price = row['result_target_price'] * row['discount_coef']
+                result.append({
                     "timestamp": row["timestamp"],
-                    "customer_price": row["result_target_price"] * row["discount_coef"],
+                    "customer_price": customer_price,
                     "marginality": row["marginality"]
-                }
-                for row in rows
-            ]
+                })
+            return result
 
     # ------------------- Маржинальность -------------------
     def save_marginality(self, sku: str, marginality: float,
@@ -242,7 +273,6 @@ class SQLiteRepository(IProductRepository):
 
     # ------------------- Обслуживание -------------------
     def delete_old_records(self, days: int) -> int:
-        """Удаляет записи из истории цен и маржинальности старше N дней."""
         with self._get_connection() as conn:
             cutoff = datetime.now() - timedelta(days=days)
             deleted_price = conn.execute(

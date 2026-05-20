@@ -52,12 +52,14 @@ class RepricingUseCase:
 
         # 5. Расчет цен и подготовка запросов на обновление
         updates_for_ozon = []
+        results_dict = {}   # сохраняем результаты расчёта для каждого товара
         for product in products:
             pricing = prices_dict.get(product.product_id)
             if not pricing:
                 continue
             intervals = self.repo.get_strategies(product.sku)
             result = self.calc.calculate(product.sku, pricing, product.min_price, intervals)
+            results_dict[product.product_id] = result
 
             self.repo.save_price_history(product.sku, pricing, result)
 
@@ -77,11 +79,8 @@ class RepricingUseCase:
             old_price_excel_update = None
 
             if product.old_price is not None:
-                # В Excel есть значение (включая 0)
                 old_price_for_api = int(round(product.old_price))
-                # Не перезаписываем Excel
             else:
-                # В Excel пусто – берём из API
                 if pricing.old_price and pricing.old_price != 0:
                     old_price_for_api = int(round(pricing.old_price))
                     old_price_excel_update = old_price_for_api
@@ -98,7 +97,6 @@ class RepricingUseCase:
             }
             if old_price_excel_update is not None:
                 excel_updates['old_price'] = old_price_excel_update
-            # Если old_price_excel_update == None – поле old_price в Excel не трогаем
 
             self.loader.update_product_in_file(product.sku, excel_updates)
 
@@ -119,6 +117,27 @@ class RepricingUseCase:
             success = self.api.update_prices(updates_for_ozon)
             if not success:
                 stats['errors'].append("Ошибка при отправке цен в Ozon API")
+            else:
+                # ========== Повторный запрос для получения реальной цены покупателя ==========
+                logger.info("Запрашиваем актуальные цены для получения real_price (индексы конкурентов)...")
+                fresh_prices = self.api.get_product_prices(valid_ids)
+                fresh_dict = {p.product_id: p for p in fresh_prices}
+                for product in products:
+                    fresh = fresh_dict.get(product.product_id)
+                    result = results_dict.get(product.product_id)
+                    if fresh and result and fresh.external_index_data_price is not None and fresh.external_index_data_index is not None:
+                        if fresh.external_index_data_index != 0:
+                            real_customer_price = round(fresh.external_index_data_price * fresh.external_index_data_index)
+                            # Обновляем в БД
+                            self.repo.update_real_customer_price(product.sku, real_customer_price)
+                            # Сохраняем в историю цен (реальная цена после отправки)
+                            self.repo.save_price_history(product.sku, fresh, result, real_price=real_customer_price)
+                            logger.info(f"Товар {product.sku}: реальная цена покупателя = {real_customer_price}")
+                        else:
+                            logger.warning(f"Товар {product.sku}: external_index_data_index == 0, невозможно вычислить real_price")
+                    else:
+                        logger.warning(f"Товар {product.sku}: нет external_index_data_price или индекса")
+
         stats['prices_updated'] = len(updates_for_ozon)
 
         # 7. Уведомление
