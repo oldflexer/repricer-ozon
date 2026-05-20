@@ -12,10 +12,10 @@ class DataLoader:
     """Загрузка данных из Excel-файла с таблицей товаров (без ссылок на конкурентов)."""
 
     COLUMN_MAPPING = {
-        'sku': ['sku', 'артикул', 'article', 'id', 'offer_id'],
+        'sku': ['sku', 'артикул', 'article'],
         'cost_price': ['себестоимость', 'cost_price', 'cost'],
-        'min_price': ['цена риц', 'минимальная цена', 'min_price', 'min'],
-        # product_name, current_price, old_price, margin, margin_week, margin_month - только для записи, не загружаем
+        'min_price': ['цена риц'],
+        'old_price': ['цена до скидки', 'old_price', 'старая цена'],
     }
 
     SCHEDULE_INTERVALS_COUNT = 4
@@ -141,12 +141,21 @@ class DataLoader:
             except Exception:
                 pass
 
+        old_price = None
+        if product_dict.get('old_price') is not None:
+            try:
+                val = float(product_dict['old_price'])
+                old_price = val   # может быть 0.0 или положительным
+            except Exception:
+                pass
+
         product = ProductInfo(
             sku=product_dict['sku'],
-            product_name=None,   # будет получено из API
+            product_name=None,
             cost_price=cost_price,
             min_price=min_price,
-            current_price=0.0
+            current_price=0.0,
+            old_price=old_price
         )
         return product, intervals
 
