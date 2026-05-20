@@ -5,9 +5,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from core.entities import ProductInfo, PricingData, StrategyInterval, PriceCalculationResult
 
 def test_product_info():
-    p = ProductInfo(sku="123", product_name="Test", min_price=199.0)
+    p = ProductInfo(sku="123", product_name="Test", min_price=199.0, real_customer_price=2300)
     assert p.sku == "123"
     assert p.min_price == 199.0
+    assert p.real_customer_price == 2300
 
 def test_pricing_data_from_api():
     raw = {

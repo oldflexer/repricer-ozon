@@ -9,9 +9,10 @@ class ProductInfo:
     cost_price: float = 0.0
     min_price: float = 0.0
     current_price: float = 0.0
-    old_price: Optional[float] = None   # None – пусто в Excel, 0.0 – явный ноль
+    old_price: Optional[float] = None
     product_id: Optional[int] = None
     offer_id: Optional[str] = None
+    real_customer_price: Optional[float] = None   # цена покупателя после отправки
 
 @dataclass
 class StrategyInterval:
