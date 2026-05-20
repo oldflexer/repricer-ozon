@@ -50,19 +50,18 @@ class RepricingUseCase:
         prices_list = self.api.get_product_prices(valid_ids)
         prices_dict = {p.product_id: p for p in prices_list}
 
-        # 5. Расчет цен и подготовка запросов на обновление
+        # 5. Расчет цен, подготовка запросов и данных для истории
         updates_for_ozon = []
-        results_dict = {}   # сохраняем результаты расчёта для каждого товара
+        results_data = []   # храним (product, pricing, result) для последующего сохранения истории
         for product in products:
             pricing = prices_dict.get(product.product_id)
             if not pricing:
                 continue
             intervals = self.repo.get_strategies(product.sku)
             result = self.calc.calculate(product.sku, pricing, product.min_price, intervals)
-            results_dict[product.product_id] = result
+            results_data.append((product, pricing, result))
 
-            self.repo.save_price_history(product.sku, pricing, result)
-
+            # Сохраняем маржинальность (один раз, не зависит от real_price)
             avg_week = self.repo.get_average_marginality(product.sku, 7)
             marginality_week = avg_week if avg_week is not None else result.marginality
             avg_month = self.repo.get_average_marginality(product.sku, 30)
@@ -87,7 +86,7 @@ class RepricingUseCase:
                 else:
                     old_price_for_api = None
 
-            # Подготовка данных для обновления Excel
+            # Подготовка данных для обновления Excel (цены и маржа – без real_price)
             excel_updates = {
                 'current_price': current_price_excel,
                 'min_price': min_price_excel,
@@ -117,30 +116,43 @@ class RepricingUseCase:
             success = self.api.update_prices(updates_for_ozon)
             if not success:
                 stats['errors'].append("Ошибка при отправке цен в Ozon API")
-            else:
-                # ========== Повторный запрос для получения реальной цены покупателя ==========
+        else:
+            success = True  # dry-run считаем успешным для сохранения истории без real_price
+
+        # 7. Сохранение истории цен (один раз за цикл)
+        if dry_run:
+            # Сухой запуск: сохраняем историю без real_price
+            for product, pricing, result in results_data:
+                self.repo.save_price_history(product.sku, pricing, result, real_price=None)
+            stats['prices_updated'] = len(updates_for_ozon)
+        else:
+            if success:
+                # Реальный запуск: после отправки делаем повторный запрос для получения real_price
                 logger.info("Запрашиваем актуальные цены для получения real_price (индексы конкурентов)...")
                 fresh_prices = self.api.get_product_prices(valid_ids)
                 fresh_dict = {p.product_id: p for p in fresh_prices}
-                for product in products:
+                for product, pricing, result in results_data:
                     fresh = fresh_dict.get(product.product_id)
-                    result = results_dict.get(product.product_id)
-                    if fresh and result and fresh.external_index_data_price is not None and fresh.external_index_data_index is not None:
+                    real_price_value = None
+                    if fresh and fresh.external_index_data_price is not None and fresh.external_index_data_index is not None:
                         if fresh.external_index_data_index != 0:
-                            real_customer_price = round(fresh.external_index_data_price * fresh.external_index_data_index)
-                            # Обновляем в БД
-                            self.repo.update_real_customer_price(product.sku, real_customer_price)
-                            # Сохраняем в историю цен (реальная цена после отправки)
-                            self.repo.save_price_history(product.sku, fresh, result, real_price=real_customer_price)
-                            logger.info(f"Товар {product.sku}: реальная цена покупателя = {real_customer_price}")
+                            real_price_value = round(fresh.external_index_data_price * fresh.external_index_data_index)
+                            self.repo.update_real_customer_price(product.sku, real_price_value)
+                            logger.info(f"Товар {product.sku}: реальная цена покупателя = {real_price_value}")
                         else:
                             logger.warning(f"Товар {product.sku}: external_index_data_index == 0, невозможно вычислить real_price")
                     else:
                         logger.warning(f"Товар {product.sku}: нет external_index_data_price или индекса")
+                    # Сохраняем историю с полученным real_price (или None, если не удалось)
+                    self.repo.save_price_history(product.sku, pricing, result, real_price=real_price_value)
+                stats['prices_updated'] = len(updates_for_ozon)
+            else:
+                # Отправка не удалась – сохраняем историю без real_price
+                for product, pricing, result in results_data:
+                    self.repo.save_price_history(product.sku, pricing, result, real_price=None)
+                stats['prices_updated'] = 0  # цены не обновлены
 
-        stats['prices_updated'] = len(updates_for_ozon)
-
-        # 7. Уведомление
+        # 8. Уведомление
         self.notifier.notify_cycle_complete(
             updated_count=stats['prices_updated'],
             errors=stats['errors'] if stats['errors'] else None
