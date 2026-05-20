@@ -24,7 +24,6 @@ class RepricingUseCase:
         stats['products_loaded'] = len(products)
         if not products:
             logger.warning("Нет товаров для обработки")
-            # Отправляем уведомление о завершении с нулевым счётчиком
             self.notifier.notify_cycle_complete(updated_count=0, errors=None)
             return stats
 
@@ -38,7 +37,6 @@ class RepricingUseCase:
             if info.get('product_name'):
                 p.product_name = info.get('product_name')
             self.repo.upsert_product(p)
-            # Обновляем название в Excel
             if p.product_name:
                 self.loader.update_product_in_file(p.sku, {'product_name': p.product_name})
 
@@ -73,21 +71,39 @@ class RepricingUseCase:
             real_price = result.result_target_price * discount_coef
             current_price_excel = int(round(real_price))
             min_price_excel = int(round(product.min_price))
-            old_price_api = pricing.old_price if pricing.old_price else None
-            if old_price_api is not None:
-                old_price_api = int(round(old_price_api))
 
-            # Минимальная цена для API с учётом коэффициента
-            min_price_for_api = int(round(product.min_price / discount_coef)) if discount_coef else int(round(product.min_price))
+            # --- Логика old_price (различаем пусто, 0, число) ---
+            old_price_for_api = None
+            old_price_excel_update = None
 
-            self.loader.update_product_in_file(product.sku, {
+            if product.old_price is not None:
+                # В Excel есть значение (включая 0)
+                old_price_for_api = int(round(product.old_price))
+                # Не перезаписываем Excel
+            else:
+                # В Excel пусто – берём из API
+                if pricing.old_price and pricing.old_price != 0:
+                    old_price_for_api = int(round(pricing.old_price))
+                    old_price_excel_update = old_price_for_api
+                else:
+                    old_price_for_api = None
+
+            # Подготовка данных для обновления Excel
+            excel_updates = {
                 'current_price': current_price_excel,
                 'min_price': min_price_excel,
-                'old_price': old_price_api,
                 'margin': result.marginality,
                 'margin_week': marginality_week,
                 'margin_month': marginality_month
-            })
+            }
+            if old_price_excel_update is not None:
+                excel_updates['old_price'] = old_price_excel_update
+            # Если old_price_excel_update == None – поле old_price в Excel не трогаем
+
+            self.loader.update_product_in_file(product.sku, excel_updates)
+
+            # Минимальная цена для API с учётом коэффициента
+            min_price_for_api = int(round(product.min_price / discount_coef)) if discount_coef else int(round(product.min_price))
 
             updates_for_ozon.append({
                 'product_id': product.product_id,
@@ -95,7 +111,7 @@ class RepricingUseCase:
                 'price': f"{int(round(result.result_target_price))}",
                 'min_price': f"{min_price_for_api}",
                 'net_price': f"{int(round(pricing.net_price))}" if pricing.net_price else None,
-                'old_price': f"{int(round(pricing.old_price))}" if pricing.old_price else None,
+                'old_price': f"{old_price_for_api}" if old_price_for_api is not None else None,
             })
 
         # 6. Отправка в Ozon

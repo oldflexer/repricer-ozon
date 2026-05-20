@@ -9,6 +9,7 @@ class ProductInfo:
     cost_price: float = 0.0
     min_price: float = 0.0
     current_price: float = 0.0
+    old_price: Optional[float] = None   # None – пусто в Excel, 0.0 – явный ноль
     product_id: Optional[int] = None
     offer_id: Optional[str] = None
 
