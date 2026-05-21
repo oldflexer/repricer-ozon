@@ -167,7 +167,7 @@ class RepricingUseCase:
             # Если отправка была, то после неё запрашиваем индексы для real_price
             if update_results:  # были отправлены цены
                 logger.info("Запрашиваем актуальные цены для получения real_price...")
-                time.sleep(10)
+                time.sleep(5)
                 fresh_prices = self.api.get_product_prices(valid_ids)
                 fresh_dict = {p.product_id: p for p in fresh_prices}
                 for product, pricing, result in results_data:
