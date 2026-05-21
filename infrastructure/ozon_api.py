@@ -72,24 +72,40 @@ class OzonApiClient:
         return all_prices
 
     # ----------------------------------------------------------------
-    # Отправка цен
+    # Отправка цен с детальным ответом по каждому товару
     # ----------------------------------------------------------------
-    def update_prices(self, prices_data: List[Dict]) -> bool:
+    def update_prices(self, prices_data: List[Dict]) -> Dict[int, Dict]:
+        """
+        Отправляет цены в Ozon API.
+        Возвращает словарь: { product_id: {'updated': bool, 'errors': list} }
+        """
         url = f"{self.base_url}/v1/product/import/prices"
         payload: dict[str, Any] = {"prices": prices_data}
+        result_map = {}
         try:
             resp = requests.post(url, headers=self.headers, json=payload, timeout=30)
             if resp.status_code == 200:
                 data = resp.json()
-                if data.get('result') is not None:
-                    return True
-                logger.warning(f"Update prices response: {data}")
+                if 'result' in data:
+                    for item in data['result']:
+                        pid = item.get('product_id')
+                        result_map[pid] = {
+                            'updated': item.get('updated', False),
+                            'errors': item.get('errors', [])
+                        }
+                else:
+                    logger.warning(f"Неожиданный ответ: {data}")
+                    for item in prices_data:
+                        result_map[item['product_id']] = {'updated': False, 'errors': [{'code': 'UNKNOWN', 'message': 'Неожиданный ответ API'}]}
             else:
                 logger.warning(f"Update prices failed: {resp.status_code} {resp.text[:200]}")
-            return False
+                for item in prices_data:
+                    result_map[item['product_id']] = {'updated': False, 'errors': [{'code': 'HTTP_ERROR', 'message': f'HTTP {resp.status_code}'}]}
         except Exception as e:
             logger.error(f"Update error: {e}")
-            return False
+            for item in prices_data:
+                result_map[item['product_id']] = {'updated': False, 'errors': [{'code': 'EXCEPTION', 'message': str(e)}]}
+        return result_map
 
     # ----------------------------------------------------------------
     # Общий POST с повторными попытками

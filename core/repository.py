@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from datetime import datetime
 from .entities import ProductInfo, StrategyInterval, PricingData, PriceCalculationResult
 
@@ -17,6 +17,8 @@ class IProductRepository(ABC):
     @abstractmethod
     def save_price_history(self, sku: str, pricing: PricingData,
                            result: PriceCalculationResult, real_price: Optional[float] = None) -> bool: ...
+    @abstractmethod
+    def get_price_history(self, sku: str) -> List[Dict[str, Any]]: ...
     @abstractmethod
     def save_marginality(self, sku: str, marginality: float,
                          marginality_week: float, marginality_month: float) -> bool: ...

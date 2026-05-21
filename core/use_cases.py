@@ -1,3 +1,4 @@
+import time
 import logging
 from typing import Dict, Any, List
 from .entities import ProductInfo, PriceCalculationResult
@@ -18,13 +19,14 @@ class RepricingUseCase:
 
     def execute(self, dry_run: bool = False) -> Dict[str, Any]:
         stats = {'products_loaded': 0, 'prices_updated': 0, 'errors': []}
+        updates = []   # для детализированного отчёта
 
         # 1. Загрузка товаров из Excel
         products = self.loader.load()
         stats['products_loaded'] = len(products)
         if not products:
             logger.warning("Нет товаров для обработки")
-            self.notifier.notify_cycle_complete(updated_count=0, errors=None)
+            self.notifier.send_detailed_report([], [], dry_run=dry_run)
             return stats
 
         # 2. Получение product_id через API для всех SKU
@@ -45,23 +47,32 @@ class RepricingUseCase:
             strategies = self.loader.get_strategy_intervals(p)
             self.repo.set_strategies(p.sku, strategies)
 
-        # 4. Получение цен через API (с батчингом)
+        # 4. Получение цен через API
         valid_ids = [p.product_id for p in products if p.product_id]
         prices_list = self.api.get_product_prices(valid_ids)
         prices_dict = {p.product_id: p for p in prices_list}
 
         # 5. Расчет цен, подготовка запросов и данных для истории
         updates_for_ozon = []
-        results_data = []   # храним (product, pricing, result) для последующего сохранения истории
+        results_data = []   # (product, pricing, result)
         for product in products:
             pricing = prices_dict.get(product.product_id)
             if not pricing:
+                updates.append({
+                    'sku': product.sku,
+                    'product_name': product.product_name or '',
+                    'old_price': None,
+                    'new_price': None,
+                    'status': 'error',
+                    'reason': 'не удалось получить цены из API'
+                })
                 continue
+
             intervals = self.repo.get_strategies(product.sku)
             result = self.calc.calculate(product.sku, pricing, product.min_price, intervals)
             results_data.append((product, pricing, result))
 
-            # Сохраняем маржинальность (один раз, не зависит от real_price)
+            # Сохраняем маржинальность
             avg_week = self.repo.get_average_marginality(product.sku, 7)
             marginality_week = avg_week if avg_week is not None else result.marginality
             avg_month = self.repo.get_average_marginality(product.sku, 30)
@@ -73,20 +84,30 @@ class RepricingUseCase:
             current_price_excel = int(round(real_price))
             min_price_excel = int(round(product.min_price))
 
-            # --- Логика old_price (различаем пусто, 0, число) ---
-            old_price_for_api = None
-            old_price_excel_update = None
+            # Получаем предыдущую цену из истории (только для отчёта)
+            hist = self.repo.get_price_history(product.sku)
+            old_customer_price = hist[-1].get('customer_price') if hist else None
+            if old_customer_price is not None:
+                old_customer_price = int(round(old_customer_price))
 
-            if product.old_price is not None:
-                old_price_for_api = int(round(product.old_price))
-            else:
-                if pricing.old_price and pricing.old_price != 0:
-                    old_price_for_api = int(round(pricing.old_price))
-                    old_price_excel_update = old_price_for_api
-                else:
-                    old_price_for_api = None
+            # Предварительный статус: 'pending' – будет обновлён после ответа API
+            updates.append({
+                'sku': product.sku,
+                'product_name': product.product_name or '',
+                'old_price': old_customer_price,
+                'new_price': current_price_excel,
+                'status': 'pending',
+                'reason': None
+            })
 
-            # Подготовка данных для обновления Excel (цены и маржа – без real_price)
+            # --- Логика old_price, округление вверх до сотен ---
+            price_for_old = result.result_target_price
+            old_price_calculated = price_for_old * 1.5
+            old_price_calculated = int((old_price_calculated + 99) // 100 * 100)
+            old_price_for_api = old_price_calculated
+            old_price_excel_update = old_price_for_api
+
+            # Подготовка данных для Excel
             excel_updates = {
                 'current_price': current_price_excel,
                 'min_price': min_price_excel,
@@ -96,10 +117,9 @@ class RepricingUseCase:
             }
             if old_price_excel_update is not None:
                 excel_updates['old_price'] = old_price_excel_update
-
             self.loader.update_product_in_file(product.sku, excel_updates)
 
-            # Минимальная цена для API с учётом коэффициента
+            # Минимальная цена для API
             min_price_for_api = int(round(product.min_price / discount_coef)) if discount_coef else int(round(product.min_price))
 
             updates_for_ozon.append({
@@ -109,54 +129,89 @@ class RepricingUseCase:
                 'min_price': f"{min_price_for_api}",
                 'net_price': f"{int(round(pricing.net_price))}" if pricing.net_price else None,
                 'old_price': f"{old_price_for_api}" if old_price_for_api is not None else None,
+                'manage_elastic_boosting_through_price': False
             })
 
-        # 6. Отправка в Ozon
+        # 6. Отправка в Ozon (только если не dry-run)
         if not dry_run:
-            success = self.api.update_prices(updates_for_ozon)
-            if not success:
-                stats['errors'].append("Ошибка при отправке цен в Ozon API")
+            update_results = self.api.update_prices(updates_for_ozon)
         else:
-            success = True  # dry-run считаем успешным для сохранения истории без real_price
+            update_results = {}
 
-        # 7. Сохранение истории цен (один раз за цикл)
+        # 7. Обновляем статусы в updates на основе ответа API
+        for upd in updates:
+            product = next((p for p in products if p.sku == upd['sku']), None)
+            if product and product.product_id in update_results:
+                res = update_results[product.product_id]
+                if res['updated']:
+                    upd['status'] = 'updated'
+                    upd['reason'] = None
+                else:
+                    upd['status'] = 'error'
+                    errors_str = ', '.join([e.get('message', str(e)) for e in res['errors']])
+                    upd['reason'] = f"Ошибка API: {errors_str}"
+                    stats['errors'].append(f"{upd['sku']}: {errors_str}")
+            elif dry_run:
+                # В dry-run считаем, что отправка прошла бы успешно
+                upd['status'] = 'updated'
+                upd['reason'] = 'dry-run (расчёт выполнен)'
+            else:
+                # Товар не был отправлен (не было pricing или другой ошибки) – статус уже error
+                pass
+
+        # 8. Сохранение истории цен (один раз за цикл)
         if dry_run:
-            # Сухой запуск: сохраняем историю без real_price
             for product, pricing, result in results_data:
                 self.repo.save_price_history(product.sku, pricing, result, real_price=None)
-            stats['prices_updated'] = len(updates_for_ozon)
         else:
-            if success:
-                # Реальный запуск: после отправки делаем повторный запрос для получения real_price
-                logger.info("Запрашиваем актуальные цены для получения real_price (индексы конкурентов)...")
+            # Если отправка была, то после неё запрашиваем индексы для real_price
+            if update_results:  # были отправлены цены
+                logger.info("Запрашиваем актуальные цены для получения real_price...")
+                time.sleep(5)
                 fresh_prices = self.api.get_product_prices(valid_ids)
                 fresh_dict = {p.product_id: p for p in fresh_prices}
                 for product, pricing, result in results_data:
                     fresh = fresh_dict.get(product.product_id)
                     real_price_value = None
-                    if fresh and fresh.external_index_data_price is not None and fresh.external_index_data_index is not None:
-                        if fresh.external_index_data_index != 0:
-                            real_price_value = round(fresh.external_index_data_price * fresh.external_index_data_index)
+                    if fresh:
+                        index_prices, index_data = [], []
+                        if fresh.external_index_data_price and fresh.external_index_data_index and fresh.external_index_data_index != 0:
+                            index_prices.append(fresh.external_index_data_price)
+                            index_data.append(fresh.external_index_data_index)
+                        if fresh.ozon_index_data_price and fresh.ozon_index_data_index and fresh.ozon_index_data_index != 0:
+                            index_prices.append(fresh.ozon_index_data_price)
+                            index_data.append(fresh.ozon_index_data_index)
+                        if fresh.self_marketplaces_index_data_price and fresh.self_marketplaces_index_data_index and fresh.self_marketplaces_index_data_index != 0:
+                            index_prices.append(fresh.self_marketplaces_index_data_price)
+                            index_data.append(fresh.self_marketplaces_index_data_index)
+                        if index_prices and index_data:
+                            approx_index_price = sum(index_prices) / len(index_prices)
+                            approx_index_data = sum(index_data) / len(index_data)
+                            real_price_value = round(approx_index_price * approx_index_data)
+                            logger.info(f"Товар {product.sku}: real_price={real_price_value}")
+                        if real_price_value is not None:
                             self.repo.update_real_customer_price(product.sku, real_price_value)
-                            logger.info(f"Товар {product.sku}: реальная цена покупателя = {real_price_value}")
+                            self.repo.save_price_history(product.sku, pricing, result, real_price=real_price_value)
+                            # Обновляем new_price в отчёте (для единообразия)
+                            for u in updates:
+                                if u['sku'] == product.sku:
+                                    u['new_price'] = real_price_value
+                                    break
                         else:
-                            logger.warning(f"Товар {product.sku}: external_index_data_index == 0, невозможно вычислить real_price")
+                            self.repo.save_price_history(product.sku, pricing, result, real_price=None)
                     else:
-                        logger.warning(f"Товар {product.sku}: нет external_index_data_price или индекса")
-                    # Сохраняем историю с полученным real_price (или None, если не удалось)
-                    self.repo.save_price_history(product.sku, pricing, result, real_price=real_price_value)
-                stats['prices_updated'] = len(updates_for_ozon)
+                        logger.warning(f"Товар {product.sku}: свежие цены не получены")
+                        self.repo.save_price_history(product.sku, pricing, result, real_price=None)
             else:
-                # Отправка не удалась – сохраняем историю без real_price
+                # Отправка не удалась (или не было отправки) – сохраняем без real_price
                 for product, pricing, result in results_data:
                     self.repo.save_price_history(product.sku, pricing, result, real_price=None)
-                stats['prices_updated'] = 0  # цены не обновлены
 
-        # 8. Уведомление
-        self.notifier.notify_cycle_complete(
-            updated_count=stats['prices_updated'],
-            errors=stats['errors'] if stats['errors'] else None
-        )
+        # 9. Подсчитываем количество успешно обновлённых товаров
+        stats['prices_updated'] = sum(1 for u in updates if u.get('status') == 'updated')
 
-        logger.info(f"=== Завершено. Обновлено цен: {stats['prices_updated']} ===")
+        # 10. Уведомление
+        self.notifier.send_detailed_report(updates, stats['errors'], dry_run=dry_run)
+
+        logger.info(f"=== Завершено. Обновлено товаров (успешно отправлено): {stats['prices_updated']} ===")
         return stats
