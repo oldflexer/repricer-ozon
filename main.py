@@ -1,6 +1,7 @@
 import logging
 import sys
 import argparse
+import asyncio
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -25,7 +26,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def main():
+async def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--dry-run', action='store_true')
     args = parser.parse_args()
@@ -37,10 +38,11 @@ def main():
     calc_service = PriceCalculationService(default_coefficient=settings.COEFFICIENT_OZON)
 
     use_case = RepricingUseCase(repo, api, notifier, calc_service, loader)
-    stats = use_case.execute(dry_run=args.dry_run)
+    stats = await use_case.execute(dry_run=args.dry_run)
 
     logger.info(f"Результат: {stats}")
+    await api.close()
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

@@ -1,5 +1,6 @@
 import time
 import logging
+import asyncio
 from typing import Dict, Any, List
 from .entities import ProductInfo, PriceCalculationResult
 from .repository import IProductRepository
@@ -18,7 +19,7 @@ class RepricingUseCase:
         self.calc = calculator
         self.loader = loader
 
-    def execute(self, dry_run: bool = False) -> Dict[str, Any]:
+    async def execute(self, dry_run: bool = False) -> Dict[str, Any]:
         stats = {'products_loaded': 0, 'prices_updated': 0, 'errors': []}
         updates = []
 
@@ -30,7 +31,7 @@ class RepricingUseCase:
             return stats
 
         sku_list = [p.sku for p in products]
-        product_map = self.api.get_product_ids_by_skus(sku_list)
+        product_map = await self.api.get_product_ids_by_skus(sku_list)
         for p in products:
             info = product_map.get(p.sku, {})
             p.product_id = info.get('product_id')
@@ -46,11 +47,12 @@ class RepricingUseCase:
             self.repo.set_strategies(p.sku, strategies)
 
         valid_ids = [p.product_id for p in products if p.product_id]
-        prices_list = self.api.get_product_prices(valid_ids)
+        prices_list = await self.api.get_product_prices(valid_ids)
         prices_dict = {p.product_id: p for p in prices_list}
 
         updates_for_ozon = []
         results_data = []
+
         for product in products:
             pricing = prices_dict.get(product.product_id)
             if not pricing:
@@ -124,7 +126,7 @@ class RepricingUseCase:
             })
 
         if not dry_run:
-            update_results = self.api.update_prices(updates_for_ozon)
+            update_results = await self.api.update_prices(updates_for_ozon)
         else:
             update_results = {}
 
@@ -143,8 +145,6 @@ class RepricingUseCase:
             elif dry_run:
                 upd['status'] = 'updated'
                 upd['reason'] = 'dry-run (расчёт выполнен)'
-            else:
-                pass
 
         if dry_run:
             for product, pricing, result in results_data:
@@ -152,8 +152,8 @@ class RepricingUseCase:
         else:
             if update_results:
                 logger.info("Запрашиваем актуальные цены для получения real_price...")
-                time.sleep(5)
-                fresh_prices = self.api.get_product_prices(valid_ids)
+                await asyncio.sleep(5)
+                fresh_prices = await self.api.get_product_prices(valid_ids)
                 fresh_dict = {p.product_id: p for p in fresh_prices}
                 for product, pricing, result in results_data:
                     fresh = fresh_dict.get(product.product_id)
@@ -193,5 +193,5 @@ class RepricingUseCase:
         stats['prices_updated'] = sum(1 for u in updates if u.get('status') == 'updated')
         self.notifier.send_detailed_report(updates, stats['errors'], dry_run=dry_run)
 
-        logger.info(f"=== Завершено. Обновлено товаров: {stats['prices_updated']} ===")
+        logger.info(f"=== Завершено. Обновлено товаров (успешно отправлено): {stats['prices_updated']} ===")
         return stats

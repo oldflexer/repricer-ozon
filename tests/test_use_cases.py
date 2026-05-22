@@ -1,15 +1,19 @@
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
+import pytest
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from core.use_cases import RepricingUseCase
 from core.entities import ProductInfo, PricingData, StrategyInterval
 from core.services import PriceCalculationService
 
-def test_execute_dry_run():
+
+@pytest.mark.asyncio
+async def test_execute_dry_run():
     repo = MagicMock()
-    api = MagicMock()
+    api = AsyncMock()
     notifier = MagicMock()
     loader = MagicMock()
     calc = PriceCalculationService()
@@ -47,7 +51,7 @@ def test_execute_dry_run():
     loader.update_product_in_file.return_value = True
 
     use_case = RepricingUseCase(repo, api, notifier, calc, loader)
-    stats = use_case.execute(dry_run=True)
+    stats = await use_case.execute(dry_run=True)
 
     assert stats['products_loaded'] == 1
     assert stats['prices_updated'] == 1
@@ -56,16 +60,18 @@ def test_execute_dry_run():
     loader.update_product_in_file.assert_called()
     notifier.send_detailed_report.assert_called_once()
 
-def test_execute_without_products():
+
+@pytest.mark.asyncio
+async def test_execute_without_products():
     repo = MagicMock()
-    api = MagicMock()
+    api = AsyncMock()
     notifier = MagicMock()
     loader = MagicMock()
     calc = PriceCalculationService()
     loader.load.return_value = []
 
     use_case = RepricingUseCase(repo, api, notifier, calc, loader)
-    stats = use_case.execute(dry_run=False)
+    stats = await use_case.execute(dry_run=False)
 
     assert stats['products_loaded'] == 0
     assert stats['prices_updated'] == 0

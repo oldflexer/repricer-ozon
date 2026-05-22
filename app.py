@@ -1,3 +1,5 @@
+import asyncio
+
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
@@ -74,12 +76,18 @@ st.title("🔄 Репрайсер Ozon")
 repo = SQLiteRepository(DATABASE_PATH)
 
 def run_repricing(dry_run: bool = False) -> Dict[str, Any]:
-    loader = DataLoader(DATA_FILE)
-    api = OzonApiClient()
-    notifier = MailNotifier()
-    calc = PriceCalculationService(default_coefficient=settings.COEFFICIENT_OZON)
-    use_case = RepricingUseCase(repo, api, notifier, calc, loader)
-    return use_case.execute(dry_run=dry_run)
+    async def _run():
+        loader = DataLoader(DATA_FILE)
+        api = OzonApiClient()
+        notifier = MailNotifier()
+        calc = PriceCalculationService(default_coefficient=settings.COEFFICIENT_OZON)
+        use_case = RepricingUseCase(repo, api, notifier, calc, loader)
+        try:
+            stats = await use_case.execute(dry_run=dry_run)
+        finally:
+            await api.close()
+        return stats
+    return asyncio.run(_run())
 
 # --------------------------------------------------------------
 # Боковая панель

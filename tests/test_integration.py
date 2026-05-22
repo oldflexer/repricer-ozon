@@ -2,7 +2,7 @@ import sys
 from pathlib import Path
 import pytest
 import tempfile
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -16,7 +16,7 @@ from config.settings import settings
 
 
 class MockOzonApiClient:
-    def __init__(self, *args, **kwargs):
+    def __init__(self):
         self.products_map = {}
         self.prices_map = {}
 
@@ -30,28 +30,32 @@ class MockOzonApiClient:
     def set_price(self, product_id, price_data):
         self.prices_map[product_id] = price_data
 
-    def get_product_ids_by_skus(self, skus):
+    async def get_product_ids_by_skus(self, skus):
         result = {}
         for sku in skus:
             if sku in self.products_map:
                 result[sku] = self.products_map[sku]
         return result
 
-    def get_product_prices(self, product_ids):
+    async def get_product_prices(self, product_ids):
         result = []
         for pid in product_ids:
             if pid in self.prices_map:
                 result.append(self.prices_map[pid])
         return result
 
-    def update_prices(self, prices_data):
+    async def update_prices(self, prices_data):
         result = {}
         for item in prices_data:
             result[item['product_id']] = {'updated': True, 'errors': []}
         return result
 
+    async def close(self):
+        pass
 
-def test_full_cycle_dry_run(tmp_path):
+
+@pytest.mark.asyncio
+async def test_full_cycle_dry_run(tmp_path):
     import pandas as pd
 
     excel_data = {
@@ -100,7 +104,7 @@ def test_full_cycle_dry_run(tmp_path):
     mock_api.set_price(1, pricing)
 
     use_case = RepricingUseCase(repo, mock_api, notifier, calc, loader)
-    stats = use_case.execute(dry_run=True)
+    stats = await use_case.execute(dry_run=True)
 
     assert stats['products_loaded'] == 1
     assert stats['prices_updated'] == 1
