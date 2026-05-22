@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from infrastructure.db import SQLiteRepository
-from infrastructure.loader import DataLoader
+from infrastructure.excel_loader import ExcelLoader
 from infrastructure.mail_notifier import MailNotifier
 from core.use_cases import RepricingUseCase
 from core.entities import PricingData
@@ -72,7 +72,7 @@ async def test_full_cycle_dry_run(tmp_path):
     db_path = tmp_path / 'test.db'
     repo = SQLiteRepository(db_path)
 
-    loader = DataLoader(excel_path)
+    loader = ExcelLoader(excel_path)
     notifier = MailNotifier()
 
     mock_api = MockOzonApiClient()

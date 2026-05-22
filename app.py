@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from config.settings import DATA_FILE, DATABASE_PATH, TIMEZONE, settings
 from infrastructure.db import SQLiteRepository
-from infrastructure.loader import DataLoader
+from infrastructure.excel_loader import ExcelLoader
 from infrastructure.ozon_api import OzonApiClient
 from infrastructure.mail_notifier import MailNotifier
 from core.services import PriceCalculationService
@@ -68,7 +68,7 @@ repo = SQLiteRepository(DATABASE_PATH)
 
 def run_repricing(dry_run: bool = False) -> Dict[str, Any]:
     async def _run():
-        loader = DataLoader(DATA_FILE)
+        loader = ExcelLoader(DATA_FILE)   # замена
         api = OzonApiClient()
         notifier = MailNotifier()
         use_case = RepricingUseCase(repo, api, notifier, loader)

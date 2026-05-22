@@ -3,7 +3,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from infrastructure.loader import DataLoader
+from infrastructure.excel_loader import ExcelLoader
 from core.entities import ProductInfo, StrategyInterval
 
 logging.basicConfig(level=logging.INFO)
@@ -14,7 +14,7 @@ def test_load_products():
         print(f"❌ Файл {data_file} не найден, пропускаем тест.")
         return
 
-    loader = DataLoader(data_file)
+    loader = ExcelLoader(data_file)
     products = loader.load()
     print(f"\n📦 Загружено товаров: {len(products)}\n")
 
