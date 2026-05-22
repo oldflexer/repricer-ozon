@@ -26,3 +26,21 @@ class IProductRepository(ABC):
     def get_average_marginality(self, sku: str, days: int) -> Optional[float]: ...
     @abstractmethod
     def get_last_run_time(self) -> Optional[datetime]: ...
+
+
+class ILoader(ABC):
+    """Интерфейс для загрузки и обновления данных товаров."""
+    @abstractmethod
+    def load(self) -> List[ProductInfo]:
+        """Загружает товары и их стратегии из источника."""
+        pass
+
+    @abstractmethod
+    def get_strategy_intervals(self, product: ProductInfo) -> List[StrategyInterval]:
+        """Возвращает интервалы стратегий для товара."""
+        pass
+
+    @abstractmethod
+    def update_product_in_file(self, sku: str, updates: Dict[str, Any]) -> bool:
+        """Обновляет данные товара в источнике."""
+        pass

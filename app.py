@@ -1,36 +1,26 @@
+import asyncio
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
 from pathlib import Path
 import sys
-import logging
 from typing import Dict, Any, List
 from datetime import datetime, timedelta
 
-# Добавляем корень проекта в путь
+from core.mappers import to_view_model
+
 sys.path.insert(0, str(Path(__file__).parent))
 
-from config.settings import DATA_FILE, DATABASE_PATH, TIMEZONE
+from config.settings import settings, TIMEZONE
 from infrastructure.db import SQLiteRepository
-from infrastructure.loader import DataLoader
+from infrastructure.excel_loader import ExcelLoader
 from infrastructure.ozon_api import OzonApiClient
 from infrastructure.mail_notifier import MailNotifier
-from core.services import PriceCalculationService
 from core.use_cases import RepricingUseCase
 from core.entities import ProductInfo, StrategyInterval
+from infrastructure.logger import logger
 
-# Настройка логирования
-log_file = Path(__file__).parent / 'repricer.log'
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler(log_file, mode='w', encoding='utf-8')
-    ]
-)
-logger = logging.getLogger(__name__)
 
 st.set_page_config(page_title="Репрайсер Ozon", layout="wide", page_icon="📊")
 
@@ -70,17 +60,20 @@ st.markdown("""
 
 st.title("🔄 Репрайсер Ozon")
 
-# Инициализация репозитория для отображения данных
-repo = SQLiteRepository(DATABASE_PATH)
+repo = SQLiteRepository(settings.DATABASE_PATH)
 
 def run_repricing(dry_run: bool = False) -> Dict[str, Any]:
-    """Запуск полного цикла репрайсинга через Ozon API."""
-    loader = DataLoader(DATA_FILE)
-    api = OzonApiClient()
-    notifier = MailNotifier()
-    calc = PriceCalculationService()
-    use_case = RepricingUseCase(repo, api, notifier, calc, loader)
-    return use_case.execute(dry_run=dry_run)
+    async def _run():
+        loader = ExcelLoader(settings.DATA_FILE)
+        api = OzonApiClient()
+        notifier = MailNotifier()
+        use_case = RepricingUseCase(repo, api, notifier, loader)
+        try:
+            stats = await use_case.execute(dry_run=dry_run)
+        finally:
+            await api.close()
+        return stats
+    return asyncio.run(_run())
 
 # --------------------------------------------------------------
 # Боковая панель
@@ -125,17 +118,17 @@ with st.sidebar:
     uploaded_file = st.file_uploader("", type=["xlsx"], label_visibility="collapsed")
     
     if uploaded_file is not None:
-        with open(DATA_FILE, "wb") as f:
+        with open(settings.DATA_FILE, "wb") as f:
             f.write(uploaded_file.getbuffer())
-        st.success(f"✅ Файл загружен: {DATA_FILE.name}")
+        st.success(f"✅ Файл загружен: {settings.DATA_FILE.name}")
     
     # Кнопка скачивания текущего Excel
-    if DATA_FILE.exists():
-        with open(DATA_FILE, "rb") as f:
+    if settings.DATA_FILE.exists():
+        with open(settings.DATA_FILE, "rb") as f:
             st.download_button(
                 "📥 Скачать текущий Excel",
                 f,
-                file_name=DATA_FILE.name,
+                file_name=settings.DATA_FILE.name,
                 use_container_width=True
             )
     else:
@@ -148,8 +141,8 @@ with st.sidebar:
         st.success(f"Удалено записей: {deleted}")
     
     st.divider()
-    st.caption(f"Файл данных: {DATA_FILE.resolve()}")
-    st.caption(f"База данных: {DATABASE_PATH.resolve()}")
+    st.caption(f"Файл данных: {settings.DATA_FILE.resolve()}")
+    st.caption(f"База данных: {settings.DATABASE_PATH.resolve()}")
 
 # --------------------------------------------------------------
 # Основные вкладки
@@ -194,15 +187,16 @@ with tab1:
             avg_week = repo.get_average_marginality(p.sku, 7)
             avg_month = repo.get_average_marginality(p.sku, 30)
 
+            view = to_view_model(p, last_price, last_margin, avg_week, avg_month)
             rows.append({
-                "SKU": p.sku,
-                "Название": p.product_name,
-                "Себестоимость": p.cost_price,
-                "Мин. цена (РИЦ)": p.min_price,
-                "Текущая цена": f"{last_price:.0f}" if last_price else "—",
-                "Маржинальность, %": f"{last_margin*100:.2f}" if last_margin else "—",
-                "Ср. неделя, %": f"{avg_week*100:.2f}" if avg_week else "—",
-                "Ср. месяц, %": f"{avg_month*100:.2f}" if avg_month else "—",
+                "SKU": view.sku,
+                "Название": view.name,
+                "Себестоимость": view.cost_price,
+                "Мин. цена (РИЦ)": view.min_price,
+                "Текущая цена": f"{view.current_price:.0f}" if view.current_price else "—",
+                "Маржинальность, %": f"{view.marginality_percent:.2f}" if view.marginality_percent else "—",
+                "Ср. неделя, %": f"{view.avg_week_margin:.2f}" if view.avg_week_margin else "—",
+                "Ср. месяц, %": f"{view.avg_month_margin:.2f}" if view.avg_month_margin else "—",
             })
 
         if rows:

@@ -1,9 +1,10 @@
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, time
 from typing import Optional, List
 
 @dataclass
 class ProductInfo:
+    """Доменная модель товара."""
     sku: str
     product_name: Optional[str] = None
     cost_price: float = 0.0
@@ -12,14 +13,21 @@ class ProductInfo:
     old_price: Optional[float] = None
     product_id: Optional[int] = None
     offer_id: Optional[str] = None
-    real_customer_price: Optional[float] = None   # цена покупателя после отправки
+    real_customer_price: Optional[float] = None
 
 @dataclass
 class StrategyInterval:
+    """Временной интервал стратегии."""
     start: str
     end: str
-    strategy_type: int
+    strategy_type: int  # 1 - ниже, 2 - выше, 3 - равна
     percent: float = 0.0
+    start_time: time = field(init=False)
+    end_time: time = field(init=False)
+
+    def __post_init__(self):
+        self.start_time = datetime.strptime(self.start, "%H:%M").time()
+        self.end_time = datetime.strptime(self.end, "%H:%M").time()
 
 @dataclass
 class PricingData:
@@ -101,6 +109,7 @@ class PricingData:
 
 @dataclass
 class PriceCalculationResult:
+    """Результат расчёта целевой цены и маржинальности."""
     sku: str
     target_min_price: float
     strategy_price: Optional[float]
@@ -111,6 +120,7 @@ class PriceCalculationResult:
 
 @dataclass
 class UpdateRequest:
+    """Запрос на обновление цены в Ozon API (устарело, использовать DTO)."""
     product_id: int
     price: float
     min_price: float

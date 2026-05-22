@@ -1,14 +1,12 @@
-# infrastructure/loader.py
 import pandas as pd
 from pathlib import Path
 from typing import List, Dict, Optional, Any
-import logging
-from core.entities import ProductInfo, StrategyInterval
+from core.entities import PriceCalculationResult, ProductInfo, StrategyInterval
+from core.repository import ILoader
+from infrastructure.logger import logger
 
-logger = logging.getLogger(__name__)
 
-
-class DataLoader:
+class ExcelLoader(ILoader):
     """Загрузка данных из Excel-файла с таблицей товаров (без ссылок на конкурентов)."""
 
     COLUMN_MAPPING = {
@@ -25,10 +23,9 @@ class DataLoader:
         self._strategies: Dict[str, List[StrategyInterval]] = {}
 
     # ------------------------------------------------------------------
-    # Основной метод загрузки
+    # Реализация интерфейса ILoader
     # ------------------------------------------------------------------
     def load(self) -> List[ProductInfo]:
-        """Читает Excel и возвращает список ProductInfo. Одновременно заполняет self._strategies."""
         if not self.file_path.exists():
             logger.error(f"Файл {self.file_path} не найден")
             return []
@@ -40,7 +37,6 @@ class DataLoader:
         df = pd.read_excel(self.file_path, engine='openpyxl', dtype=str)
         df.columns = df.columns.str.lower().str.strip()
 
-        # Нормализация SKU
         for sku_col in ['sku', 'артикул', 'article', 'id', 'offer_id']:
             if sku_col in df.columns:
                 df[sku_col] = df[sku_col].str.strip()
@@ -58,117 +54,9 @@ class DataLoader:
         logger.info(f"Загружено {len(products)} товаров")
         return products
 
-    # ------------------------------------------------------------------
-    # Парсинг одной строки
-    # ------------------------------------------------------------------
-    def _parse_row(self, row: pd.Series, columns: pd.Index) -> tuple[Optional[ProductInfo], List[StrategyInterval]]:
-        product_dict = {}
-
-        # 1. Простые поля (без product_name)
-        for std_name, synonyms in self.COLUMN_MAPPING.items():
-            value = None
-            for syn in synonyms:
-                if syn in columns:
-                    val = row.get(syn)
-                    if pd.notna(val):
-                        value = val
-                        break
-            product_dict[std_name] = value
-
-        if not product_dict.get('sku'):
-            logger.warning("Пропущена строка без SKU")
-            return None, []
-
-        # 2. Интервалы стратегий
-        intervals = []
-        for i in range(1, self.SCHEDULE_INTERVALS_COUNT + 1):
-            time_col = self._find_column(columns, [f'интервал {i}', f'промежуток {i}'])
-            strategy_col = self._find_column(columns, [f'стратегия {i}', f'стратеги {i}'])
-            percent_col = self._find_column(columns, [f'процент {i}', f'percent_{i}'])
-
-            if not time_col:
-                continue
-
-            time_val = row.get(time_col)
-            if pd.isna(time_val) or not str(time_val).strip():
-                continue
-
-            time_range = str(time_val).strip()
-            if '-' not in time_range:
-                logger.warning(f"Неверный формат интервала '{time_range}'")
-                continue
-
-            start, end = time_range.split('-', 1)
-            start, end = start.strip(), end.strip()
-
-            strategy_val = row.get(strategy_col) if strategy_col else None
-            percent_val = row.get(percent_col) if percent_col else None
-
-            try:
-                strategy = int(float(strategy_val)) if pd.notna(strategy_val) else 3
-            except Exception:
-                strategy = 3
-            try:
-                percent = float(percent_val) if pd.notna(percent_val) else 0.0
-            except Exception:
-                percent = 0.0
-
-            intervals.append(StrategyInterval(
-                start=start, end=end,
-                strategy_type=strategy, percent=percent
-            ))
-
-        if not intervals:
-            base_strategy = self._get_int(row, columns, ['стратегия', 'strategy'], 3)
-            base_percent = self._get_float(row, columns, ['процент', 'percent'], 0.0)
-            intervals.append(StrategyInterval(
-                start='00:00', end='23:59',
-                strategy_type=base_strategy, percent=base_percent
-            ))
-
-        # 3. Числовые поля (только cost_price и min_price)
-        cost_price = 0.0
-        if product_dict.get('cost_price') is not None:
-            try:
-                cost_price = float(product_dict['cost_price'])
-            except Exception:
-                pass
-
-        min_price = 0.0
-        if product_dict.get('min_price') is not None:
-            try:
-                min_price = float(product_dict['min_price'])
-            except Exception:
-                pass
-
-        old_price = None
-        if product_dict.get('old_price') is not None:
-            try:
-                val = float(product_dict['old_price'])
-                old_price = val   # может быть 0.0 или положительным
-            except Exception:
-                pass
-
-        product = ProductInfo(
-            sku=product_dict['sku'],
-            product_name=None,
-            cost_price=cost_price,
-            min_price=min_price,
-            current_price=0.0,
-            old_price=old_price
-        )
-        return product, intervals
-
-    # ------------------------------------------------------------------
-    # Доступ к стратегиям
-    # ------------------------------------------------------------------
     def get_strategy_intervals(self, product: ProductInfo) -> List[StrategyInterval]:
-        """Возвращает интервалы стратегий для конкретного товара."""
         return self._strategies.get(product.sku, [])
 
-    # ------------------------------------------------------------------
-    # Обновление Excel-файла (запись результатов)
-    # ------------------------------------------------------------------
     def update_product_in_file(self, sku: str, updates: Dict[str, Any]) -> bool:
         try:
             from openpyxl import load_workbook
@@ -240,8 +128,102 @@ class DataLoader:
             return False
 
     # ------------------------------------------------------------------
-    # Вспомогательные методы
+    # Приватные вспомогательные методы
     # ------------------------------------------------------------------
+    def _parse_row(self, row: pd.Series, columns: pd.Index) -> tuple[Optional[ProductInfo], List[StrategyInterval]]:
+        product_dict = {}
+        for std_name, synonyms in self.COLUMN_MAPPING.items():
+            value = None
+            for syn in synonyms:
+                if syn in columns:
+                    val = row.get(syn)
+                    if pd.notna(val):
+                        value = val
+                        break
+            product_dict[std_name] = value
+
+        if not product_dict.get('sku'):
+            logger.warning("Пропущена строка без SKU")
+            return None, []
+
+        intervals = []
+        for i in range(1, self.SCHEDULE_INTERVALS_COUNT + 1):
+            time_col = self._find_column(columns, [f'интервал {i}', f'промежуток {i}'])
+            strategy_col = self._find_column(columns, [f'стратегия {i}', f'стратеги {i}'])
+            percent_col = self._find_column(columns, [f'процент {i}', f'percent_{i}'])
+
+            if not time_col:
+                continue
+
+            time_val = row.get(time_col)
+            if pd.isna(time_val) or not str(time_val).strip():
+                continue
+
+            time_range = str(time_val).strip()
+            if '-' not in time_range:
+                logger.warning(f"Неверный формат интервала '{time_range}'")
+                continue
+
+            start, end = time_range.split('-', 1)
+            start, end = start.strip(), end.strip()
+
+            strategy_val = row.get(strategy_col) if strategy_col else None
+            percent_val = row.get(percent_col) if percent_col else None
+
+            try:
+                strategy = int(float(strategy_val)) if pd.notna(strategy_val) else 3
+            except Exception:
+                strategy = 3
+            try:
+                percent = float(percent_val) if pd.notna(percent_val) else 0.0
+            except Exception:
+                percent = 0.0
+
+            intervals.append(StrategyInterval(
+                start=start, end=end,
+                strategy_type=strategy, percent=percent
+            ))
+
+        if not intervals:
+            base_strategy = self._get_int(row, columns, ['стратегия', 'strategy'], 3)
+            base_percent = self._get_float(row, columns, ['процент', 'percent'], 0.0)
+            intervals.append(StrategyInterval(
+                start='00:00', end='23:59',
+                strategy_type=base_strategy, percent=base_percent
+            ))
+
+        cost_price = 0.0
+        if product_dict.get('cost_price') is not None:
+            try:
+                cost_price = float(product_dict['cost_price'])
+            except Exception:
+                pass
+
+        min_price = 0.0
+        if product_dict.get('min_price') is not None:
+            try:
+                min_price = float(product_dict['min_price'])
+            except Exception:
+                pass
+
+        old_price = None
+        if product_dict.get('old_price') is not None:
+            try:
+                val = float(product_dict['old_price'])
+                old_price = val
+            except Exception:
+                pass
+
+        product = ProductInfo(
+            sku=product_dict['sku'],
+            product_name=None,
+            cost_price=cost_price,
+            min_price=min_price,
+            current_price=0.0,
+            old_price=old_price
+        )
+        return product, intervals
+
     def _find_column(self, columns: pd.Index, candidates: List[str]) -> Optional[str]:
         for cand in candidates:
             if cand in columns:
@@ -269,3 +251,23 @@ class DataLoader:
                 except Exception:
                     pass
         return default
+    
+    def build_excel_updates(self, product: ProductInfo, result: PriceCalculationResult,
+                            marginality_week: float, marginality_month: float,
+                            old_price_update: Optional[int]) -> Dict[str, Any]:
+        """Формирует словарь обновлений для Excel на основе результатов расчёта."""
+        discount_coef = result.log_details.get('discount_coef', 1.0)
+        real_price = result.result_target_price * discount_coef
+        current_price_excel = int(round(real_price))
+        min_price_excel = int(round(product.min_price))
+
+        updates = {
+            'current_price': current_price_excel,
+            'min_price': min_price_excel,
+            'margin': result.marginality,
+            'margin_week': marginality_week,
+            'margin_month': marginality_month,
+        }
+        if old_price_update is not None:
+            updates['old_price'] = old_price_update
+        return updates

@@ -1,29 +1,28 @@
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
+import pytest
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from core.use_cases import RepricingUseCase
 from core.entities import ProductInfo, PricingData, StrategyInterval
-from core.services import PriceCalculationService
 
-def test_execute_dry_run():
+
+@pytest.mark.asyncio
+async def test_execute_dry_run():
     repo = MagicMock()
-    api = MagicMock()
+    api = AsyncMock()
     notifier = MagicMock()
     loader = MagicMock()
-    calc = PriceCalculationService()
 
-    # Мокаем загрузку одного товара
     product = ProductInfo(sku="123", min_price=200.0, cost_price=150.0)
     loader.load.return_value = [product]
 
-    # Мокаем получение product_id
     api.get_product_ids_by_skus.return_value = {
         "123": {"product_id": 1, "offer_id": "off1", "product_name": "Test Product"}
     }
 
-    # Мокаем получение цен
     pricing = PricingData(
         product_id=1,
         price=1000.0,
@@ -40,10 +39,8 @@ def test_execute_dry_run():
     )
     api.get_product_prices.return_value = [pricing]
 
-    # Мокаем стратегии
     repo.get_strategies.return_value = [StrategyInterval(start="00:00", end="23:59", strategy_type=3, percent=0.0)]
 
-    # Мокаем сохранение в БД и Excel
     repo.upsert_product.return_value = True
     repo.set_strategies.return_value = True
     repo.save_price_history.return_value = True
@@ -51,32 +48,30 @@ def test_execute_dry_run():
     repo.get_average_marginality.return_value = None
     loader.update_product_in_file.return_value = True
 
-    use_case = RepricingUseCase(repo, api, notifier, calc, loader)
-    stats = use_case.execute(dry_run=True)
+    use_case = RepricingUseCase(repo, api, notifier, loader)
+    stats = await use_case.execute(dry_run=True)
 
     assert stats['products_loaded'] == 1
-    assert stats['prices_updated'] == 1  # один товар обработан
+    assert stats['prices_updated'] == 1
     assert stats['errors'] == []
-    # Проверяем, что обновление цен в API не вызывалось (dry_run)
     api.update_prices.assert_not_called()
-    # Проверяем, что Excel обновлялся (хотя бы один раз)
     loader.update_product_in_file.assert_called()
-    # Проверяем, что уведомление отправлено
-    notifier.notify_cycle_complete.assert_called_once()
+    notifier.send_detailed_report.assert_called_once()
 
-def test_execute_without_products():
+
+@pytest.mark.asyncio
+async def test_execute_without_products():
     repo = MagicMock()
-    api = MagicMock()
+    api = AsyncMock()
     notifier = MagicMock()
     loader = MagicMock()
-    calc = PriceCalculationService()
     loader.load.return_value = []
 
-    use_case = RepricingUseCase(repo, api, notifier, calc, loader)
-    stats = use_case.execute(dry_run=False)
+    use_case = RepricingUseCase(repo, api, notifier, loader)
+    stats = await use_case.execute(dry_run=False)
 
     assert stats['products_loaded'] == 0
     assert stats['prices_updated'] == 0
     assert stats['errors'] == []
     api.update_prices.assert_not_called()
-    notifier.notify_cycle_complete.assert_called_once_with(updated_count=0, errors=None)
+    notifier.send_detailed_report.assert_called_once_with([], [], dry_run=False)

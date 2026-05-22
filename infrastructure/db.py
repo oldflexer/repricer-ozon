@@ -7,16 +7,15 @@ import logging
 
 from core.entities import ProductInfo, StrategyInterval, PricingData, PriceCalculationResult
 from core.repository import IProductRepository
-from config.settings import DATABASE_PATH
-
-logger = logging.getLogger(__name__)
+from config.settings import settings
+from infrastructure.logger import logger
 
 
 class SQLiteRepository(IProductRepository):
     # Текущая версия схемы БД (увеличивать при добавлении миграций)
-    SCHEMA_VERSION = 2
+    SCHEMA_VERSION = 3
 
-    def __init__(self, db_path: Path = DATABASE_PATH):
+    def __init__(self, db_path: Path = settings.DATABASE_PATH):
         self.db_path = db_path
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._init_tables()
@@ -104,11 +103,13 @@ class SQLiteRepository(IProductRepository):
             conn.execute("INSERT OR IGNORE INTO schema_version (version) VALUES (2)")
             current = self._get_schema_version(conn)
 
-        # Если в будущем понадобятся новые миграции, добавляем блоки:
-        # if current == 2:
-        #     logger.info("Применяем миграцию 2 -> 3: ...")
-        #     conn.execute(...)
-        #     conn.execute("INSERT OR IGNORE INTO schema_version (version) VALUES (3)")
+        if current == 2:
+            logger.info("Применяем миграцию 2 -> 3: добавление индексов")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_product_sku ON product(sku)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_history_product_timestamp ON product_price_history(product_id, timestamp)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_marginality_product_timestamp ON product_marginality_history(product_id, timestamp)")
+            conn.execute("INSERT OR IGNORE INTO schema_version (version) VALUES (3)")
+            current = 3
 
         if current < self.SCHEMA_VERSION:
             logger.error(f"Текущая версия {current} ниже целевой {self.SCHEMA_VERSION}, но миграций больше нет")
@@ -122,6 +123,7 @@ class SQLiteRepository(IProductRepository):
 
     # ------------------- Товары -------------------
     def get_all_products(self) -> List[ProductInfo]:
+        """Возвращает список всех товаров из таблицы product."""
         with self._get_connection() as conn:
             rows = conn.execute("""
                 SELECT product_id, offer_id, sku, product_name, rip, net_price, real_customer_price
@@ -141,6 +143,7 @@ class SQLiteRepository(IProductRepository):
             ]
 
     def upsert_product(self, product: ProductInfo) -> bool:
+        """Вставляет или обновляет информацию о товаре."""
         with self._get_connection() as conn:
             conn.execute("""
                 INSERT OR REPLACE INTO product (product_id, offer_id, sku, product_name, rip, net_price, real_customer_price)
