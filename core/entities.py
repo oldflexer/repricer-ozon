@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, time
 from typing import Optional, List
 
 @dataclass
@@ -20,6 +20,12 @@ class StrategyInterval:
     end: str
     strategy_type: int
     percent: float = 0.0
+    start_time: time = field(init=False)
+    end_time: time = field(init=False)
+
+    def __post_init__(self):
+        self.start_time = datetime.strptime(self.start, "%H:%M").time()
+        self.end_time = datetime.strptime(self.end, "%H:%M").time()
 
 @dataclass
 class PricingData:

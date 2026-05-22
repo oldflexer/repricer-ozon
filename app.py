@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 # Добавляем корень проекта в путь
 sys.path.insert(0, str(Path(__file__).parent))
 
-from config.settings import DATA_FILE, DATABASE_PATH, TIMEZONE
+from config.settings import DATA_FILE, DATABASE_PATH, TIMEZONE, settings
 from infrastructure.db import SQLiteRepository
 from infrastructure.loader import DataLoader
 from infrastructure.ozon_api import OzonApiClient
@@ -74,11 +74,10 @@ st.title("🔄 Репрайсер Ozon")
 repo = SQLiteRepository(DATABASE_PATH)
 
 def run_repricing(dry_run: bool = False) -> Dict[str, Any]:
-    """Запуск полного цикла репрайсинга через Ozon API."""
     loader = DataLoader(DATA_FILE)
     api = OzonApiClient()
     notifier = MailNotifier()
-    calc = PriceCalculationService()
+    calc = PriceCalculationService(default_coefficient=settings.COEFFICIENT_OZON)
     use_case = RepricingUseCase(repo, api, notifier, calc, loader)
     return use_case.execute(dry_run=dry_run)
 

@@ -1,29 +1,17 @@
 # PLAN.md — План рефакторинга и улучшения архитектуры репрайсера Ozon
 
-## 🎯 Цель
+## ✅ Выполненные улучшения
 
-Повысить надёжность, производительность, тестируемость и удобство сопровождения проекта, сохранив полную совместимость с текущей логикой работы (API Ozon, SQLite, Streamlit).
+- **Централизация конфигурации** (Pydantic) – все настройки в `settings.py`, переменные окружения, глобальные константы.
+- **Оптимизация разбора стратегий** – время парсится один раз при загрузке Excel, в `services.py` используются готовые объекты `time`.
+- **Вынос коэффициентов в конфиг** – `OLD_PRICE_MULTIPLIER`, `PRICE_ROUND_UP_TO`, `MANAGE_ELASTIC_BOOSTING`, функция `calculate_old_price`.
+- **Интеграционные тесты** – добавлен базовый тест для dry‑run цикла с in‑memory SQLite и мок-клиентом API.
 
 ---
 
-## 🔥 Этап 1. Быстрые победы
+## 🔥 Этап 1. Быстрые победы (оставшиеся)
 
-### 1.1 Вынос констант и коэффициентов в конфиг
-
-- Добавить в `settings.py` и `.env`:
-  - `OLD_PRICE_MULTIPLIER = 1.5` (коэффициент для расчёта old_price)
-  - `PRICE_ROUND_UP_TO = 100` (шаг округления old_price до сотен)
-  - `MANAGE_ELASTIC_BOOSTING = False` (флаг для API)
-- Создать функцию `calculate_old_price(price, manual_old_price, multiplier, round_to)` в `core/services.py`.
-
-### 1.2 Оптимизация разбора стратегий
-
-- В `core/entities.py` добавить в `StrategyInterval` поля:
-  - `start_time: time`
-  - `end_time: time`
-- При загрузке Excel (`loader.py`) сразу парсить строки в объекты `time`, избегая повторного `strptime` в `services.py`.
-
-### 1.3 Хелпер для обновления Excel
+### 1.1 Хелпер для обновления Excel
 
 - В `infrastructure/loader.py` добавить метод:
 
@@ -31,7 +19,7 @@
 
   чтобы централизовать формирование словаря обновлений.
 
-### 1.4 Добавление индексов в БД (миграция)
+### 1.2 Добавление индексов в БД (миграция)
 
 - Написать миграцию (ручную или через Alembic) для создания индексов:
 
@@ -39,13 +27,7 @@
       CREATE INDEX IF NOT EXISTS idx_history_product_timestamp ON product_price_history(product_id, timestamp);
       CREATE INDEX IF NOT EXISTS idx_marginality_product_timestamp ON product_marginality_history(product_id, timestamp);
 
-### 1.5 Централизация конфигурации через Pydantic
-
-- Установить `pydantic-settings`.
-- Создать `class Settings(BaseSettings)` в `config/settings.py`, загружающий все переменные из `.env`.
-- Заменить `os.getenv` везде на `settings.XXX`.
-
-### 1.6 Docstring для публичных методов
+### 1.3 Docstring для публичных методов
 
 - Добавить описания для:
   - `RepricingUseCase.execute`
@@ -103,7 +85,7 @@
   - Использовать `email.mime.base` для вложения.
 - Удалить старый метод `notify_cycle_complete`.
 
-### 2.6 Интеграционные тесты
+### 2.6 Интеграционные тесты (расширение)
 
 - Написать тесты для `PricingOrchestrator` (или `use_cases`) с:
   - In‑memory SQLite.

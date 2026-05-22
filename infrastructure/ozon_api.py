@@ -3,7 +3,7 @@ import logging
 import time
 from typing import List, Dict, Optional, Any
 
-from config.settings import OZON_CLIENT_ID, OZON_API_KEY, OZON_API_URL
+from config.settings import settings
 from core.entities import PricingData
 
 logger = logging.getLogger(__name__)
@@ -11,16 +11,13 @@ logger = logging.getLogger(__name__)
 
 class OzonApiClient:
     def __init__(self):
-        self.base_url = OZON_API_URL
+        self.base_url = settings.OZON_API_URL
         self.headers = {
-            'Client-Id': OZON_CLIENT_ID,
-            'Api-Key': OZON_API_KEY,
+            'Client-Id': settings.OZON_CLIENT_ID,
+            'Api-Key': settings.OZON_API_KEY,
             'Content-Type': 'application/json'
         }
 
-    # ----------------------------------------------------------------
-    # Получение product_id, offer_id, product_name по SKU
-    # ----------------------------------------------------------------
     def get_product_ids_by_skus(self, skus: List[str]) -> Dict[str, dict]:
         url = f"{self.base_url}/v3/product/info/list"
         result = {}
@@ -49,9 +46,6 @@ class OzonApiClient:
         logger.info(f"Получены product_id для {len(result)}/{len(unique_skus)} SKU")
         return result
 
-    # ----------------------------------------------------------------
-    # Получение цен по product_id
-    # ----------------------------------------------------------------
     def get_product_prices(self, product_ids: List[int]) -> List[PricingData]:
         url = f"{self.base_url}/v5/product/info/prices"
         all_prices = []
@@ -71,14 +65,7 @@ class OzonApiClient:
             time.sleep(0.2)
         return all_prices
 
-    # ----------------------------------------------------------------
-    # Отправка цен с детальным ответом по каждому товару
-    # ----------------------------------------------------------------
     def update_prices(self, prices_data: List[Dict]) -> Dict[int, Dict]:
-        """
-        Отправляет цены в Ozon API.
-        Возвращает словарь: { product_id: {'updated': bool, 'errors': list} }
-        """
         url = f"{self.base_url}/v1/product/import/prices"
         payload: dict[str, Any] = {"prices": prices_data}
         result_map = {}
@@ -107,9 +94,6 @@ class OzonApiClient:
                 result_map[item['product_id']] = {'updated': False, 'errors': [{'code': 'EXCEPTION', 'message': str(e)}]}
         return result_map
 
-    # ----------------------------------------------------------------
-    # Общий POST с повторными попытками
-    # ----------------------------------------------------------------
     def _post(self, url: str, payload: Any) -> Optional[dict]:
         max_retries = 3
         for attempt in range(max_retries):

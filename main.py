@@ -1,4 +1,3 @@
-import asyncio
 import logging
 import sys
 import argparse
@@ -6,7 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from config.settings import DATA_FILE
+from config.settings import DATA_FILE, settings
 from infrastructure.loader import DataLoader
 from infrastructure.db import SQLiteRepository
 from infrastructure.ozon_api import OzonApiClient
@@ -25,6 +24,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--dry-run', action='store_true')
@@ -34,12 +34,13 @@ def main():
     api = OzonApiClient()
     notifier = MailNotifier()
     loader = DataLoader(DATA_FILE)
-    calc_service = PriceCalculationService()
+    calc_service = PriceCalculationService(default_coefficient=settings.COEFFICIENT_OZON)
 
     use_case = RepricingUseCase(repo, api, notifier, calc_service, loader)
     stats = use_case.execute(dry_run=args.dry_run)
 
     logger.info(f"Результат: {stats}")
+
 
 if __name__ == "__main__":
     main()

@@ -3,28 +3,49 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 import pytz
+from typing import Optional
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 TIMEZONE = pytz.timezone('Europe/Moscow')
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / '.env')
 
-# Ozon API
-OZON_CLIENT_ID = os.getenv('OZON_CLIENT_ID')
-OZON_API_KEY = os.getenv('OZON_API_KEY')
-OZON_API_URL = 'https://api-seller.ozon.ru'
 
-# Email
-SMTP_HOST = os.getenv('SMTP_HOST', 'smtp.yandex.ru')
-SMTP_PORT = int(os.getenv('SMTP_PORT', '587'))
-SMTP_USER = os.getenv('SMTP_USER')
-SMTP_PASSWORD = os.getenv('SMTP_PASSWORD')
-SENDER_EMAIL = os.getenv('SENDER_EMAIL', SMTP_USER)
-RECIPIENT_EMAIL = os.getenv('RECIPIENT_EMAIL')
+class Settings(BaseSettings):
+    OZON_CLIENT_ID: Optional[str] = None
+    OZON_API_KEY: Optional[str] = None
+    OZON_API_URL: str = "https://api-seller.ozon.ru"
 
-# Расчёт цен
-COEFFICIENT_OZON = float(os.getenv('COEFFICIENT_OZON', '0.5'))
+    SMTP_HOST: str = "smtp.yandex.ru"
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    SENDER_EMAIL: str = ""
+    RECIPIENT_EMAIL: str = ""
 
-# Данные
-DATA_FILE = Path(os.getenv('DATA_FILE', BASE_DIR / 'data' / 'products.xlsx'))
-DATABASE_PATH = BASE_DIR / 'data' / 'repricer.db'
+    COEFFICIENT_OZON: float = 0.5
+    OLD_PRICE_MULTIPLIER: float = 1.5
+    PRICE_ROUND_UP_TO: int = 100
+    MANAGE_ELASTIC_BOOSTING: bool = False
+
+    DATA_FILE: Path = BASE_DIR / "data" / "products.xlsx"
+    DATABASE_PATH: Path = BASE_DIR / "data" / "repricer.db"
+
+    NOTIFICATION_MAX_DETAILS: int = 20
+
+    WEB_USER: str = "admin"
+    WEB_PASS: str = "changeme"
+
+    model_config = SettingsConfigDict(extra='ignore')
+
+
+settings = Settings()
+
+# Глобальные переменные для обратной совместимости
+DATA_FILE = settings.DATA_FILE
+DATABASE_PATH = settings.DATABASE_PATH
+COEFFICIENT_OZON = settings.COEFFICIENT_OZON
+OLD_PRICE_MULTIPLIER = settings.OLD_PRICE_MULTIPLIER
+PRICE_ROUND_UP_TO = settings.PRICE_ROUND_UP_TO
+MANAGE_ELASTIC_BOOSTING = settings.MANAGE_ELASTIC_BOOSTING

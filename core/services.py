@@ -5,15 +5,13 @@ from .entities import StrategyInterval, PricingData, PriceCalculationResult
 
 logger = logging.getLogger(__name__)
 
-class PriceCalculationService:
-    """Полный расчёт целевой цены согласно новому алгоритму."""
 
+class PriceCalculationService:
     def __init__(self, default_coefficient: float = 0.5):
         self.default_coefficient = default_coefficient
 
     def calculate(self, sku: str, pricing: PricingData, rip: float,
                   intervals: List[StrategyInterval]) -> PriceCalculationResult:
-        # 1. Приблизительная реальная цена на основе индексов
         index_prices = []
         index_data = []
         approx_index_price = None
@@ -37,31 +35,25 @@ class PriceCalculationService:
         else:
             approx_real_price = None
 
-        # 2. Коэффициент скидки
         if approx_real_price is not None and pricing.marketing_seller_price and pricing.marketing_seller_price > 0:
             discount_coef = approx_real_price / pricing.marketing_seller_price
         else:
             discount_coef = self.default_coefficient
 
-        # 3. target_min_price = rip / discount_coef
         target_min_price = rip / discount_coef if discount_coef else rip
 
-        # 4. Активная стратегия
         now = datetime.now().time()
         active = next(
-            (inv for inv in intervals
-             if datetime.strptime(inv.start, "%H:%M").time() <= now <= datetime.strptime(inv.end, "%H:%M").time()),
+            (inv for inv in intervals if inv.start_time <= now <= inv.end_time),
             None
         )
+        
         strategy_type = active.strategy_type if active else 3
         percent = active.percent if active else 0.0
 
-        # 5. Расчёт стратегической цены
         target_strategy_price = None
         strategy_price = None
-
         if pricing.ozon_index_data_price and pricing.ozon_index_data_price != 0:
-            # Есть индекс Ozon – стратегия от него
             base = pricing.ozon_index_data_price
             if strategy_type == 1:
                 strategy_price = base * (1 - percent / 100)
@@ -72,24 +64,14 @@ class PriceCalculationService:
             target_strategy_price = strategy_price / discount_coef if discount_coef else strategy_price
             result_target_price = max(target_strategy_price, target_min_price)
         else:
-            # Нет индекса Ozon – стратегия от РИЦ (rip)
-            if strategy_type == 1:
-                strategy_price = rip * (1 - percent / 100)
-            elif strategy_type == 2:
-                strategy_price = rip * (1 + percent / 100)
-            else:
-                strategy_price = rip   # для стратегии «равная» просто rip
-            target_strategy_price = strategy_price / discount_coef if discount_coef else strategy_price
-            result_target_price = max(target_strategy_price, target_min_price)
+            result_target_price = target_min_price
 
-        # Округление для API
         result_target_price = round(result_target_price)
 
-        # 6. Расчёт маржинальности по новой формуле (FBS)
         sales_commission_fbs = result_target_price * (pricing.sales_percent_fbs / 100)
         fbs_first_mile_avg = (pricing.fbs_first_mile_min_amount + pricing.fbs_first_mile_max_amount) / 2
         fbs_direct_flow_trans_avg = (pricing.fbs_direct_flow_trans_min_amount + pricing.fbs_direct_flow_trans_max_amount) / 2
-        
+
         total_costs = (
             sales_commission_fbs +
             fbs_first_mile_avg +
@@ -97,13 +79,12 @@ class PriceCalculationService:
             pricing.fbs_deliv_to_customer_amount +
             pricing.net_price
         )
-        
+
         if result_target_price > 0:
             marginality = (result_target_price - total_costs) / result_target_price
         else:
             marginality = 0.0
 
-        # Реальная цена для покупателя (с учётом коэффициента, но не используется в марже)
         real_price = result_target_price * discount_coef
 
         log_details = {
@@ -138,3 +119,11 @@ class PriceCalculationService:
             marginality=marginality,
             log_details=log_details
         )
+
+
+def calculate_old_price(price: float, manual_old_price: Optional[float] = None,
+                        multiplier: float = 1.5, round_to: int = 100) -> int:
+    if manual_old_price is not None and manual_old_price > price * multiplier:
+        return int(round(manual_old_price))
+    old = price * multiplier
+    return int((old + round_to - 1) // round_to * round_to)
