@@ -9,7 +9,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from infrastructure.db import SQLiteRepository
 from infrastructure.loader import DataLoader
 from infrastructure.mail_notifier import MailNotifier
-from core.services import PriceCalculationService
 from core.use_cases import RepricingUseCase
 from core.entities import PricingData
 from config.settings import settings
@@ -75,7 +74,6 @@ async def test_full_cycle_dry_run(tmp_path):
 
     loader = DataLoader(excel_path)
     notifier = MailNotifier()
-    calc = PriceCalculationService(default_coefficient=settings.COEFFICIENT_OZON)
 
     mock_api = MockOzonApiClient()
     mock_api.set_product('123', 1, 'off123', 'Test Product')
@@ -103,7 +101,7 @@ async def test_full_cycle_dry_run(tmp_path):
     )
     mock_api.set_price(1, pricing)
 
-    use_case = RepricingUseCase(repo, mock_api, notifier, calc, loader)
+    use_case = RepricingUseCase(repo, mock_api, notifier, loader)
     stats = await use_case.execute(dry_run=True)
 
     assert stats['products_loaded'] == 1

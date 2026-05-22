@@ -10,6 +10,8 @@ import logging
 from typing import Dict, Any, List
 from datetime import datetime, timedelta
 
+from core.mappers import to_view_model
+
 # Добавляем корень проекта в путь
 sys.path.insert(0, str(Path(__file__).parent))
 
@@ -80,8 +82,7 @@ def run_repricing(dry_run: bool = False) -> Dict[str, Any]:
         loader = DataLoader(DATA_FILE)
         api = OzonApiClient()
         notifier = MailNotifier()
-        calc = PriceCalculationService(default_coefficient=settings.COEFFICIENT_OZON)
-        use_case = RepricingUseCase(repo, api, notifier, calc, loader)
+        use_case = RepricingUseCase(repo, api, notifier, loader)
         try:
             stats = await use_case.execute(dry_run=dry_run)
         finally:
@@ -201,15 +202,16 @@ with tab1:
             avg_week = repo.get_average_marginality(p.sku, 7)
             avg_month = repo.get_average_marginality(p.sku, 30)
 
+            view = to_view_model(p, last_price, last_margin, avg_week, avg_month)
             rows.append({
-                "SKU": p.sku,
-                "Название": p.product_name,
-                "Себестоимость": p.cost_price,
-                "Мин. цена (РИЦ)": p.min_price,
-                "Текущая цена": f"{last_price:.0f}" if last_price else "—",
-                "Маржинальность, %": f"{last_margin*100:.2f}" if last_margin else "—",
-                "Ср. неделя, %": f"{avg_week*100:.2f}" if avg_week else "—",
-                "Ср. месяц, %": f"{avg_month*100:.2f}" if avg_month else "—",
+                "SKU": view.sku,
+                "Название": view.name,
+                "Себестоимость": view.cost_price,
+                "Мин. цена (РИЦ)": view.min_price,
+                "Текущая цена": f"{view.current_price:.0f}" if view.current_price else "—",
+                "Маржинальность, %": f"{view.marginality_percent:.2f}" if view.marginality_percent else "—",
+                "Ср. неделя, %": f"{view.avg_week_margin:.2f}" if view.avg_week_margin else "—",
+                "Ср. месяц, %": f"{view.avg_month_margin:.2f}" if view.avg_month_margin else "—",
             })
 
         if rows:

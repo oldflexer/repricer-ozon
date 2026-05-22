@@ -7,7 +7,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from core.use_cases import RepricingUseCase
 from core.entities import ProductInfo, PricingData, StrategyInterval
-from core.services import PriceCalculationService
 
 
 @pytest.mark.asyncio
@@ -16,7 +15,6 @@ async def test_execute_dry_run():
     api = AsyncMock()
     notifier = MagicMock()
     loader = MagicMock()
-    calc = PriceCalculationService()
 
     product = ProductInfo(sku="123", min_price=200.0, cost_price=150.0)
     loader.load.return_value = [product]
@@ -50,7 +48,7 @@ async def test_execute_dry_run():
     repo.get_average_marginality.return_value = None
     loader.update_product_in_file.return_value = True
 
-    use_case = RepricingUseCase(repo, api, notifier, calc, loader)
+    use_case = RepricingUseCase(repo, api, notifier, loader)
     stats = await use_case.execute(dry_run=True)
 
     assert stats['products_loaded'] == 1
@@ -67,10 +65,9 @@ async def test_execute_without_products():
     api = AsyncMock()
     notifier = MagicMock()
     loader = MagicMock()
-    calc = PriceCalculationService()
     loader.load.return_value = []
 
-    use_case = RepricingUseCase(repo, api, notifier, calc, loader)
+    use_case = RepricingUseCase(repo, api, notifier, loader)
     stats = await use_case.execute(dry_run=False)
 
     assert stats['products_loaded'] == 0

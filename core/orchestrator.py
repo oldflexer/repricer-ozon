@@ -1,9 +1,11 @@
 import asyncio
 import logging
 from typing import Dict, Any, List
+
 from .entities import ProductInfo, PricingData
 from .repository import IProductRepository
 from .services import PriceCalculationService, calculate_old_price
+from .mappers import build_price_update_request
 from config.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -99,14 +101,24 @@ class PricingOrchestrator:
 
             min_price_for_api = int(round(product.min_price / discount_coef)) if discount_coef else int(round(product.min_price))
 
+            net_price_val = int(round(pricing.net_price)) if pricing.net_price else None
+            
+            req = build_price_update_request(
+                product_id=product.product_id,
+                price=int(round(result.result_target_price)),
+                min_price=min_price_for_api,
+                net_price=net_price_val,
+                old_price=old_price_for_api,
+                manage_elastic_boosting=settings.MANAGE_ELASTIC_BOOSTING
+            )
             updates_for_ozon.append({
-                'product_id': product.product_id,
+                'product_id': req.product_id,
                 'offer_id': product.offer_id or '',
-                'price': f"{int(round(result.result_target_price))}",
-                'min_price': f"{min_price_for_api}",
-                'net_price': f"{int(round(pricing.net_price))}" if pricing.net_price else None,
-                'old_price': f"{old_price_for_api}",
-                'manage_elastic_boosting_through_price': settings.MANAGE_ELASTIC_BOOSTING
+                'price': str(req.price),
+                'min_price': str(req.min_price),
+                'net_price': str(req.net_price) if req.net_price else None,
+                'old_price': str(req.old_price) if req.old_price else None,
+                'manage_elastic_boosting_through_price': req.manage_elastic_boosting_through_price
             })
 
         if not dry_run:

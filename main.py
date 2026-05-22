@@ -11,7 +11,6 @@ from infrastructure.loader import DataLoader
 from infrastructure.db import SQLiteRepository
 from infrastructure.ozon_api import OzonApiClient
 from infrastructure.mail_notifier import MailNotifier
-from core.services import PriceCalculationService
 from core.use_cases import RepricingUseCase
 
 log_file = Path(__file__).parent / 'repricer.log'
@@ -35,9 +34,8 @@ async def main():
     api = OzonApiClient()
     notifier = MailNotifier()
     loader = DataLoader(DATA_FILE)
-    calc_service = PriceCalculationService(default_coefficient=settings.COEFFICIENT_OZON)
 
-    use_case = RepricingUseCase(repo, api, notifier, calc_service, loader)
+    use_case = RepricingUseCase(repo, api, notifier, loader)
     stats = await use_case.execute(dry_run=args.dry_run)
 
     logger.info(f"Результат: {stats}")
