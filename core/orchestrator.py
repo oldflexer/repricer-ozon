@@ -88,14 +88,10 @@ class PricingOrchestrator:
             )
             old_price_excel_update = old_price_for_api
 
-            excel_updates = {
-                'current_price': current_price_excel,
-                'min_price': min_price_excel,
-                'margin': result.marginality,
-                'margin_week': marginality_week,
-                'margin_month': marginality_month,
-                'old_price': old_price_excel_update
-            }
+            excel_updates = self.loader.build_excel_updates(
+                product, result, marginality_week, marginality_month, old_price_excel_update
+            )
+
             self.loader.update_product_in_file(product.sku, excel_updates)
 
             min_price_for_api = int(round(product.min_price / discount_coef)) if discount_coef else int(round(product.min_price))

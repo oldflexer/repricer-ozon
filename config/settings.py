@@ -41,14 +41,3 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
-
-# Глобальные переменные для обратной совместимости
-OZON_CLIENT_ID = settings.OZON_CLIENT_ID
-OZON_API_KEY = settings.OZON_API_KEY
-OZON_API_URL = settings.OZON_API_URL
-DATA_FILE = settings.DATA_FILE
-DATABASE_PATH = settings.DATABASE_PATH
-COEFFICIENT_OZON = settings.COEFFICIENT_OZON
-OLD_PRICE_MULTIPLIER = settings.OLD_PRICE_MULTIPLIER
-PRICE_ROUND_UP_TO = settings.PRICE_ROUND_UP_TO
-MANAGE_ELASTIC_BOOSTING = settings.MANAGE_ELASTIC_BOOSTING

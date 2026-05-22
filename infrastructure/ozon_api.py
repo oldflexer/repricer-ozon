@@ -58,6 +58,12 @@ class OzonApiClient:
         return result
 
     async def get_product_prices(self, product_ids: List[int]) -> List[PricingData]:
+        """
+        Получает цены, индексы и комиссии для списка товаров.
+        
+        :param product_ids: Список идентификаторов товаров в Ozon.
+        :return: Список объектов PricingData с информацией о ценах.
+        """
         url = f"{self.base_url}/v5/product/info/prices"
         all_prices = []
         batch_size = 100
@@ -72,6 +78,12 @@ class OzonApiClient:
         return all_prices
 
     async def update_prices(self, prices_data: List[Dict]) -> Dict[int, Dict]:
+        """
+        Отправляет новые цены в Ozon.
+        
+        :param prices_data: Список словарей с данными для обновления (product_id, price, min_price и т.д.)
+        :return: Словарь {product_id: {'updated': bool, 'errors': list}}.
+        """
         url = f"{self.base_url}/v1/product/import/prices"
         payload = {"prices": prices_data}
         result_map = {}

@@ -12,6 +12,15 @@ class PriceCalculationService:
 
     def calculate(self, sku: str, pricing: PricingData, rip: float,
                   intervals: List[StrategyInterval]) -> PriceCalculationResult:
+        """
+        Вычисляет целевую цену для отправки в Ozon и маржинальность.
+        
+        :param sku: Артикул товара.
+        :param pricing: Данные о ценах, индексах и комиссиях из API.
+        :param rip: Минимальная допустимая цена (РИЦ) из Excel.
+        :param intervals: Список временных интервалов стратегий.
+        :return: Результат расчёта, включающий целевую цену, маржинальность и логи.
+        """
         index_prices = []
         index_data = []
         approx_index_price = None

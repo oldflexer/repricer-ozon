@@ -1,7 +1,7 @@
 import pandas as pd
 from pathlib import Path
 from typing import List, Dict, Optional, Any
-from core.entities import ProductInfo, StrategyInterval
+from core.entities import PriceCalculationResult, ProductInfo, StrategyInterval
 from core.repository import ILoader
 from infrastructure.logger import logger
 
@@ -251,3 +251,23 @@ class ExcelLoader(ILoader):
                 except Exception:
                     pass
         return default
+    
+    def build_excel_updates(self, product: ProductInfo, result: PriceCalculationResult,
+                            marginality_week: float, marginality_month: float,
+                            old_price_update: Optional[int]) -> Dict[str, Any]:
+        """Формирует словарь обновлений для Excel на основе результатов расчёта."""
+        discount_coef = result.log_details.get('discount_coef', 1.0)
+        real_price = result.result_target_price * discount_coef
+        current_price_excel = int(round(real_price))
+        min_price_excel = int(round(product.min_price))
+
+        updates = {
+            'current_price': current_price_excel,
+            'min_price': min_price_excel,
+            'margin': result.marginality,
+            'margin_week': marginality_week,
+            'margin_month': marginality_month,
+        }
+        if old_price_update is not None:
+            updates['old_price'] = old_price_update
+        return updates

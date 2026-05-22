@@ -1,5 +1,4 @@
 import asyncio
-
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
@@ -11,15 +10,13 @@ from datetime import datetime, timedelta
 
 from core.mappers import to_view_model
 
-# Добавляем корень проекта в путь
 sys.path.insert(0, str(Path(__file__).parent))
 
-from config.settings import DATA_FILE, DATABASE_PATH, TIMEZONE, settings
+from config.settings import settings, TIMEZONE
 from infrastructure.db import SQLiteRepository
 from infrastructure.excel_loader import ExcelLoader
 from infrastructure.ozon_api import OzonApiClient
 from infrastructure.mail_notifier import MailNotifier
-from core.services import PriceCalculationService
 from core.use_cases import RepricingUseCase
 from core.entities import ProductInfo, StrategyInterval
 from infrastructure.logger import logger
@@ -63,12 +60,11 @@ st.markdown("""
 
 st.title("🔄 Репрайсер Ozon")
 
-# Инициализация репозитория для отображения данных
-repo = SQLiteRepository(DATABASE_PATH)
+repo = SQLiteRepository(settings.DATABASE_PATH)
 
 def run_repricing(dry_run: bool = False) -> Dict[str, Any]:
     async def _run():
-        loader = ExcelLoader(DATA_FILE)   # замена
+        loader = ExcelLoader(settings.DATA_FILE)
         api = OzonApiClient()
         notifier = MailNotifier()
         use_case = RepricingUseCase(repo, api, notifier, loader)
@@ -122,17 +118,17 @@ with st.sidebar:
     uploaded_file = st.file_uploader("", type=["xlsx"], label_visibility="collapsed")
     
     if uploaded_file is not None:
-        with open(DATA_FILE, "wb") as f:
+        with open(settings.DATA_FILE, "wb") as f:
             f.write(uploaded_file.getbuffer())
-        st.success(f"✅ Файл загружен: {DATA_FILE.name}")
+        st.success(f"✅ Файл загружен: {settings.DATA_FILE.name}")
     
     # Кнопка скачивания текущего Excel
-    if DATA_FILE.exists():
-        with open(DATA_FILE, "rb") as f:
+    if settings.DATA_FILE.exists():
+        with open(settings.DATA_FILE, "rb") as f:
             st.download_button(
                 "📥 Скачать текущий Excel",
                 f,
-                file_name=DATA_FILE.name,
+                file_name=settings.DATA_FILE.name,
                 use_container_width=True
             )
     else:
@@ -145,8 +141,8 @@ with st.sidebar:
         st.success(f"Удалено записей: {deleted}")
     
     st.divider()
-    st.caption(f"Файл данных: {DATA_FILE.resolve()}")
-    st.caption(f"База данных: {DATABASE_PATH.resolve()}")
+    st.caption(f"Файл данных: {settings.DATA_FILE.resolve()}")
+    st.caption(f"База данных: {settings.DATABASE_PATH.resolve()}")
 
 # --------------------------------------------------------------
 # Основные вкладки
