@@ -59,7 +59,9 @@ class PriceCalculationService:
         # 5. Расчёт стратегической цены
         target_strategy_price = None
         strategy_price = None
+
         if pricing.ozon_index_data_price and pricing.ozon_index_data_price != 0:
+            # Есть индекс Ozon – стратегия от него
             base = pricing.ozon_index_data_price
             if strategy_type == 1:
                 strategy_price = base * (1 - percent / 100)
@@ -70,7 +72,15 @@ class PriceCalculationService:
             target_strategy_price = strategy_price / discount_coef if discount_coef else strategy_price
             result_target_price = max(target_strategy_price, target_min_price)
         else:
-            result_target_price = target_min_price
+            # Нет индекса Ozon – стратегия от РИЦ (rip)
+            if strategy_type == 1:
+                strategy_price = rip * (1 - percent / 100)
+            elif strategy_type == 2:
+                strategy_price = rip * (1 + percent / 100)
+            else:
+                strategy_price = rip   # для стратегии «равная» просто rip
+            target_strategy_price = strategy_price / discount_coef if discount_coef else strategy_price
+            result_target_price = max(target_strategy_price, target_min_price)
 
         # Округление для API
         result_target_price = round(result_target_price)
