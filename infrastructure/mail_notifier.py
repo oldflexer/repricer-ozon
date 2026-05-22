@@ -9,8 +9,7 @@ import io
 from typing import List, Optional, Dict
 
 from config.settings import settings
-
-logger = logging.getLogger(__name__)
+from infrastructure.logger import logger
 
 
 class MailNotifier:

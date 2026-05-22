@@ -50,6 +50,7 @@
             "request": "launch",
             "program": "${workspaceFolder}/get_info.py",
             "console": "integratedTerminal",
+            "args": ["3983974641"],
             "env": {
                 "PYTHONPATH": "${workspaceFolder}"
             },

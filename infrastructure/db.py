@@ -8,8 +8,7 @@ import logging
 from core.entities import ProductInfo, StrategyInterval, PricingData, PriceCalculationResult
 from core.repository import IProductRepository
 from config.settings import DATABASE_PATH
-
-logger = logging.getLogger(__name__)
+from infrastructure.logger import logger
 
 
 class SQLiteRepository(IProductRepository):

@@ -6,7 +6,6 @@ import plotly.graph_objects as go
 import plotly.express as px
 from pathlib import Path
 import sys
-import logging
 from typing import Dict, Any, List
 from datetime import datetime, timedelta
 
@@ -23,18 +22,8 @@ from infrastructure.mail_notifier import MailNotifier
 from core.services import PriceCalculationService
 from core.use_cases import RepricingUseCase
 from core.entities import ProductInfo, StrategyInterval
+from infrastructure.logger import logger
 
-# Настройка логирования
-log_file = Path(__file__).parent / 'repricer.log'
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler(log_file, mode='w', encoding='utf-8')
-    ]
-)
-logger = logging.getLogger(__name__)
 
 st.set_page_config(page_title="Репрайсер Ozon", layout="wide", page_icon="📊")
 

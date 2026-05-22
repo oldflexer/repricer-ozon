@@ -1,4 +1,3 @@
-import logging
 import sys
 import argparse
 import asyncio
@@ -12,17 +11,7 @@ from infrastructure.db import SQLiteRepository
 from infrastructure.ozon_api import OzonApiClient
 from infrastructure.mail_notifier import MailNotifier
 from core.use_cases import RepricingUseCase
-
-log_file = Path(__file__).parent / 'repricer.log'
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler(log_file, mode='w', encoding='utf-8')
-    ]
-)
-logger = logging.getLogger(__name__)
+from infrastructure.logger import logger  # структурированный логгер
 
 
 async def main():
@@ -38,7 +27,7 @@ async def main():
     use_case = RepricingUseCase(repo, api, notifier, loader)
     stats = await use_case.execute(dry_run=args.dry_run)
 
-    logger.info(f"Результат: {stats}")
+    logger.info("main_finished", result=stats)
     await api.close()
 
 

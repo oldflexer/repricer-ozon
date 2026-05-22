@@ -7,8 +7,7 @@ from .repository import IProductRepository
 from .services import PriceCalculationService, calculate_old_price
 from .mappers import build_price_update_request
 from config.settings import settings
-
-logger = logging.getLogger(__name__)
+from infrastructure.logger import logger
 
 
 class PricingOrchestrator:

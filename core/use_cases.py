@@ -1,8 +1,7 @@
 import logging
 from typing import Dict, Any
 from .orchestrator import PricingOrchestrator
-
-logger = logging.getLogger(__name__)
+from infrastructure.logger import logger
 
 
 class RepricingUseCase:

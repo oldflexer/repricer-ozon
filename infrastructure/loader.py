@@ -4,8 +4,7 @@ from pathlib import Path
 from typing import List, Dict, Optional, Any
 import logging
 from core.entities import ProductInfo, StrategyInterval
-
-logger = logging.getLogger(__name__)
+from infrastructure.logger import logger
 
 
 class DataLoader:

@@ -5,8 +5,7 @@ import httpx
 
 from config.settings import settings
 from core.entities import PricingData
-
-logger = logging.getLogger(__name__)
+from infrastructure.logger import logger
 
 
 class OzonApiClient:
