@@ -1,6 +1,7 @@
 .venv/
 .pytest_cache/
 data/*
+requests/
 *__pycache__*
 .env
 *.log
