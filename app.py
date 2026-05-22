@@ -34,6 +34,7 @@ logger = logging.getLogger(__name__)
 
 st.set_page_config(page_title="Репрайсер Ozon", layout="wide", page_icon="📊")
 
+# Кастомизация кнопки загрузки файла (без скрытия крестика)
 st.markdown("""
 <style>
     /* Растягиваем кнопку на всю ширину */
@@ -44,13 +45,13 @@ st.markdown("""
         position: relative;
         display: flex !important;
         align-items: center !important;
-        padding: 0 !important;   /* убираем внутренние отступы */
+        padding: 0 !important;
     }
-    /* Скрываем весь внутренний контейнер (иконка + текст Upload) */
+    /* Скрываем оригинальный текст и иконку внутри кнопки */
     div[data-testid="stFileUploader"] button > div {
         display: none !important;
     }
-    /* Добавляем наш текст через псевдоэлемент */
+    /* Добавляем свой текст через псевдоэлемент, пока кнопка видна */
     div[data-testid="stFileUploader"] button::before {
         content: "📤 Загрузить файл Excel";
         display: block;
@@ -59,6 +60,10 @@ st.markdown("""
         width: 100%;
         text-align: center;
         pointer-events: none;
+    }
+    /* Когда файл загружен (появился чип), скрываем кнопку полностью */
+    div[data-testid="stFileUploader"]:has(div[data-testid="stFileChip"]) button {
+        display: none !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -143,8 +148,8 @@ with st.sidebar:
         st.success(f"Удалено записей: {deleted}")
     
     st.divider()
-    st.caption(f"Файл данных: {DATA_FILE}")
-    st.caption(f"База данных: {DATABASE_PATH}")
+    st.caption(f"Файл данных: {DATA_FILE.resolve()}")
+    st.caption(f"База данных: {DATABASE_PATH.resolve()}")
 
 # --------------------------------------------------------------
 # Основные вкладки
@@ -276,10 +281,8 @@ with tab3:
             if fig_price.data:
                 fig_price.update_layout(legend=dict(orientation="h", y=-0.2), yaxis_title="Цена (₽)")
                 fig_margin.update_layout(legend=dict(orientation="h", y=-0.2), yaxis_title="Маржинальность (%)")
-                col_left, col_right = st.columns(2)
                 st.subheader("Динамика цены")
                 st.plotly_chart(fig_price, use_container_width=True)
-
                 st.subheader("Динамика маржинальности")
                 st.plotly_chart(fig_margin, use_container_width=True)
 
@@ -341,22 +344,109 @@ with tab4:
         st.divider()
         st.subheader("Распределение маржинальности")
         if margins:
-            fig_hist = px.histogram(x=margins, nbins=20, title="Гистограмма маржинальности (%)",
-                                    labels={'x': 'Маржинальность %', 'y': 'Количество товаров'})
-            st.plotly_chart(fig_hist, use_container_width=True)
+            bins = [-float('inf'), 0, 10, 20, 30, float('inf')]
+            labels = ['<0%', '0-10%', '10-20%', '20-30%', '>30%']
+            margins_cat = pd.cut(margins, bins=bins, labels=labels, right=False)
+            cat_counts = margins_cat.value_counts().reset_index()
+            cat_counts.columns = ['Маржинальность', 'Количество товаров']
+            fig_pie = px.pie(cat_counts, values='Количество товаров', names='Маржинальность',
+                             title='Распределение маржинальности (%)', hole=0.4)
+            st.plotly_chart(fig_pie, use_container_width=True)
 
         st.subheader("Распределение по типам стратегий")
         strat_df = pd.DataFrame([{"Тип": k, "Количество": v} for k, v in strategy_counts.items()])
-        st.bar_chart(strat_df.set_index("Тип"))
+        fig_strat_pie = px.pie(strat_df, values='Количество', names='Тип',
+                               title='Распределение по типам стратегий', hole=0.4)
+        st.plotly_chart(fig_strat_pie, use_container_width=True)
+
+        # --- Дополнительная аналитика ---
+        st.divider()
+        st.subheader("Динамика за последнюю неделю")
+        with repo._get_connection() as conn:
+            daily_df = pd.read_sql_query('''
+                SELECT 
+                    DATE(ph.timestamp) as day,
+                    AVG(ph.result_target_price * ph.discount_coef) as avg_price,
+                    AVG(ph.marginality) as avg_margin
+                FROM product_price_history ph
+                WHERE ph.timestamp >= datetime('now', '-7 days')
+                GROUP BY day
+                ORDER BY day
+            ''', conn)
+        if not daily_df.empty:
+            daily_df['day'] = pd.to_datetime(daily_df['day'])
+            daily_df['avg_margin'] = daily_df['avg_margin'] * 100
+            fig_price_trend = px.line(daily_df, x='day', y='avg_price', title='Средняя цена (реальная) за неделю')
+            st.plotly_chart(fig_price_trend, use_container_width=True)
+            fig_margin_trend = px.line(daily_df, x='day', y='avg_margin', title='Средняя маржинальность за неделю')
+            st.plotly_chart(fig_margin_trend, use_container_width=True)
+
+        st.subheader("Лучшие и худшие по маржинальности")
+        with repo._get_connection() as conn:
+            top_df = pd.read_sql_query('''
+                SELECT 
+                    p.sku,
+                    p.product_name,
+                    ph.marginality
+                FROM product_price_history ph
+                JOIN product p ON p.product_id = ph.product_id
+                WHERE ph.timestamp = (SELECT MAX(timestamp) FROM product_price_history WHERE product_id = ph.product_id)
+                ORDER BY ph.marginality DESC
+            ''', conn)
+        if not top_df.empty:
+            top_df['marginality_pct'] = top_df['marginality'] * 100
+            top5 = top_df.head(5)[['sku', 'product_name', 'marginality_pct']]
+            bottom5 = top_df.tail(5)[['sku', 'product_name', 'marginality_pct']]
+            col_top, col_bottom = st.columns(2)
+            with col_top:
+                st.write("**Топ-5 по маржинальности**")
+                st.dataframe(top5, hide_index=True, use_container_width=True)
+            with col_bottom:
+                st.write("**Худшие 5 по маржинальности**")
+                st.dataframe(bottom5, hide_index=True, use_container_width=True)
+
+        st.subheader("Последние 10 изменений цен")
+        with repo._get_connection() as conn:
+            recent_df = pd.read_sql_query('''
+                SELECT 
+                    p.sku,
+                    p.product_name,
+                    ph.timestamp,
+                    ROUND(ph.result_target_price * ph.discount_coef, 0) as price,
+                    ROUND(ph.marginality * 100, 2) as margin_pct
+                FROM product_price_history ph
+                JOIN product p ON p.product_id = ph.product_id
+                ORDER BY ph.timestamp DESC
+                LIMIT 10
+            ''', conn)
+        if not recent_df.empty:
+            recent_df['timestamp'] = pd.to_datetime(recent_df['timestamp']).dt.tz_localize('UTC').dt.tz_convert(TIMEZONE)
+            st.dataframe(recent_df, use_container_width=True, hide_index=True)
+
+        st.divider()
+        if st.button("📥 Экспорт истории цен в CSV"):
+            with repo._get_connection() as conn:
+                export_df = pd.read_sql_query('''
+                    SELECT 
+                        p.sku,
+                        p.product_name,
+                        ph.timestamp,
+                        ROUND(ph.result_target_price * ph.discount_coef, 0) as price,
+                        ROUND(ph.marginality * 100, 2) as margin_pct
+                    FROM product_price_history ph
+                    JOIN product p ON p.product_id = ph.product_id
+                    ORDER BY ph.timestamp DESC
+                ''', conn)
+            csv = export_df.to_csv(index=False, encoding='utf-8-sig')
+            st.download_button("Скачать CSV", csv, "price_history.csv", "text/csv", use_container_width=True)
 
         st.caption("Статистика основана на последней записи в истории цен каждого товара.")
 
 # --------------------------------------------------------------
-# Новая вкладка "Анализ и комиссии"
+# Вкладка "Анализ и комиссии"
 # --------------------------------------------------------------
 with tab5:
     st.header("Анализ комиссий FBS и индексов")
-    # Получаем последние записи по каждому товару с комиссиями
     with repo._get_connection() as conn:
         analysis_df = pd.read_sql_query('''
             SELECT 
@@ -410,8 +500,3 @@ with tab5:
                               title="Зависимость маржинальности от индекса Ozon",
                               labels={'ozon_index_data_price': 'Индекс Ozon (цена)', 'marginality': 'Маржинальность'})
         st.plotly_chart(fig_corr, use_container_width=True)
-
-# --------------------------------------------------------------
-# Дополнительно: возможность просмотра логов (опционально)
-# --------------------------------------------------------------
-# Можно добавить ещё одну вкладку, но не перегружаем интерфейс
