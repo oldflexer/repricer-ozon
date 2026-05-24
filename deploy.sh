@@ -48,8 +48,8 @@ if [ -f "$CRON_TEMPLATE" ]; then
     sed -e "s|{{WORKING_DIR}}|$WORKING_DIR|g" "$CRON_TEMPLATE" > "$CRON_TMP"
     echo "" >> "$CRON_TMP"
 
-    # Удаляем ВСЕ строки, содержащие путь к проекту или main.py (независимо от маркера)
-    crontab -l 2>/dev/null | grep -v "$WORKING_DIR" > "$CRON_TMP.old" || true
+    # Удаляем старые строки, связанные с репрайсером (по пути, маркеру и комментариям)
+    crontab -l 2>/dev/null | grep -v -e "$WORKING_DIR" -e "# Repricer cron jobs" -e "# Full cycle every hour" > "$CRON_TMP.old" || true
 
     # Добавляем новые задачи
     cat "$CRON_TMP" >> "$CRON_TMP.old"
