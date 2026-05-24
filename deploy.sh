@@ -46,11 +46,11 @@ if [ -f "$CRON_TEMPLATE" ]; then
     echo "=== Установка cron задач из $CRON_TEMPLATE ==="
     # Заменяем плейсхолдер
     sed -e "s|{{WORKING_DIR}}|$WORKING_DIR|g" "$CRON_TEMPLATE" > "$CRON_TMP"
-    echo "" >> "$CRON_TMP"   # добавляем пустую строку в конце
+    echo "" >> "$CRON_TMP"
 
-    # Удаляем старые задачи, связанные с репрайсером (по пути к проекту или main.py)
-    crontab -l 2>/dev/null | grep -v "$WORKING_DIR/main.py" > "$CRON_TMP.old" || true
-    
+    # Удаляем старые строки, содержащие маркер или путь к main.py
+    crontab -l 2>/dev/null | grep -v -e "# Repricer cron jobs" -e "$WORKING_DIR/main.py" > "$CRON_TMP.old" || true
+
     # Добавляем новые задачи
     cat "$CRON_TMP" >> "$CRON_TMP.old"
     crontab "$CRON_TMP.old"
