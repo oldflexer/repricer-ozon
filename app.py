@@ -81,7 +81,7 @@ def run_repricing(dry_run: bool = False) -> Dict[str, Any]:
 with st.sidebar:
     st.header("Управление")
     
-    if st.button("🚀 Полный цикл (отправка цен)", type="primary", use_container_width=True):
+    if st.button("🚀 Полный цикл (отправка цен)", type="primary", width="stretch"):
         with st.spinner("Выполняется загрузка, расчёт и отправка цен..."):
             try:
                 stats = run_repricing(dry_run=False)
@@ -93,7 +93,7 @@ with st.sidebar:
             except Exception as e:
                 st.error(f"❌ Ошибка: {e}")
     
-    if st.button("📝 Dry run (без отправки)", use_container_width=True):
+    if st.button("📝 Dry run (без отправки)", width="stretch"):
         with st.spinner("Выполняется расчёт (цены не отправляются)..."):
             try:
                 stats = run_repricing(dry_run=True)
@@ -115,7 +115,7 @@ with st.sidebar:
     st.divider()
     st.subheader("Работа с Excel")
     
-    uploaded_file = st.file_uploader("", type=["xlsx"], label_visibility="collapsed")
+    uploaded_file = st.file_uploader("", type=["xlsx"], label_visibility="collapsed", width="stretch")
     
     if uploaded_file is not None:
         with open(settings.DATA_FILE, "wb") as f:
@@ -129,14 +129,14 @@ with st.sidebar:
                 "📥 Скачать текущий Excel",
                 f,
                 file_name=settings.DATA_FILE.name,
-                use_container_width=True
+                width="stretch"
             )
     else:
         st.warning("Файл Excel пока не существует.")
     
     st.divider()
     st.subheader("Обслуживание БД")
-    if st.button("🧹 Удалить записи старше 1 недели", use_container_width=True):
+    if st.button("🧹 Удалить записи старше 1 недели", width="stretch"):
         deleted = repo.delete_old_records(days=7)
         st.success(f"Удалено записей: {deleted}")
     
@@ -201,7 +201,7 @@ with tab1:
 
         if rows:
             df = pd.DataFrame(rows)
-            st.dataframe(df, use_container_width=True, hide_index=True)
+            st.dataframe(df, width="stretch", hide_index=True)
         else:
             st.info("Нет товаров, соответствующих фильтрам.")
 
@@ -227,7 +227,7 @@ with tab2:
         hist_df['timestamp'] = hist_df['timestamp'].dt.tz_localize('UTC').dt.tz_convert(TIMEZONE)
         hist_df['Маржинальность'] = (hist_df['Маржинальность'] * 100).round(2)
         hist_df.rename(columns={'timestamp': 'Время (МСК)'}, inplace=True)
-        st.dataframe(hist_df, use_container_width=True, hide_index=True)
+        st.dataframe(hist_df, width="stretch", hide_index=True)
     else:
         st.info("История пуста. Запустите репрайсер для накопления данных.")
 
@@ -248,7 +248,8 @@ with tab3:
             "Выберите товары",
             sku_options,
             default=sku_options[:2] if len(sku_options) >= 2 else sku_options,
-            key="multi_price"
+            key="multi_price",
+            width="stretch"
         )
         if selected:
             fig_price = go.Figure()
@@ -276,9 +277,9 @@ with tab3:
                 fig_price.update_layout(legend=dict(orientation="h", y=-0.2), yaxis_title="Цена (₽)")
                 fig_margin.update_layout(legend=dict(orientation="h", y=-0.2), yaxis_title="Маржинальность (%)")
                 st.subheader("Динамика цены")
-                st.plotly_chart(fig_price, use_container_width=True)
+                st.plotly_chart(fig_price, width="stretch")
                 st.subheader("Динамика маржинальности")
-                st.plotly_chart(fig_margin, use_container_width=True)
+                st.plotly_chart(fig_margin, width="stretch")
 
 # --------------------------------------------------------------
 # Вкладка "Статистика" (расширенная)
@@ -345,15 +346,107 @@ with tab4:
             cat_counts.columns = ['Маржинальность', 'Количество товаров']
             fig_pie = px.pie(cat_counts, values='Количество товаров', names='Маржинальность',
                              title='Распределение маржинальности (%)', hole=0.4)
-            st.plotly_chart(fig_pie, use_container_width=True)
+            st.plotly_chart(fig_pie, width="stretch")
 
         st.subheader("Распределение по типам стратегий")
         strat_df = pd.DataFrame([{"Тип": k, "Количество": v} for k, v in strategy_counts.items()])
         fig_strat_pie = px.pie(strat_df, values='Количество', names='Тип',
                                title='Распределение по типам стратегий', hole=0.4)
-        st.plotly_chart(fig_strat_pie, use_container_width=True)
+        st.plotly_chart(fig_strat_pie, width="stretch")
 
         # --- Дополнительная аналитика ---
+        st.divider()
+        st.subheader("Эффективность стратегий")
+        with repo._get_connection() as conn:
+            strategy_perf = pd.read_sql_query('''
+                SELECT 
+                    s.strategy_name,
+                    AVG(ph.marginality) as avg_margin,
+                    COUNT(*) as updates_count
+                FROM product_price_history ph
+                JOIN product_strategy ps ON ph.product_id = ps.product_id
+                JOIN strategy s ON ps.strategy_id = s.id
+                WHERE ph.timestamp >= datetime('now', '-30 days')
+                GROUP BY s.id
+            ''', conn)
+        if not strategy_perf.empty:
+            strategy_perf['avg_margin'] = strategy_perf['avg_margin'] * 100
+            strategy_perf.rename(columns={'strategy_name': 'Стратегия', 'avg_margin': 'Средняя маржинальность (%)', 'updates_count': 'Количество обновлений (30 дней)'}, inplace=True)
+            st.dataframe(strategy_perf, width="stretch", hide_index=True)
+
+        st.subheader("Динамика среднего отклонения от индекса Ozon")
+        with repo._get_connection() as conn:
+            daily_deviation = pd.read_sql_query('''
+                SELECT 
+                    DATE(ph.timestamp) as day,
+                    AVG( (ph.result_target_price * ph.discount_coef) / NULLIF(ph.ozon_index_data_price, 0) ) as avg_ratio
+                FROM product_price_history ph
+                WHERE ph.ozon_index_data_price > 0
+                AND ph.timestamp >= datetime('now', '-30 days')
+                GROUP BY day
+                ORDER BY day
+            ''', conn)
+        if not daily_deviation.empty:
+            daily_deviation['day'] = pd.to_datetime(daily_deviation['day'])
+            fig_dev = px.line(daily_deviation, x='day', y='avg_ratio',
+                              title='Среднее отношение нашей цены к индексу Ozon (за 30 дней)',
+                              labels={'day': 'Дата', 'avg_ratio': 'Отношение (наша цена / индекс)'})
+            st.plotly_chart(fig_dev, width="stretch")
+        else:
+            st.info("Нет данных с индексом Ozon для построения динамики.")
+
+        st.subheader("Товары с неизменной ценой более 7 дней")
+        with repo._get_connection() as conn:
+            stale_products = pd.read_sql_query('''
+                SELECT 
+                    p.sku,
+                    p.product_name,
+                    MAX(ph.timestamp) as last_update,
+                    JULIANDAY('now') - JULIANDAY(MAX(ph.timestamp)) as days_stale
+                FROM product_price_history ph
+                JOIN product p ON p.product_id = ph.product_id
+                GROUP BY p.sku
+                HAVING days_stale > 7
+                ORDER BY days_stale DESC
+            ''', conn)
+        if not stale_products.empty:
+            stale_products['last_update'] = pd.to_datetime(stale_products['last_update']).dt.tz_localize('UTC').dt.tz_convert(TIMEZONE)
+            stale_products['days_stale'] = stale_products['days_stale'].round(1)
+            stale_products.rename(columns={'sku': 'SKU', 'product_name': 'Название', 'last_update': 'Последнее обновление', 'days_stale': 'Дней без изменений'}, inplace=True)
+            st.dataframe(stale_products, width="stretch", hide_index=True)
+        else:
+            st.success("Нет товаров с неизменной ценой более 7 дней.")
+
+        st.subheader("Тепловая карта времени обновлений")
+        with repo._get_connection() as conn:
+            heatmap_data = pd.read_sql_query('''
+                SELECT 
+                    strftime('%w', timestamp) as weekday,
+                    strftime('%H', timestamp) as hour,
+                    COUNT(*) as updates
+                FROM product_price_history
+                WHERE timestamp >= datetime('now', '-90 days')
+                GROUP BY weekday, hour
+            ''', conn)
+        if not heatmap_data.empty:
+            # Преобразуем weekday: 0 = воскресенье, 1 = понедельник, ..., 6 = суббота
+            weekday_names = {0: 'Вс', 1: 'Пн', 2: 'Вт', 3: 'Ср', 4: 'Чт', 5: 'Пт', 6: 'Сб'}
+            heatmap_data['weekday_label'] = heatmap_data['weekday'].astype(int).map(weekday_names)
+            # Создаём сводную таблицу: строки = часы, столбцы = дни недели
+            pivot = heatmap_data.pivot(index='hour', columns='weekday_label', values='updates').fillna(0)
+            # Упорядочиваем дни недели
+            order = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
+            pivot = pivot[order] if all(col in pivot.columns for col in order) else pivot
+            fig_heatmap = px.imshow(pivot,
+                                    labels=dict(x="День недели", y="Час (МСК)", color="Количество обновлений"),
+                                    title="Тепловая карта обновлений цен (последние 90 дней)",
+                                    aspect="auto",
+                                    color_continuous_scale="Viridis")
+            st.plotly_chart(fig_heatmap, width="stretch")
+        else:
+            st.info("Недостаточно данных для тепловой карты.")
+
+        # --- Динамика за последнюю неделю (уже есть) ---
         st.divider()
         st.subheader("Динамика за последнюю неделю")
         with repo._get_connection() as conn:
@@ -371,10 +464,11 @@ with tab4:
             daily_df['day'] = pd.to_datetime(daily_df['day'])
             daily_df['avg_margin'] = daily_df['avg_margin'] * 100
             fig_price_trend = px.line(daily_df, x='day', y='avg_price', title='Средняя цена (реальная) за неделю')
-            st.plotly_chart(fig_price_trend, use_container_width=True)
+            st.plotly_chart(fig_price_trend, width="stretch")
             fig_margin_trend = px.line(daily_df, x='day', y='avg_margin', title='Средняя маржинальность за неделю')
-            st.plotly_chart(fig_margin_trend, use_container_width=True)
+            st.plotly_chart(fig_margin_trend, width="stretch")
 
+        # --- Лучшие и худшие по маржинальности (уже есть) ---
         st.subheader("Лучшие и худшие по маржинальности")
         with repo._get_connection() as conn:
             top_df = pd.read_sql_query('''
@@ -394,11 +488,12 @@ with tab4:
             col_top, col_bottom = st.columns(2)
             with col_top:
                 st.write("**Топ-5 по маржинальности**")
-                st.dataframe(top5, hide_index=True, use_container_width=True)
+                st.dataframe(top5, hide_index=True, width="stretch")
             with col_bottom:
                 st.write("**Худшие 5 по маржинальности**")
-                st.dataframe(bottom5, hide_index=True, use_container_width=True)
+                st.dataframe(bottom5, hide_index=True, width="stretch")
 
+        # --- Последние изменения (уже есть) ---
         st.subheader("Последние 10 изменений цен")
         with repo._get_connection() as conn:
             recent_df = pd.read_sql_query('''
@@ -415,10 +510,11 @@ with tab4:
             ''', conn)
         if not recent_df.empty:
             recent_df['timestamp'] = pd.to_datetime(recent_df['timestamp']).dt.tz_localize('UTC').dt.tz_convert(TIMEZONE)
-            st.dataframe(recent_df, use_container_width=True, hide_index=True)
+            st.dataframe(recent_df, width="stretch", hide_index=True)
 
+        # --- Экспорт (уже есть) ---
         st.divider()
-        if st.button("📥 Экспорт истории цен в CSV"):
+        if st.button("📥 Экспорт истории цен в CSV", width="stretch"):
             with repo._get_connection() as conn:
                 export_df = pd.read_sql_query('''
                     SELECT 
@@ -432,7 +528,7 @@ with tab4:
                     ORDER BY ph.timestamp DESC
                 ''', conn)
             csv = export_df.to_csv(index=False, encoding='utf-8-sig')
-            st.download_button("Скачать CSV", csv, "price_history.csv", "text/csv", use_container_width=True)
+            st.download_button("Скачать CSV", csv, "price_history.csv", "text/csv", width="stretch")
 
         st.caption("Статистика основана на последней записи в истории цен каждого товара.")
 
@@ -456,6 +552,7 @@ with tab5:
                 ph.fbs_deliv_to_customer_amount,
                 ph.external_index_data_price,
                 ph.ozon_index_data_price,
+                ph.ozon_index_data_index,
                 ph.self_marketplaces_index_data_price,
                 (ph.result_target_price * ph.discount_coef) as real_price,
                 ph.marginality
@@ -478,19 +575,19 @@ with tab5:
         
         st.subheader("Сводка по комиссиям")
         cols = ['sales_percent_fbs', 'fbs_first_mile_avg', 'fbs_direct_flow_avg', 'fbs_deliv_to_customer_amount', 'total_extra_costs']
-        st.dataframe(analysis_df[['sku', 'product_name'] + cols].round(2), use_container_width=True)
+        st.dataframe(analysis_df[['sku', 'product_name'] + cols].round(2), width="stretch")
         
         st.subheader("Сравнение с индексами")
         # Товары, у которых ozon_index_data_price не 0
         with_index = analysis_df[analysis_df['ozon_index_data_price'] > 0]
         if not with_index.empty:
             st.write("Товары, имеющие индекс Ozon:")
-            st.dataframe(with_index[['sku', 'product_name', 'ozon_index_data_price', 'real_price']].round(0), use_container_width=True)
+            st.dataframe(with_index[['sku', 'product_name', 'ozon_index_data_price', 'real_price']].round(0), width="stretch")
         else:
             st.info("Нет товаров с индексом Ozon.")
         
-        st.subheader("Корреляция маржинальности и индексов")
-        fig_corr = px.scatter(analysis_df, x='ozon_index_data_price', y='marginality', 
+        st.subheader("Корреляция маржинальности и индекса Ozon")
+        fig_corr = px.scatter(analysis_df, x='ozon_index_data_index', y='marginality', 
                               title="Зависимость маржинальности от индекса Ozon",
-                              labels={'ozon_index_data_price': 'Индекс Ozon (цена)', 'marginality': 'Маржинальность'})
-        st.plotly_chart(fig_corr, use_container_width=True)
+                              labels={'ozon_index_data_index': 'Индекс Ozon (коэффициент)', 'marginality': 'Маржинальность'})
+        st.plotly_chart(fig_corr, width="stretch")
