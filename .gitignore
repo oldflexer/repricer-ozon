@@ -6,3 +6,4 @@ requests/
 .env
 *.log
 get_info.py
+PLAN.md
