@@ -1,38 +1,40 @@
+# infrastructure/loader.py
 import pandas as pd
 from pathlib import Path
 from typing import List, Dict, Optional, Any
 import logging
-import json
-import re
+from core.entities import ProductInfo, StrategyInterval
 
 logger = logging.getLogger(__name__)
 
 
 class DataLoader:
-    """Загрузка данных из Excel-файла с таблицей товаров (новая структура)"""
+    """Загрузка данных из Excel-файла с таблицей товаров (без ссылок на конкурентов)."""
 
     COLUMN_MAPPING = {
-        'sku': ['sku', 'артикул', 'article', 'id', 'offer_id'],
-        'product_name': ['название', 'name', 'товар', 'product_name'],
+        'sku': ['sku', 'артикул', 'article'],
         'cost_price': ['себестоимость', 'cost_price', 'cost'],
-        'min_price': ['цена риц', 'минимальная цена', 'min_price', 'min'],
-        'current_price': ['ваша цена', 'current_price', 'price'],
-        'competitor_urls': ['конкурент', 'ссылки_конкурентов'],
+        'min_price': ['цена риц'],
+        'old_price': ['цена до скидки', 'old_price', 'старая цена'],
     }
 
-    COMPETITOR_COLUMNS_COUNT = 5
     SCHEDULE_INTERVALS_COUNT = 4
 
     def __init__(self, file_path: Path):
         self.file_path = file_path
+        self._strategies: Dict[str, List[StrategyInterval]] = {}
 
-    def load(self) -> List[Dict[str, Any]]:
+    # ------------------------------------------------------------------
+    # Основной метод загрузки
+    # ------------------------------------------------------------------
+    def load(self) -> List[ProductInfo]:
+        """Читает Excel и возвращает список ProductInfo. Одновременно заполняет self._strategies."""
         if not self.file_path.exists():
             logger.error(f"Файл {self.file_path} не найден")
             return []
 
         if self.file_path.suffix.lower() != '.xlsx':
-            logger.error(f"Неподдерживаемый формат файла: {self.file_path.suffix}. Используйте .xlsx")
+            logger.error(f"Неподдерживаемый формат: {self.file_path.suffix}. Используйте .xlsx")
             return []
 
         df = pd.read_excel(self.file_path, engine='openpyxl', dtype=str)
@@ -45,21 +47,25 @@ class DataLoader:
                 break
 
         products = []
+        self._strategies.clear()
+
         for _, row in df.iterrows():
-            product = self._parse_row(row, df.columns)
+            product, intervals = self._parse_row(row, df.columns)
             if product:
                 products.append(product)
+                self._strategies[product.sku] = intervals
 
         logger.info(f"Загружено {len(products)} товаров")
         return products
 
-    def _parse_row(self, row: pd.Series, columns: pd.Index) -> Optional[Dict[str, Any]]:
-        product = {}
+    # ------------------------------------------------------------------
+    # Парсинг одной строки
+    # ------------------------------------------------------------------
+    def _parse_row(self, row: pd.Series, columns: pd.Index) -> tuple[Optional[ProductInfo], List[StrategyInterval]]:
+        product_dict = {}
 
-        # 1. Простые поля
+        # 1. Простые поля (без product_name)
         for std_name, synonyms in self.COLUMN_MAPPING.items():
-            if std_name == 'competitor_urls':
-                continue
             value = None
             for syn in synonyms:
                 if syn in columns:
@@ -67,25 +73,13 @@ class DataLoader:
                     if pd.notna(val):
                         value = val
                         break
-            product[std_name] = value
+            product_dict[std_name] = value
 
-        if not product.get('sku'):
+        if not product_dict.get('sku'):
             logger.warning("Пропущена строка без SKU")
-            return None
+            return None, []
 
-        # 2. Ссылки конкурентов
-        competitor_urls = []
-        for i in range(1, self.COMPETITOR_COLUMNS_COUNT + 1):
-            col_candidates = [f'конкурент {i}', f'конкурент{i}', f'конкурент_{i}']
-            for col in col_candidates:
-                if col in columns:
-                    url = row.get(col)
-                    if pd.notna(url) and str(url).strip():
-                        competitor_urls.append(str(url).strip())
-                    break
-        product['competitor_urls'] = competitor_urls
-
-        # 3. Интервалы стратегий
+        # 2. Интервалы стратегий
         intervals = []
         for i in range(1, self.SCHEDULE_INTERVALS_COUNT + 1):
             time_col = self._find_column(columns, [f'интервал {i}', f'промежуток {i}'])
@@ -105,88 +99,77 @@ class DataLoader:
                 continue
 
             start, end = time_range.split('-', 1)
-            start = start.strip()
-            end = end.strip()
+            start, end = start.strip(), end.strip()
 
             strategy_val = row.get(strategy_col) if strategy_col else None
             percent_val = row.get(percent_col) if percent_col else None
 
             try:
                 strategy = int(float(strategy_val)) if pd.notna(strategy_val) else 3
-            except:
+            except Exception:
                 strategy = 3
-
             try:
                 percent = float(percent_val) if pd.notna(percent_val) else 0.0
-            except:
+            except Exception:
                 percent = 0.0
 
-            intervals.append({
-                'start': start,
-                'end': end,
-                'strategy': strategy,
-                'percent': percent
-            })
+            intervals.append(StrategyInterval(
+                start=start, end=end,
+                strategy_type=strategy, percent=percent
+            ))
 
         if not intervals:
             base_strategy = self._get_int(row, columns, ['стратегия', 'strategy'], 3)
             base_percent = self._get_float(row, columns, ['процент', 'percent'], 0.0)
-            intervals.append({
-                'start': '00:00',
-                'end': '23:59',
-                'strategy': base_strategy,
-                'percent': base_percent
-            })
+            intervals.append(StrategyInterval(
+                start='00:00', end='23:59',
+                strategy_type=base_strategy, percent=base_percent
+            ))
 
-        product['intervals'] = intervals
+        # 3. Числовые поля (только cost_price и min_price)
+        cost_price = 0.0
+        if product_dict.get('cost_price') is not None:
+            try:
+                cost_price = float(product_dict['cost_price'])
+            except Exception:
+                pass
 
-        # 4. Числовые поля
-        for field in ['cost_price', 'min_price', 'current_price']:
-            val = product.get(field)
-            if val is not None:
-                try:
-                    product[field] = float(val)
-                except:
-                    product[field] = 0.0
-            else:
-                product[field] = 0.0
+        min_price = 0.0
+        if product_dict.get('min_price') is not None:
+            try:
+                min_price = float(product_dict['min_price'])
+            except Exception:
+                pass
 
-        # product_id и offer_id будут заполнены позже из Ozon API
-        product['product_id'] = None
-        product['offer_id'] = None
+        old_price = None
+        if product_dict.get('old_price') is not None:
+            try:
+                val = float(product_dict['old_price'])
+                old_price = val   # может быть 0.0 или положительным
+            except Exception:
+                pass
 
-        return product
+        product = ProductInfo(
+            sku=product_dict['sku'],
+            product_name=None,
+            cost_price=cost_price,
+            min_price=min_price,
+            current_price=0.0,
+            old_price=old_price
+        )
+        return product, intervals
 
-    def _find_column(self, columns: pd.Index, candidates: List[str]) -> Optional[str]:
-        for cand in candidates:
-            if cand in columns:
-                return cand
-        return None
+    # ------------------------------------------------------------------
+    # Доступ к стратегиям
+    # ------------------------------------------------------------------
+    def get_strategy_intervals(self, product: ProductInfo) -> List[StrategyInterval]:
+        """Возвращает интервалы стратегий для конкретного товара."""
+        return self._strategies.get(product.sku, [])
 
-    def _get_int(self, row: pd.Series, columns: pd.Index, candidates: List[str], default: int) -> int:
-        col = self._find_column(columns, candidates)
-        if col:
-            val = row.get(col)
-            if pd.notna(val):
-                try:
-                    return int(float(val))
-                except:
-                    pass
-        return default
-
-    def _get_float(self, row: pd.Series, columns: pd.Index, candidates: List[str], default: float) -> float:
-        col = self._find_column(columns, candidates)
-        if col:
-            val = row.get(col)
-            if pd.notna(val):
-                try:
-                    return float(val)
-                except:
-                    pass
-        return default
-
+    # ------------------------------------------------------------------
+    # Обновление Excel-файла (запись результатов)
+    # ------------------------------------------------------------------
     def update_product_in_file(self, sku: str, updates: Dict[str, Any]) -> bool:
-        """Обновляет поля товара в Excel-файле (цена и маржа)."""
         try:
             from openpyxl import load_workbook
             wb = load_workbook(self.file_path)
@@ -199,9 +182,12 @@ class DataLoader:
             col_map = {}
             target_columns = {
                 'current_price': ['ваша цена', 'current_price', 'price'],
+                'min_price': ['минимальная цена', 'min_price', 'min'],
+                'old_price': ['цена до скидки', 'old_price', 'старая цена'],
                 'margin': ['маржинальность', 'маржа', 'margin'],
                 'margin_week': ['маржинальность за неделю', 'margin_week'],
                 'margin_month': ['маржинальность за месяц', 'margin_month'],
+                'product_name': ['название', 'name', 'товар', 'product_name'],
             }
             for field, synonyms in target_columns.items():
                 for col_idx, cell in enumerate(ws[header_row], start=1):
@@ -225,11 +211,9 @@ class DataLoader:
                 if cell_value is None:
                     continue
                 cell_str = str(cell_value).strip()
-                # Ищем точное совпадение SKU (может быть строкой или числом)
                 if cell_str == str(sku):
                     target_row = row_idx
                     break
-                # Также пробуем сравнить как числа (для SKU без ведущих нулей)
                 try:
                     if int(float(cell_str)) == int(float(sku)):
                         target_row = row_idx
@@ -254,3 +238,34 @@ class DataLoader:
         except Exception as e:
             logger.error(f"Ошибка обновления Excel: {e}")
             return False
+
+    # ------------------------------------------------------------------
+    # Вспомогательные методы
+    # ------------------------------------------------------------------
+    def _find_column(self, columns: pd.Index, candidates: List[str]) -> Optional[str]:
+        for cand in candidates:
+            if cand in columns:
+                return cand
+        return None
+
+    def _get_int(self, row: pd.Series, columns: pd.Index, candidates: List[str], default: int) -> int:
+        col = self._find_column(columns, candidates)
+        if col:
+            val = row.get(col)
+            if pd.notna(val):
+                try:
+                    return int(float(val))
+                except Exception:
+                    pass
+        return default
+
+    def _get_float(self, row: pd.Series, columns: pd.Index, candidates: List[str], default: float) -> float:
+        col = self._find_column(columns, candidates)
+        if col:
+            val = row.get(col)
+            if pd.notna(val):
+                try:
+                    return float(val)
+                except Exception:
+                    pass
+        return default
