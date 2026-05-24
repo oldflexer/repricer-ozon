@@ -1,40 +1,43 @@
+# config/settings.py
 import os
 from pathlib import Path
 from dotenv import load_dotenv
 import pytz
+from typing import Optional
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 TIMEZONE = pytz.timezone('Europe/Moscow')
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / '.env')
 
-# Ozon API
-OZON_CLIENT_ID = os.getenv('OZON_CLIENT_ID')
-OZON_API_KEY = os.getenv('OZON_API_KEY')
-OZON_API_URL = 'https://api-seller.ozon.ru'
 
-# Email
-SMTP_HOST = os.getenv('SMTP_HOST', 'smtp.yandex.ru')
-SMTP_PORT = int(os.getenv('SMTP_PORT', '587'))
-SMTP_USER = os.getenv('SMTP_USER')
-SMTP_PASSWORD = os.getenv('SMTP_PASSWORD')
-SENDER_EMAIL = os.getenv('SENDER_EMAIL', SMTP_USER)
-RECIPIENT_EMAIL = os.getenv('RECIPIENT_EMAIL')
+class Settings(BaseSettings):
+    OZON_CLIENT_ID: Optional[str] = None
+    OZON_API_KEY: Optional[str] = None
+    OZON_API_URL: str = "https://api-seller.ozon.ru"
 
-# Парсинг
-PARSER_DELAY = float(os.getenv('PARSER_DELAY', '1.5'))
-PARSER_TIMEOUT = int(os.getenv('PARSER_TIMEOUT', '10'))
-MAX_RETRIES = int(os.getenv('MAX_RETRIES', '3'))
-USER_AGENT = os.getenv('USER_AGENT', '')
+    SMTP_HOST: str = "smtp.yandex.ru"
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    SENDER_EMAIL: str = ""
+    RECIPIENT_EMAIL: str = ""
 
-HEADLESS_RAW = os.getenv('HEADLESS', 'True').strip().lower()
-if HEADLESS_RAW in ('true', '1'):
-    HEADLESS = True
-elif HEADLESS_RAW in ('false', '0'):
-    HEADLESS = False
-else:
-    HEADLESS = True  # fallback
+    COEFFICIENT_OZON: float = 0.5
+    OLD_PRICE_MULTIPLIER: float = 1.5
+    PRICE_ROUND_UP_TO: int = 100
+    MANAGE_ELASTIC_BOOSTING: bool = False
 
-# Данные
-DATA_FILE = Path(os.getenv('DATA_FILE', BASE_DIR / 'data' / 'products.xlsx'))
-DATABASE_PATH = BASE_DIR / 'data' / 'repricer.db'
+    DATA_FILE: Path = BASE_DIR / "data" / "products.xlsx"
+    DATABASE_PATH: Path = BASE_DIR / "data" / "repricer.db"
+
+    NOTIFICATION_MAX_DETAILS: int = 20
+
+    WEB_USER: str = "admin"
+    WEB_PASS: str = "changeme"
+
+    model_config = SettingsConfigDict(extra='ignore')
+
+
+settings = Settings()

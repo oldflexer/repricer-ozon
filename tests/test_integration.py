@@ -1,89 +1,116 @@
 import sys
 from pathlib import Path
-import asyncio
-from unittest.mock import patch, AsyncMock, MagicMock
+import pytest
+import tempfile
+from unittest.mock import AsyncMock, MagicMock
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.main import Repricer
+from infrastructure.db import SQLiteRepository
+from infrastructure.excel_loader import ExcelLoader
+from infrastructure.mail_notifier import MailNotifier
+from core.use_cases import RepricingUseCase
+from core.entities import PricingData
+from config.settings import settings
 
 
-@patch('src.main.Database')
-@patch('src.main.CompetitorsParser')
-@patch('src.main.ProductsParser')
-@patch('src.main.PriceMaker')
-@patch('src.main.PriceUpdater')
-@patch('src.main.MailNotifier')
-@patch('src.main.OzonApiClient')
-@patch('src.main.DataLoader')
-async def test_repricer_dry_run(
-    mock_loader_cls, mock_api_cls, mock_notifier_cls,
-    mock_updater_cls, mock_pricemaker_cls,
-    mock_prod_parser_cls, mock_comp_parser_cls, mock_db_cls
-):
-    # Настройка моков
-    mock_loader = mock_loader_cls.return_value
-    mock_loader.load.return_value = [{
-        'sku': '001',
-        'product_name': 'Test',
-        'cost_price': 100,
-        'min_price': 200,
-        'current_price': 300,
-        'intervals': [{'start': '00:00', 'end': '23:59', 'strategy': 3, 'percent': 0}],
-        'competitor_urls': ['http://test.com'],
-        'product_id': None,
-        'offer_id': None,
-    }]
+class MockOzonApiClient:
+    def __init__(self):
+        self.products_map = {}
+        self.prices_map = {}
 
-    mock_db = mock_db_cls.return_value
-    mock_db.get_average_margin.return_value = 20.0
+    def set_product(self, sku, product_id, offer_id, product_name):
+        self.products_map[sku] = {
+            'product_id': product_id,
+            'offer_id': offer_id,
+            'product_name': product_name
+        }
 
-    mock_api = mock_api_cls.return_value
-    mock_api.get_product_ids_by_skus.return_value = {'001': {'product_id': 123, 'offer_id': '001'}}
+    def set_price(self, product_id, price_data):
+        self.prices_map[product_id] = price_data
 
-    # Парсер товаров
-    async def fetch_real_prices(products):
-        return {'001': 250.0}
-    mock_prod_parser = mock_prod_parser_cls.return_value
-    mock_prod_parser.fetch_real_prices = fetch_real_prices
+    async def get_product_ids_by_skus(self, skus):
+        result = {}
+        for sku in skus:
+            if sku in self.products_map:
+                result[sku] = self.products_map[sku]
+        return result
 
-    # Парсер конкурентов
-    async def comp_run(products):
-        return {'competitor_prices_parsed': 1}
-    mock_comp_parser = mock_comp_parser_cls.return_value
-    mock_comp_parser.run = comp_run
+    async def get_product_prices(self, product_ids):
+        result = []
+        for pid in product_ids:
+            if pid in self.prices_map:
+                result.append(self.prices_map[pid])
+        return result
 
-    # PriceMaker
-    def calculate(products, real_prices):
-        updates = [{
-            'product_id': 123,
-            'offer_id': '',
-            'price': '250.00',
-            'old_price': '300.00',
-            'min_price': '200.00'
-        }]
-        margin_items = [{'sku': '001', 'target_price': 250.0, 'margin': 20.0}]
-        return updates, margin_items
-    mock_pricemaker = mock_pricemaker_cls.return_value
-    mock_pricemaker.calculate = calculate
+    async def update_prices(self, prices_data):
+        result = {}
+        for item in prices_data:
+            result[item['product_id']] = {'updated': True, 'errors': []}
+        return result
 
-    # PriceUpdater
-    def update(updates, margins):
-        return {'prices_updated': 1, 'errors': []}
-    mock_updater = mock_updater_cls.return_value
-    mock_updater.update = update
-
-    # Notifier (мок)
-    mock_notifier_cls.return_value
-
-    # Запуск
-    repricer = Repricer(dry_run=True)
-    stats = await repricer.run()
-
-    print(f"Результат: {stats}")
-    assert stats['prices_updated'] == 1, f"Ожидалось 1 обновление, получено {stats['prices_updated']}"
-    print("✅ Интеграционный тест пройден")
+    async def close(self):
+        pass
 
 
-if __name__ == "__main__":
-    asyncio.run(test_repricer_dry_run())
+@pytest.mark.asyncio
+async def test_full_cycle_dry_run(tmp_path):
+    import pandas as pd
+
+    excel_data = {
+        'SKU': ['123'],
+        'Себестоимость': [1000],
+        'Цена РИЦ': [2000],
+        'Интервал 1': ['00:00-23:59'],
+        'Стратегия 1': [3],
+        'Процент 1': [0]
+    }
+    df = pd.DataFrame(excel_data)
+    excel_path = tmp_path / 'products.xlsx'
+    df.to_excel(excel_path, index=False)
+
+    db_path = tmp_path / 'test.db'
+    repo = SQLiteRepository(db_path)
+
+    loader = ExcelLoader(excel_path)
+    notifier = MailNotifier()
+
+    mock_api = MockOzonApiClient()
+    mock_api.set_product('123', 1, 'off123', 'Test Product')
+
+    pricing = PricingData(
+        product_id=1,
+        price=2500.0,
+        old_price=3000.0,
+        marketing_seller_price=2500.0,
+        net_price=1000.0,
+        min_price=2000.0,
+        external_index_data_price=2200.0,
+        external_index_data_index=1.05,
+        ozon_index_data_price=0,
+        ozon_index_data_index=0,
+        self_marketplaces_index_data_price=0,
+        self_marketplaces_index_data_index=0,
+        sales_percent_fbs=47,
+        acquiring=0,
+        fbs_first_mile_min_amount=10,
+        fbs_first_mile_max_amount=30,
+        fbs_direct_flow_trans_min_amount=89,
+        fbs_direct_flow_trans_max_amount=377,
+        fbs_deliv_to_customer_amount=25
+    )
+    mock_api.set_price(1, pricing)
+
+    use_case = RepricingUseCase(repo, mock_api, notifier, loader)
+    stats = await use_case.execute(dry_run=True)
+
+    assert stats['products_loaded'] == 1
+    assert stats['prices_updated'] == 1
+    assert stats['errors'] == []
+
+    products = repo.get_all_products()
+    assert len(products) == 1
+    assert products[0].sku == '123'
+    hist = repo.get_price_history('123')
+    assert len(hist) == 1
+    assert 'customer_price' in hist[0]
