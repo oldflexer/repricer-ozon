@@ -3,7 +3,6 @@ import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import List, Optional
-import logging
 
 from core.entities import ProductInfo, StrategyInterval, PricingData, PriceCalculationResult
 from core.repository import IProductRepository

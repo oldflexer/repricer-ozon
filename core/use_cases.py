@@ -1,7 +1,6 @@
 import logging
 from typing import Dict, Any
 from .orchestrator import PricingOrchestrator
-from infrastructure.logger import logger
 
 
 class RepricingUseCase:

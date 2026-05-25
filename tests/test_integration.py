@@ -1,8 +1,6 @@
 import sys
 from pathlib import Path
 import pytest
-import tempfile
-from unittest.mock import AsyncMock, MagicMock
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -11,7 +9,6 @@ from infrastructure.excel_loader import ExcelLoader
 from infrastructure.mail_notifier import MailNotifier
 from core.use_cases import RepricingUseCase
 from core.entities import PricingData
-from config.settings import settings
 
 
 class MockOzonApiClient:

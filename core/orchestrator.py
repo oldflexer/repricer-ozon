@@ -1,8 +1,6 @@
 import asyncio
-import logging
-from typing import Dict, Any, List
+from typing import Dict, Any
 
-from .entities import ProductInfo, PricingData
 from .repository import IProductRepository
 from .services import PriceCalculationService, calculate_old_price
 from .mappers import build_price_update_request

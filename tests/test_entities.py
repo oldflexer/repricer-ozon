@@ -2,7 +2,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from core.entities import ProductInfo, PricingData, StrategyInterval, PriceCalculationResult
+from core.entities import ProductInfo, PricingData
 
 def test_product_info():
     p = ProductInfo(sku="123", product_name="Test", min_price=199.0, real_customer_price=2300)

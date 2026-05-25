@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from datetime import datetime, time
-from typing import Optional, List
+from typing import Optional
 
 @dataclass
 class ProductInfo:

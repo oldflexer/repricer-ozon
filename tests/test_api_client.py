@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock, patch
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from infrastructure.ozon_api import OzonApiClient
-from core.entities import PricingData
 
 
 @pytest.mark.asyncio

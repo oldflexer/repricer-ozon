@@ -3,10 +3,10 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
+import base64
 from pathlib import Path
 import sys
 from typing import Dict, Any, List
-from datetime import datetime, timedelta
 
 from core.mappers import to_view_model
 
@@ -18,11 +18,15 @@ from infrastructure.excel_loader import ExcelLoader
 from infrastructure.ozon_api import OzonApiClient
 from infrastructure.mail_notifier import MailNotifier
 from core.use_cases import RepricingUseCase
-from core.entities import ProductInfo, StrategyInterval
-from infrastructure.logger import logger
+from core.entities import ProductInfo
 
 
-st.set_page_config(page_title="Репрайсер Ozon", layout="wide", page_icon="📊")
+def get_base64_encoded_image(image_path: Path) -> str:
+    with open(image_path, "rb") as f:
+        return base64.b64encode(f.read()).decode()
+
+
+st.set_page_config(page_title="Репрайсер Ozon", layout="wide", page_icon="static/favicon.ico")
 
 # Кастомизация кнопки загрузки файла (без скрытия крестика)
 st.markdown("""
@@ -58,7 +62,17 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🔄 Репрайсер Ozon")
+icon_path = Path(__file__).parent / "static" / "favicon.ico"
+
+st.markdown(
+    f"""
+    <div style="display: flex; align-items: center; margin-bottom: 1rem;">
+        <img src="data:image/png;base64,{get_base64_encoded_image(icon_path)}" width="40" style="margin-right: 12px;">
+        <h1 style="display: inline; margin: 0;">Репрайсер Ozon</h1>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
 repo = SQLiteRepository(settings.DATABASE_PATH)
 
@@ -428,18 +442,23 @@ with tab4:
                 WHERE timestamp >= datetime('now', '-90 days')
                 GROUP BY weekday, hour
             ''', conn)
+
         if not heatmap_data.empty:
-            # Преобразуем weekday: 0 = воскресенье, 1 = понедельник, ..., 6 = суббота
-            weekday_names = {0: 'Вс', 1: 'Пн', 2: 'Вт', 3: 'Ср', 4: 'Чт', 5: 'Пт', 6: 'Сб'}
-            heatmap_data['weekday_label'] = heatmap_data['weekday'].astype(int).map(weekday_names)
-            # Создаём сводную таблицу: строки = часы, столбцы = дни недели
+            # Маппинг дня недели: 0 = воскресенье, 1 = понедельник, ... 6 = суббота
+            weekday_map = {0: 'Вс', 1: 'Пн', 2: 'Вт', 3: 'Ср', 4: 'Чт', 5: 'Пт', 6: 'Сб'}
+            heatmap_data['weekday_label'] = heatmap_data['weekday'].astype(int).map(weekday_map)
+            
+            # Создаём сводную таблицу
             pivot = heatmap_data.pivot(index='hour', columns='weekday_label', values='updates').fillna(0)
-            # Упорядочиваем дни недели
-            order = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
-            pivot = pivot[order] if all(col in pivot.columns for col in order) else pivot
+            
+            # Задаём правильный порядок дней недели
+            correct_order = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
+            # reindex по столбцам, заполняя отсутствующие дни нулями
+            pivot = pivot.reindex(columns=correct_order, fill_value=0)
+            
             fig_heatmap = px.imshow(pivot,
                                     labels=dict(x="День недели", y="Час (МСК)", color="Количество обновлений"),
-                                    title="Тепловая карта обновлений цен (последние 90 дней)",
+                                    title="Тепловая карта обновлений цен (последние 90 дня)",
                                     aspect="auto",
                                     color_continuous_scale="Viridis")
             st.plotly_chart(fig_heatmap, width="stretch")

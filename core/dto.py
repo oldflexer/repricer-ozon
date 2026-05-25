@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Optional, List
+from typing import Optional
 
 # DTO для загрузки/передачи товара между слоями
 @dataclass

@@ -3,7 +3,6 @@ import structlog
 import logging
 import sys
 from pathlib import Path
-from config.settings import settings  # если нужны настройки уровня логирования
 
 def setup_logging():
     """Настройка структурированного логирования."""
