@@ -31,7 +31,6 @@ st.set_page_config(page_title="Репрайсер Ozon", layout="wide", page_ico
 # Кастомизация кнопки загрузки файла (без скрытия крестика)
 st.markdown("""
 <style>
-    /* Растягиваем кнопку на всю ширину */
     div[data-testid="stFileUploader"] button {
         width: 100% !important;
         min-width: 100% !important;
@@ -41,11 +40,9 @@ st.markdown("""
         align-items: center !important;
         padding: 0 !important;
     }
-    /* Скрываем оригинальный текст и иконку внутри кнопки */
     div[data-testid="stFileUploader"] button > div {
         display: none !important;
     }
-    /* Добавляем свой текст через псевдоэлемент, пока кнопка видна */
     div[data-testid="stFileUploader"] button::before {
         content: "📤 Загрузить файл Excel";
         display: block;
@@ -55,7 +52,6 @@ st.markdown("""
         text-align: center;
         pointer-events: none;
     }
-    /* Когда файл загружен (появился чип), скрываем кнопку полностью */
     div[data-testid="stFileUploader"]:has(div[data-testid="stFileChip"]) button {
         display: none !important;
     }
@@ -74,6 +70,34 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# --------------------------------------------------------------
+# Аутентификация
+# --------------------------------------------------------------
+def check_auth():
+    """Проверяет и управляет аутентификацией пользователя."""
+    if 'authenticated' not in st.session_state:
+        st.session_state.authenticated = False
+
+    if not st.session_state.authenticated:
+        st.title("🔐 Авторизация")
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            username = st.text_input("Логин")
+            password = st.text_input("Пароль", type="password")
+            if st.button("Войти", use_container_width=True):
+                if username == settings.WEB_USER and password == settings.WEB_PASS:
+                    st.session_state.authenticated = True
+                    st.rerun()
+                else:
+                    st.error("Неверный логин или пароль")
+        st.stop()  # Не показываем остальной интерфейс, пока не авторизованы
+
+# Вызов проверки
+check_auth()
+
+# --------------------------------------------------------------
+# Инициализация репозитория и состояния (только после успешного входа)
+# --------------------------------------------------------------
 repo = SQLiteRepository(settings.DATABASE_PATH)
 
 if 'running' not in st.session_state:
@@ -143,6 +167,14 @@ st.divider()
 with st.sidebar:
     st.header("Управление")
     
+    # --- Кнопка выхода ---
+    if st.button("🚪 Выйти", width="stretch"):
+        st.session_state.authenticated = False
+        st.session_state.running = False
+        st.session_state.result_message = None
+        st.session_state.result_type = None
+        st.rerun()
+    
     # --- Показываем сообщение о результате предыдущего запуска ---
     if st.session_state.result_message:
         if st.session_state.result_type == 'success':
@@ -163,13 +195,11 @@ with st.sidebar:
     # --- Блокировка всех элементов, если репрайсинг выполняется ---
     if st.session_state.running:
         st.warning("⏳ Репрайсинг выполняется. Пожалуйста, подождите...")
-        # Кнопки основных действий - disabled
         st.button("🚀 Полный цикл (отправка цен)", type="primary", width="stretch", disabled=True)
         st.button("📝 Dry run (без отправки)", width="stretch", disabled=True)
         
         st.divider()
         
-        # Показываем метрику последнего запуска (только чтение)
         last_run_utc = repo.get_last_run_time()
         if last_run_utc:
             last_run_msk = last_run_utc.astimezone(TIMEZONE)
@@ -179,9 +209,7 @@ with st.sidebar:
         
         st.divider()
         st.subheader("Работа с Excel")
-        # Вместо file_uploader показываем сообщение, что недоступно
         st.info("⛔ Загрузка Excel недоступна во время выполнения репрайсинга")
-        # Кнопка скачивания Excel - disabled
         if settings.DATA_FILE.exists():
             with open(settings.DATA_FILE, "rb") as f:
                 st.download_button(
@@ -196,7 +224,6 @@ with st.sidebar:
         
         st.divider()
         st.subheader("Обслуживание БД")
-        # Кнопка удаления записей - disabled
         st.button("🧹 Удалить записи старше 1 месяца", width="stretch", disabled=True)
         
         st.divider()
@@ -258,9 +285,9 @@ with st.sidebar:
         if last_cleanup:
             last_cleanup_msk = last_cleanup.astimezone(TIMEZONE)
             st.caption(f"🗑️ Последняя очистка БД: {last_cleanup_msk.strftime('%Y-%m-%d %H:%M')}")
-    
+
 # --------------------------------------------------------------
-# Основные вкладки
+# Основные вкладки (весь остальной код без изменений)
 # --------------------------------------------------------------
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "📦 Товары", "📈 История", "📊 Графики", "📊 Статистика", "🔎 Анализ и комиссии"
