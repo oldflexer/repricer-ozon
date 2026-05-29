@@ -130,6 +130,37 @@ class ExcelLoader(ILoader):
     # ------------------------------------------------------------------
     # Приватные вспомогательные методы
     # ------------------------------------------------------------------
+    @staticmethod
+    def _parse_strategy_value(value) -> int:
+        """
+        Преобразует значение стратегии в числовой код:
+        1 - Ниже, 2 - Выше, 3 - Равная.
+        Поддерживает числа (1,2,3) и строки ('Ниже', 'Выше', 'Равная', 'Равно').
+        """
+        if pd.isna(value):
+            return 3
+        
+        # Если это число - возвращаем как есть
+        try:
+            num = int(float(value))
+            if num in (1, 2, 3):
+                return num
+        except (ValueError, TypeError):
+            pass
+        
+        # Преобразуем строку в нижний регистр
+        str_val = str(value).strip().lower()
+        if str_val in ('ниже', 'ниже индекса', '1'):
+            return 1
+        elif str_val in ('выше', 'выше индекса', '2'):
+            return 2
+        elif str_val in ('равная', 'равно', 'равна', 'равен', '3'):
+            return 3
+        else:
+            # Неизвестное значение - по умолчанию "Равная"
+            logger.warning(f"Неизвестное значение стратегии '{value}', используется 'Равная' (3)")
+            return 3
+
     def _parse_row(self, row: pd.Series, columns: pd.Index) -> tuple[Optional[ProductInfo], List[StrategyInterval]]:
         product_dict = {}
         for std_name, synonyms in self.COLUMN_MAPPING.items():
@@ -170,14 +201,13 @@ class ExcelLoader(ILoader):
             strategy_val = row.get(strategy_col) if strategy_col else None
             percent_val = row.get(percent_col) if percent_col else None
 
-            try:
-                strategy = int(float(strategy_val)) if pd.notna(strategy_val) else 3
-            except Exception:
-                strategy = 3
-            try:
-                percent = float(percent_val) if pd.notna(percent_val) else 0.0
-            except Exception:
-                percent = 0.0
+            strategy = self._parse_strategy_value(strategy_val)
+            percent = 0.0
+            if percent_val is not None and pd.notna(percent_val):
+                try:
+                    percent = float(percent_val)
+                except (ValueError, TypeError):
+                    percent = 0.0
 
             intervals.append(StrategyInterval(
                 start=start, end=end,
@@ -185,8 +215,18 @@ class ExcelLoader(ILoader):
             ))
 
         if not intervals:
-            base_strategy = self._get_int(row, columns, ['стратегия', 'strategy'], 3)
-            base_percent = self._get_float(row, columns, ['процент', 'percent'], 0.0)
+            base_strategy_col = self._find_column(columns, ['стратегия', 'strategy'])
+            base_strategy_val = row.get(base_strategy_col) if base_strategy_col else None
+            base_strategy = self._parse_strategy_value(base_strategy_val)
+            base_percent_col = self._find_column(columns, ['процент', 'percent'])
+            base_percent = 0.0
+            if base_percent_col:
+                base_percent_val = row.get(base_percent_col)
+                if base_percent_val is not None and pd.notna(base_percent_val):
+                    try:
+                        base_percent = float(base_percent_val)
+                    except (ValueError, TypeError):
+                        base_percent = 0.0
             intervals.append(StrategyInterval(
                 start='00:00', end='23:59',
                 strategy_type=base_strategy, percent=base_percent

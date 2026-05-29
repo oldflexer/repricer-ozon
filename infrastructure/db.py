@@ -2,7 +2,9 @@ import sqlite3
 import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
+
+import pandas as pd
 
 from core.entities import ProductInfo, StrategyInterval, PricingData, PriceCalculationResult
 from core.repository import IProductRepository
@@ -321,12 +323,120 @@ class SQLiteRepository(IProductRepository):
             if row and row[0]:
                 return datetime.fromisoformat(row[0]).replace(tzinfo=timezone.utc)
             return None
+        
+    # ---------- Расширенная аналитика ----------
+    def get_strategy_roi(self) -> pd.DataFrame:
+        with self._get_connection() as conn:
+            query = """
+                SELECT 
+                    s.strategy_name,
+                    AVG( ph.result_target_price - (
+                        p.net_price + 
+                        (ph.result_target_price * ph.sales_percent_fbs / 100) +
+                        (ph.fbs_first_mile_min_amount + ph.fbs_first_mile_max_amount)/2 +
+                        (ph.fbs_direct_flow_trans_min_amount + ph.fbs_direct_flow_trans_max_amount)/2 +
+                        ph.fbs_deliv_to_customer_amount
+                    ) ) as avg_abs_profit,
+                    AVG(ph.marginality) as avg_marginality,
+                    COUNT(*) as updates_count
+                FROM product_price_history ph
+                JOIN product p ON ph.product_id = p.product_id
+                JOIN product_strategy ps ON ph.product_id = ps.product_id
+                JOIN strategy s ON ps.strategy_id = s.id
+                WHERE ph.timestamp >= datetime('now', '-30 days')
+                GROUP BY s.id
+            """
+            return pd.read_sql_query(query, conn)
+
+    def get_ozon_index_vs_price(self) -> pd.DataFrame:
+        """
+        Возвращает данные для scatter plot: цена покупателя (real_price) 
+        против индекса Ozon (ozon_index_data_price), а также маржинальность.
+        Берутся последние записи по каждому товару.
+        """
+        with self._get_connection() as conn:
+            query = """
+                SELECT 
+                    p.sku,
+                    p.product_name,
+                    ph.ozon_index_data_price,
+                    (ph.result_target_price * ph.discount_coef) as real_price,
+                    ph.marginality,
+                    ph.ozon_index_data_index
+                FROM product_price_history ph
+                JOIN product p ON p.product_id = ph.product_id
+                WHERE ph.timestamp = (
+                    SELECT MAX(timestamp) FROM product_price_history WHERE product_id = ph.product_id
+                )
+                AND ph.ozon_index_data_price > 0
+                ORDER BY ph.ozon_index_data_price
+            """
+            return pd.read_sql_query(query, conn)
+
+    def get_kpi_metrics(self) -> Dict[str, Any]:
+        """
+        Возвращает ключевые метрики для дашборда:
+        - avg_margin_today: средняя маржинальность за последние сутки
+        - avg_margin_yesterday: средняя маржинальность за предыдущие сутки
+        - updates_last_week: количество обновлений цен за последние 7 дней
+        - unprofitable_count: количество товаров с маржинальностью < 0% (по последней записи)
+        - no_index_count: количество товаров, у которых ozon_index_data_price = 0 или NULL
+        """
+        with self._get_connection() as conn:
+            # Средняя маржинальность за сегодня (последние 24 часа)
+            today_margin = conn.execute("""
+                SELECT AVG(marginality) FROM product_price_history
+                WHERE timestamp >= datetime('now', '-1 day')
+            """).fetchone()[0]
+            
+            # Средняя маржинальность за вчера (от 24 до 48 часов назад)
+            yesterday_margin = conn.execute("""
+                SELECT AVG(marginality) FROM product_price_history
+                WHERE timestamp >= datetime('now', '-2 days')
+                AND timestamp < datetime('now', '-1 day')
+            """).fetchone()[0]
+            
+            # Количество обновлений за последнюю неделю
+            updates_week = conn.execute("""
+                SELECT COUNT(*) FROM product_price_history
+                WHERE timestamp >= datetime('now', '-7 days')
+            """).fetchone()[0]
+            
+            # Количество убыточных товаров (маржинальность < 0) по последней записи
+            unprofitable = conn.execute("""
+                WITH last_prices AS (
+                    SELECT ph.product_id, ph.marginality,
+                        ROW_NUMBER() OVER (PARTITION BY ph.product_id ORDER BY ph.timestamp DESC) as rn
+                    FROM product_price_history ph
+                )
+                SELECT COUNT(*) FROM last_prices
+                WHERE rn = 1 AND marginality < 0
+            """).fetchone()[0]
+            
+            # Количество товаров без индекса Ozon
+            no_index = conn.execute("""
+                SELECT COUNT(DISTINCT p.product_id)
+                FROM product p
+                JOIN product_price_history ph ON p.product_id = ph.product_id
+                WHERE ph.timestamp = (
+                    SELECT MAX(timestamp) FROM product_price_history WHERE product_id = p.product_id
+                )
+                AND (ph.ozon_index_data_price = 0 OR ph.ozon_index_data_price IS NULL)
+            """).fetchone()[0]
+            
+            return {
+                'avg_margin_today': today_margin * 100 if today_margin else 0,
+                'avg_margin_yesterday': yesterday_margin * 100 if yesterday_margin else 0,
+                'updates_last_week': updates_week,
+                'unprofitable_count': unprofitable,
+                'no_index_count': no_index,
+            }
 
     # ------------------- Обслуживание -------------------
     def delete_old_records(self, days: int) -> int:
-        """Ручная очистка записей старше указанного количества дней."""
+        """Ручная очистка записей старше указанного количества дней (UTC)."""
         with self._get_connection() as conn:
-            cutoff = datetime.now() - timedelta(days=days)
+            cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days)
             deleted_price = conn.execute(
                 "DELETE FROM product_price_history WHERE timestamp < ?", (cutoff,)
             ).rowcount
@@ -338,9 +448,9 @@ class SQLiteRepository(IProductRepository):
 
     # ---------- Автоматическая очистка (старше 3 месяцев) ----------
     def delete_records_older_than(self, months: int = 3) -> int:
-        """Удаляет записи старше указанного числа месяцев."""
+        """Удаляет записи старше указанного числа месяцев (UTC)."""
         with self._get_connection() as conn:
-            cutoff = datetime.now() - timedelta(days=months * 30)
+            cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=months * 30)
             deleted_price = conn.execute(
                 "DELETE FROM product_price_history WHERE timestamp < ?", (cutoff,)
             ).rowcount
@@ -352,23 +462,24 @@ class SQLiteRepository(IProductRepository):
             return deleted_price + deleted_margin
 
     def get_last_cleanup_date(self) -> Optional[datetime]:
-        """Возвращает дату последней автоматической очистки в UTC."""
+        """Возвращает дату последней автоматической очистки (aware UTC)."""
         with self._get_connection() as conn:
             row = conn.execute("SELECT value FROM maintenance WHERE key = 'last_cleanup'").fetchone()
             if row and row['value']:
                 try:
                     dt = datetime.fromisoformat(row['value'])
+                    # Если в БД сохранено naive, добавляем UTC
                     if dt.tzinfo is None:
                         dt = dt.replace(tzinfo=timezone.utc)
                     return dt
-                except:
+                except Exception:
                     return None
             return None
 
     def set_last_cleanup_date(self, dt: datetime):
-        """Сохраняет дату последней очистки (если dt naive, то добавляет UTC)."""
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
+        """Сохраняет дату последней очистки (преобразует в naive UTC для хранения)."""
+        if dt.tzinfo is not None:
+            dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
         with self._get_connection() as conn:
             conn.execute(
                 "UPDATE maintenance SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE key = 'last_cleanup'",
@@ -377,19 +488,18 @@ class SQLiteRepository(IProductRepository):
             conn.commit()
 
     def auto_cleanup_if_needed(self, months: int = 3, days_threshold: int = 1) -> int:
-        """
-        Автоматически запускает очистку, если с последней очистки прошло больше days_threshold дней.
-        Возвращает количество удалённых записей (0, если очистка не производилась).
-        """
+        """Автоматическая очистка, если прошло больше days_threshold дней с последней очистки."""
         last = self.get_last_cleanup_date()
+        now_utc_naive = datetime.now(timezone.utc).replace(tzinfo=None)
         if last is None:
-            # Никогда не чистили – делаем сейчас
             deleted = self.delete_records_older_than(months)
-            self.set_last_cleanup_date(datetime.now())
+            self.set_last_cleanup_date(datetime.now(timezone.utc))
             return deleted
         else:
-            if (datetime.now() - last).days >= days_threshold:
+            # Преобразуем last в naive для сравнения
+            last_naive = last.astimezone(timezone.utc).replace(tzinfo=None)
+            if (now_utc_naive - last_naive).days >= days_threshold:
                 deleted = self.delete_records_older_than(months)
-                self.set_last_cleanup_date(datetime.now())
+                self.set_last_cleanup_date(datetime.now(timezone.utc))
                 return deleted
         return 0

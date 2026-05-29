@@ -113,6 +113,29 @@ def execute_repricing(dry_run: bool):
         return msg, 'success'
     except Exception as e:
         return f"❌ Ошибка: {e}", 'error'
+    
+# --------------------------------------------------------------
+# KPI дашборд
+# --------------------------------------------------------------
+kpi = repo.get_kpi_metrics()
+col1, col2, col3, col4, col5 = st.columns(5)
+with col1:
+    delta_margin = kpi['avg_margin_today'] - kpi['avg_margin_yesterday']
+    st.metric(
+        "Средняя маржинальность (сегодня)", 
+        f"{kpi['avg_margin_today']:.1f}%",
+        delta=f"{delta_margin:+.1f}%" if delta_margin != 0 else None
+    )
+with col2:
+    st.metric("Обновлений за неделю", kpi['updates_last_week'])
+with col3:
+    st.metric("Убыточные товары", kpi['unprofitable_count'], delta=None)
+with col4:
+    st.metric("Без индекса Ozon", kpi['no_index_count'])
+with col5:
+    total_products = len(repo.get_all_products())
+    st.metric("Всего товаров", total_products)
+st.divider()
 
 # --------------------------------------------------------------
 # Боковая панель
@@ -128,6 +151,14 @@ with st.sidebar:
             st.error(st.session_state.result_message)
         st.session_state.result_message = None
         st.session_state.result_type = None
+
+    if st.session_state.running:
+        with st.spinner("Выполняется репрайсинг. Пожалуйста, подождите..."):
+            msg, msg_type = execute_repricing(st.session_state.dry_run_mode)
+            st.session_state.result_message = msg
+            st.session_state.result_type = msg_type
+            st.session_state.running = False
+        st.rerun()
     
     # --- Блокировка всех элементов, если репрайсинг выполняется ---
     if st.session_state.running:
@@ -166,7 +197,7 @@ with st.sidebar:
         st.divider()
         st.subheader("Обслуживание БД")
         # Кнопка удаления записей - disabled
-        st.button("🧹 Удалить записи старше 1 недели", width="stretch", disabled=True)
+        st.button("🧹 Удалить записи старше 1 месяца", width="stretch", disabled=True)
         
         st.divider()
         st.caption(f"Файл данных: {settings.DATA_FILE.resolve()}")
@@ -215,8 +246,8 @@ with st.sidebar:
         
         st.divider()
         st.subheader("Обслуживание БД")
-        if st.button("🧹 Удалить записи старше 1 недели", width="stretch"):
-            deleted = repo.delete_old_records(days=7)
+        if st.button("🧹 Удалить записи старше 1 месяца", width="stretch"):
+            deleted = repo.delete_old_records(days=30)
             st.success(f"Удалено записей: {deleted}")
         
         st.divider()
@@ -228,15 +259,6 @@ with st.sidebar:
             last_cleanup_msk = last_cleanup.astimezone(TIMEZONE)
             st.caption(f"🗑️ Последняя очистка БД: {last_cleanup_msk.strftime('%Y-%m-%d %H:%M')}")
     
-    # --- Блок выполнения репрайсинга (остаётся в конце) ---
-    if st.session_state.running:
-        with st.spinner("Выполняется репрайсинг. Пожалуйста, подождите..."):
-            msg, msg_type = execute_repricing(st.session_state.dry_run_mode)
-            st.session_state.result_message = msg
-            st.session_state.result_type = msg_type
-            st.session_state.running = False
-        st.rerun()
-
 # --------------------------------------------------------------
 # Основные вкладки
 # --------------------------------------------------------------
@@ -543,6 +565,28 @@ with tab4:
             st.plotly_chart(fig_heatmap, width="stretch")
         else:
             st.info("Недостаточно данных для тепловой карты.")
+        
+        # --- Эффективность стратегий (ROI) ---
+        st.divider()
+        st.subheader("Эффективность стратегий (ROI)")
+        strategy_roi = repo.get_strategy_roi()
+        if not strategy_roi.empty:
+            strategy_roi.rename(columns={
+                'strategy_name': 'Стратегия',
+                'avg_abs_profit': 'Средняя прибыль (₽)',
+                'avg_marginality': 'Средняя маржинальность (%)',
+                'updates_count': 'Кол-во обновлений'
+            }, inplace=True)
+            strategy_roi['Средняя маржинальность (%)'] = strategy_roi['Средняя маржинальность (%)'] * 100
+            strategy_roi['Средняя прибыль (₽)'] = strategy_roi['Средняя прибыль (₽)'].round(0)
+            st.dataframe(strategy_roi, width="stretch", hide_index=True)
+            
+            # Столбчатая диаграмма
+            fig_roi = px.bar(strategy_roi, x='Стратегия', y='Средняя прибыль (₽)',
+                            title='Средняя абсолютная прибыль по стратегиям (за 30 дней)')
+            st.plotly_chart(fig_roi, width="stretch")
+        else:
+            st.info("Недостаточно данных для анализа эффективности стратегий.")
 
         # --- Динамика за последнюю неделю (уже есть) ---
         st.divider()
@@ -689,3 +733,40 @@ with tab5:
                               title="Зависимость маржинальности от индекса Ozon",
                               labels={'ozon_index_data_index': 'Индекс Ozon (коэффициент)', 'marginality': 'Маржинальность'})
         st.plotly_chart(fig_corr, width="stretch")
+
+        st.subheader("Зависимость цены от индекса Ozon")
+        ozon_price_df = repo.get_ozon_index_vs_price()
+        if not ozon_price_df.empty:
+            fig_scatter = px.scatter(
+                ozon_price_df,
+                x='ozon_index_data_price',
+                y='real_price',
+                color='marginality',
+                hover_data=['sku', 'product_name'],
+                title='Цена покупателя vs Индекс Ozon (цвет – маржинальность)',
+                labels={
+                    'ozon_index_data_price': 'Индекс Ozon (₽)',
+                    'real_price': 'Реальная цена покупателя (₽)',
+                    'marginality': 'Маржинальность'
+                },
+                color_continuous_scale='RdYlGn',
+                range_color=[-0.2, 0.4]
+            )
+            # Добавляем линию y=x для справки
+            max_val = max(ozon_price_df['ozon_index_data_price'].max(), ozon_price_df['real_price'].max())
+            fig_scatter.add_trace(go.Scatter(
+                x=[0, max_val],
+                y=[0, max_val],
+                mode='lines',
+                name='y=x',
+                line=dict(dash='dash', color='gray')
+            ))
+            st.plotly_chart(fig_scatter, width="stretch")
+            
+            # Статистика: сколько товаров с ценой выше/ниже индекса
+            above = (ozon_price_df['real_price'] > ozon_price_df['ozon_index_data_price']).sum()
+            below = (ozon_price_df['real_price'] < ozon_price_df['ozon_index_data_price']).sum()
+            equal = (ozon_price_df['real_price'] == ozon_price_df['ozon_index_data_price']).sum()
+            st.markdown(f"**Товаров с ценой выше индекса:** {above} &nbsp;&nbsp;|&nbsp;&nbsp; **Ниже индекса:** {below} &nbsp;&nbsp;|&nbsp;&nbsp; **Равна индексу:** {equal}")
+        else:
+            st.info("Нет товаров с индексом Ozon для анализа зависимости.")
