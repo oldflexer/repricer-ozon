@@ -126,6 +126,11 @@ class PricingOrchestrator:
         stats['prices_updated'] = sum(1 for u in updates if u.get('status') == 'updated')
         self.notifier.send_detailed_report(updates, stats['errors'], dry_run=dry_run)
 
+        # --- Автоматическая очистка записей старше 3 месяцев (не чаще раза в сутки) ---
+        deleted = self.repo.auto_cleanup_if_needed(months=3, days_threshold=1)
+        if deleted:
+            logger.info(f"Автоматическая очистка БД: удалено {deleted} старых записей")
+
         logger.info(f"=== Завершено. Обновлено товаров: {stats['prices_updated']} ===")
         return stats
 

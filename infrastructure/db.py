@@ -12,7 +12,7 @@ from infrastructure.logger import logger
 
 class SQLiteRepository(IProductRepository):
     # Текущая версия схемы БД (увеличивать при добавлении миграций)
-    SCHEMA_VERSION = 3
+    SCHEMA_VERSION = 5
 
     def __init__(self, db_path: Path = settings.DATABASE_PATH):
         self.db_path = db_path
@@ -39,7 +39,6 @@ class SQLiteRepository(IProductRepository):
         current = self._get_schema_version(conn)
 
         if current == 0:
-            # Первоначальное создание всех таблиц (безопасно, даже если уже есть)
             logger.info("Применяем миграцию 0 -> 1: создание таблиц (если их нет)")
             conn.executescript("""
                 CREATE TABLE IF NOT EXISTS product (
@@ -87,12 +86,10 @@ class SQLiteRepository(IProductRepository):
                 );
             """)
             conn.execute("INSERT OR IGNORE INTO schema_version (version) VALUES (1)")
-            current = self._get_schema_version(conn)  # перечитаем версию (теперь 1)
+            current = self._get_schema_version(conn)
 
         if current == 1:
-            # Миграция 1 -> 2: добавить колонку real_customer_price в product
             logger.info("Применяем миграцию 1 -> 2: добавление колонки real_customer_price и real_price")
-            # Проверяем существование колонок, чтобы избежать ошибок при повторном запуске
             columns_product = [row[1] for row in conn.execute("PRAGMA table_info(product)")]
             if 'real_customer_price' not in columns_product:
                 conn.execute("ALTER TABLE product ADD COLUMN real_customer_price REAL")
@@ -110,19 +107,38 @@ class SQLiteRepository(IProductRepository):
             conn.execute("INSERT OR IGNORE INTO schema_version (version) VALUES (3)")
             current = 3
 
+        if current == 3:
+            logger.info("Применяем миграцию 3 -> 4: создание таблицы maintenance")
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS maintenance (
+                    key TEXT PRIMARY KEY,
+                    value TEXT,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            conn.execute("""
+                INSERT OR IGNORE INTO maintenance (key, value) VALUES ('last_cleanup', '1970-01-01 00:00:00')
+            """)
+            conn.execute("INSERT OR IGNORE INTO schema_version (version) VALUES (4)")
+            current = 4
+
+        if current == 4:
+            logger.info("Применяем миграцию 4 -> 5: подготовка к автоматической очистке")
+            # Здесь можно добавить дополнительные индексы, если нужно
+            conn.execute("INSERT OR IGNORE INTO schema_version (version) VALUES (5)")
+            current = 5
+
         if current < self.SCHEMA_VERSION:
             logger.error(f"Текущая версия {current} ниже целевой {self.SCHEMA_VERSION}, но миграций больше нет")
         elif current > self.SCHEMA_VERSION:
             logger.warning(f"Версия БД ({current}) выше целевой ({self.SCHEMA_VERSION}). Возможно, вы используете старую версию кода.")
 
     def _init_tables(self):
-        """Инициализация БД через миграции."""
         with self._get_connection() as conn:
             self._apply_migrations(conn)
 
     # ------------------- Товары -------------------
     def get_all_products(self) -> List[ProductInfo]:
-        """Возвращает список всех товаров из таблицы product."""
         with self._get_connection() as conn:
             rows = conn.execute("""
                 SELECT product_id, offer_id, sku, product_name, rip, net_price, real_customer_price
@@ -142,7 +158,6 @@ class SQLiteRepository(IProductRepository):
             ]
 
     def upsert_product(self, product: ProductInfo) -> bool:
-        """Вставляет или обновляет информацию о товаре."""
         with self._get_connection() as conn:
             conn.execute("""
                 INSERT OR REPLACE INTO product (product_id, offer_id, sku, product_name, rip, net_price, real_customer_price)
@@ -246,8 +261,6 @@ class SQLiteRepository(IProductRepository):
             return True
 
     def get_price_history(self, sku: str) -> List[dict]:
-        """Возвращает историю цен. Если есть real_price (после отправки), использует её,
-        иначе вычисляет customer_price = result_target_price * discount_coef."""
         with self._get_connection() as conn:
             rows = conn.execute("""
                 SELECT 
@@ -311,6 +324,7 @@ class SQLiteRepository(IProductRepository):
 
     # ------------------- Обслуживание -------------------
     def delete_old_records(self, days: int) -> int:
+        """Ручная очистка записей старше указанного количества дней."""
         with self._get_connection() as conn:
             cutoff = datetime.now() - timedelta(days=days)
             deleted_price = conn.execute(
@@ -321,3 +335,61 @@ class SQLiteRepository(IProductRepository):
             ).rowcount
             conn.commit()
             return deleted_price + deleted_margin
+
+    # ---------- Автоматическая очистка (старше 3 месяцев) ----------
+    def delete_records_older_than(self, months: int = 3) -> int:
+        """Удаляет записи старше указанного числа месяцев."""
+        with self._get_connection() as conn:
+            cutoff = datetime.now() - timedelta(days=months * 30)
+            deleted_price = conn.execute(
+                "DELETE FROM product_price_history WHERE timestamp < ?", (cutoff,)
+            ).rowcount
+            deleted_margin = conn.execute(
+                "DELETE FROM product_marginality_history WHERE timestamp < ?", (cutoff,)
+            ).rowcount
+            conn.commit()
+            logger.info(f"Очистка БД: удалено {deleted_price} записей истории цен и {deleted_margin} записей маржинальности старше {months} месяцев")
+            return deleted_price + deleted_margin
+
+    def get_last_cleanup_date(self) -> Optional[datetime]:
+        """Возвращает дату последней автоматической очистки в UTC."""
+        with self._get_connection() as conn:
+            row = conn.execute("SELECT value FROM maintenance WHERE key = 'last_cleanup'").fetchone()
+            if row and row['value']:
+                try:
+                    dt = datetime.fromisoformat(row['value'])
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    return dt
+                except:
+                    return None
+            return None
+
+    def set_last_cleanup_date(self, dt: datetime):
+        """Сохраняет дату последней очистки (если dt naive, то добавляет UTC)."""
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        with self._get_connection() as conn:
+            conn.execute(
+                "UPDATE maintenance SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE key = 'last_cleanup'",
+                (dt.isoformat(),)
+            )
+            conn.commit()
+
+    def auto_cleanup_if_needed(self, months: int = 3, days_threshold: int = 1) -> int:
+        """
+        Автоматически запускает очистку, если с последней очистки прошло больше days_threshold дней.
+        Возвращает количество удалённых записей (0, если очистка не производилась).
+        """
+        last = self.get_last_cleanup_date()
+        if last is None:
+            # Никогда не чистили – делаем сейчас
+            deleted = self.delete_records_older_than(months)
+            self.set_last_cleanup_date(datetime.now())
+            return deleted
+        else:
+            if (datetime.now() - last).days >= days_threshold:
+                deleted = self.delete_records_older_than(months)
+                self.set_last_cleanup_date(datetime.now())
+                return deleted
+        return 0

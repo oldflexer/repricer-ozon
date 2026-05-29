@@ -76,6 +76,15 @@ st.markdown(
 
 repo = SQLiteRepository(settings.DATABASE_PATH)
 
+if 'running' not in st.session_state:
+    st.session_state.running = False
+if 'result_message' not in st.session_state:
+    st.session_state.result_message = None
+if 'result_type' not in st.session_state:  # 'success', 'error'
+    st.session_state.result_type = None
+if 'dry_run_mode' not in st.session_state:
+    st.session_state.dry_run_mode = False
+
 def run_repricing(dry_run: bool = False) -> Dict[str, Any]:
     async def _run():
         loader = ExcelLoader(settings.DATA_FILE)
@@ -89,74 +98,144 @@ def run_repricing(dry_run: bool = False) -> Dict[str, Any]:
         return stats
     return asyncio.run(_run())
 
+def execute_repricing(dry_run: bool):
+    """Запускает репрайсинг и возвращает результат или ошибку."""
+    try:
+        stats = run_repricing(dry_run=dry_run)
+        if dry_run:
+            msg = f"✅ Dry run завершён. Обработано товаров: {stats.get('products_loaded', 0)}, рассчитано цен: {stats.get('prices_updated', 0)}"
+        else:
+            updated = stats.get('prices_updated', 0)
+            errors = stats.get('errors', [])
+            msg = f"✅ Готово! Обновлено цен: {updated}"
+            if errors:
+                msg += f"\n⚠️ Ошибки: {', '.join(errors)}"
+        return msg, 'success'
+    except Exception as e:
+        return f"❌ Ошибка: {e}", 'error'
+
 # --------------------------------------------------------------
 # Боковая панель
 # --------------------------------------------------------------
 with st.sidebar:
     st.header("Управление")
     
-    if st.button("🚀 Полный цикл (отправка цен)", type="primary", width="stretch"):
-        with st.spinner("Выполняется загрузка, расчёт и отправка цен..."):
-            try:
-                stats = run_repricing(dry_run=False)
-                updated = stats.get('prices_updated', 0)
-                errors = stats.get('errors', [])
-                st.success(f"✅ Готово! Обновлено цен: {updated}")
-                if errors:
-                    st.warning(f"⚠️ Ошибки: {', '.join(errors)}")
-            except Exception as e:
-                st.error(f"❌ Ошибка: {e}")
+    # --- Показываем сообщение о результате предыдущего запуска ---
+    if st.session_state.result_message:
+        if st.session_state.result_type == 'success':
+            st.success(st.session_state.result_message)
+        else:
+            st.error(st.session_state.result_message)
+        st.session_state.result_message = None
+        st.session_state.result_type = None
     
-    if st.button("📝 Dry run (без отправки)", width="stretch"):
-        with st.spinner("Выполняется расчёт (цены не отправляются)..."):
-            try:
-                stats = run_repricing(dry_run=True)
-                processed = stats.get('products_loaded', 0)
-                calculated = stats.get('prices_updated', 0)
-                st.success(f"✅ Обработано товаров: {processed}, рассчитано цен: {calculated}")
-            except Exception as e:
-                st.error(f"❌ Ошибка: {e}")
+    # --- Блокировка всех элементов, если репрайсинг выполняется ---
+    if st.session_state.running:
+        st.warning("⏳ Репрайсинг выполняется. Пожалуйста, подождите...")
+        # Кнопки основных действий - disabled
+        st.button("🚀 Полный цикл (отправка цен)", type="primary", width="stretch", disabled=True)
+        st.button("📝 Dry run (без отправки)", width="stretch", disabled=True)
+        
+        st.divider()
+        
+        # Показываем метрику последнего запуска (только чтение)
+        last_run_utc = repo.get_last_run_time()
+        if last_run_utc:
+            last_run_msk = last_run_utc.astimezone(TIMEZONE)
+            st.metric("Последний запуск (МСК)", last_run_msk.strftime("%Y-%m-%d %H:%M"))
+        else:
+            st.metric("Последний запуск", "—")
+        
+        st.divider()
+        st.subheader("Работа с Excel")
+        # Вместо file_uploader показываем сообщение, что недоступно
+        st.info("⛔ Загрузка Excel недоступна во время выполнения репрайсинга")
+        # Кнопка скачивания Excel - disabled
+        if settings.DATA_FILE.exists():
+            with open(settings.DATA_FILE, "rb") as f:
+                st.download_button(
+                    "📥 Скачать текущий Excel",
+                    f,
+                    file_name=settings.DATA_FILE.name,
+                    width="stretch",
+                    disabled=True
+                )
+        else:
+            st.warning("Файл Excel пока не существует.")
+        
+        st.divider()
+        st.subheader("Обслуживание БД")
+        # Кнопка удаления записей - disabled
+        st.button("🧹 Удалить записи старше 1 недели", width="stretch", disabled=True)
+        
+        st.divider()
+        st.caption(f"Файл данных: {settings.DATA_FILE.resolve()}")
+        st.caption(f"База данных: {settings.DATABASE_PATH.resolve()}")
     
-    st.divider()
-    
-    last_run_utc = repo.get_last_run_time()
-    if last_run_utc:
-        last_run_msk = last_run_utc.astimezone(TIMEZONE)
-        st.metric("Последний запуск (МСК)", last_run_msk.strftime("%Y-%m-%d %H:%M"))
     else:
-        st.metric("Последний запуск", "—")
+        # --- Обычный режим (все элементы активны) ---
+        if st.button("🚀 Полный цикл (отправка цен)", type="primary", width="stretch"):
+            st.session_state.running = True
+            st.session_state.dry_run_mode = False
+            st.rerun()
+        
+        if st.button("📝 Dry run (без отправки)", width="stretch"):
+            st.session_state.running = True
+            st.session_state.dry_run_mode = True
+            st.rerun()
+        
+        st.divider()
+        
+        last_run_utc = repo.get_last_run_time()
+        if last_run_utc:
+            last_run_msk = last_run_utc.astimezone(TIMEZONE)
+            st.metric("Последний запуск (МСК)", last_run_msk.strftime("%Y-%m-%d %H:%M"))
+        else:
+            st.metric("Последний запуск", "—")
+        
+        st.divider()
+        st.subheader("Работа с Excel")
+        
+        uploaded_file = st.file_uploader("", type=["xlsx"], label_visibility="collapsed", width="stretch")
+        if uploaded_file is not None:
+            with open(settings.DATA_FILE, "wb") as f:
+                f.write(uploaded_file.getbuffer())
+            st.success(f"✅ Файл загружен: {settings.DATA_FILE.name}")
+        
+        if settings.DATA_FILE.exists():
+            with open(settings.DATA_FILE, "rb") as f:
+                st.download_button(
+                    "📥 Скачать текущий Excel",
+                    f,
+                    file_name=settings.DATA_FILE.name,
+                    width="stretch"
+                )
+        else:
+            st.warning("Файл Excel пока не существует.")
+        
+        st.divider()
+        st.subheader("Обслуживание БД")
+        if st.button("🧹 Удалить записи старше 1 недели", width="stretch"):
+            deleted = repo.delete_old_records(days=7)
+            st.success(f"Удалено записей: {deleted}")
+        
+        st.divider()
+        st.caption(f"Файл данных: {settings.DATA_FILE.resolve()}")
+        st.caption(f"База данных: {settings.DATABASE_PATH.resolve()}")
+
+        last_cleanup = repo.get_last_cleanup_date()
+        if last_cleanup:
+            last_cleanup_msk = last_cleanup.astimezone(TIMEZONE)
+            st.caption(f"🗑️ Последняя очистка БД: {last_cleanup_msk.strftime('%Y-%m-%d %H:%M')}")
     
-    st.divider()
-    st.subheader("Работа с Excel")
-    
-    uploaded_file = st.file_uploader("", type=["xlsx"], label_visibility="collapsed", width="stretch")
-    
-    if uploaded_file is not None:
-        with open(settings.DATA_FILE, "wb") as f:
-            f.write(uploaded_file.getbuffer())
-        st.success(f"✅ Файл загружен: {settings.DATA_FILE.name}")
-    
-    # Кнопка скачивания текущего Excel
-    if settings.DATA_FILE.exists():
-        with open(settings.DATA_FILE, "rb") as f:
-            st.download_button(
-                "📥 Скачать текущий Excel",
-                f,
-                file_name=settings.DATA_FILE.name,
-                width="stretch"
-            )
-    else:
-        st.warning("Файл Excel пока не существует.")
-    
-    st.divider()
-    st.subheader("Обслуживание БД")
-    if st.button("🧹 Удалить записи старше 1 недели", width="stretch"):
-        deleted = repo.delete_old_records(days=7)
-        st.success(f"Удалено записей: {deleted}")
-    
-    st.divider()
-    st.caption(f"Файл данных: {settings.DATA_FILE.resolve()}")
-    st.caption(f"База данных: {settings.DATABASE_PATH.resolve()}")
+    # --- Блок выполнения репрайсинга (остаётся в конце) ---
+    if st.session_state.running:
+        with st.spinner("Выполняется репрайсинг. Пожалуйста, подождите..."):
+            msg, msg_type = execute_repricing(st.session_state.dry_run_mode)
+            st.session_state.result_message = msg
+            st.session_state.result_type = msg_type
+            st.session_state.running = False
+        st.rerun()
 
 # --------------------------------------------------------------
 # Основные вкладки
