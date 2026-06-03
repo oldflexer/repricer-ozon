@@ -32,9 +32,8 @@ if [ ! -d ".venv" ]; then
 fi
 
 echo "=== Установка зависимостей ==="
-source .venv/bin/activate
-pip install --upgrade pip
-pip install -r requirements.txt
+.venv/bin/pip install --upgrade pip
+.venv/bin/pip install -r requirements.txt
 
 # --- systemd сервис (уникальное имя) ---
 SERVICE_NAME="repricer-${INSTANCE_NAME}.service"
