@@ -1,3 +1,2 @@
-# Repricer cron jobs
-# Full cycle every hour
-0 * * * * cd {{WORKING_DIR}} && {{WORKING_DIR}}/.venv/bin/python main.py >> /var/log/repricer.log 2>&1
+# Repricer {{INSTANCE_NAME}} cron jobs
+{{CRON_SCHEDULE}} cd {{WORKING_DIR}} && {{WORKING_DIR}}/.venv/bin/python main.py >> /var/log/repricer-{{INSTANCE_NAME}}.log 2>&1

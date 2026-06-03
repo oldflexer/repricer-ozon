@@ -1,11 +1,11 @@
 [Unit]
-Description=Repricer Web Dashboard (API version)
+Description=Repricer Web Dashboard ({{INSTANCE_NAME}})
 After=network.target
 
 [Service]
 User={{USER}}
 WorkingDirectory={{WORKING_DIR}}
-ExecStart={{WORKING_DIR}}/.venv/bin/streamlit run app.py --server.port 8501 --server.address 0.0.0.0
+ExecStart={{WORKING_DIR}}/.venv/bin/streamlit run app.py --server.port {{PORT}} --server.address 0.0.0.0
 Restart=always
 EnvironmentFile={{WORKING_DIR}}/.env
 

@@ -3,59 +3,77 @@ set -e
 
 cd "$(dirname "$0")"
 
-echo "=== Ветка server ==="
-git checkout server
-git reset --hard HEAD
-git pull origin server
+# --- Чтение параметров из .env (если есть) ---
+if [ -f .env ]; then
+    source .env
+fi
 
-# --- Автоматическое создание venv ---
+# --- Значения по умолчанию ---
+INSTANCE_NAME="${INSTANCE_NAME:-$(basename "$(pwd)")}"
+PORT="${PORT:-8501}"
+CRON_SCHEDULE="${CRON_SCHEDULE:-0 * * * *}"   # каждый час по умолчанию
+
+echo "=== Развёртывание экземпляра: $INSTANCE_NAME (порт $PORT) ==="
+
+# --- Обновление кода (опционально) ---
+if git rev-parse --git-dir > /dev/null 2>&1; then
+    echo "=== Обновление кода из git ==="
+    git checkout server
+    git reset --hard HEAD
+    git pull origin server
+else
+    echo "⚠️ Не git-репозиторий, обновление кода пропущено"
+fi
+
+# --- Виртуальное окружение ---
 if [ ! -d ".venv" ]; then
-    echo "=== Виртуальное окружение не найдено, создаём... ==="
+    echo "=== Создание виртуального окружения ==="
     python3 -m venv .venv
 fi
 
-echo "=== Активация venv и установка зависимостей ==="
+echo "=== Установка зависимостей ==="
 source .venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt
 
-# --- Создание/обновление systemd сервиса из шаблона ---
-SERVICE_TEMPLATE="deploy/repricer-web.service"
-SERVICE_FILE="/etc/systemd/system/repricer-web.service"
+# --- systemd сервис (уникальное имя) ---
+SERVICE_NAME="repricer-${INSTANCE_NAME}.service"
+SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}"
 CURRENT_USER=$(whoami)
 WORKING_DIR=$(pwd)
 
-if [ -f "$SERVICE_TEMPLATE" ]; then
-    echo "=== Установка systemd сервиса из $SERVICE_TEMPLATE ==="
-    sed -e "s|{{USER}}|$CURRENT_USER|g" \
-        -e "s|{{WORKING_DIR}}|$WORKING_DIR|g" \
-        "$SERVICE_TEMPLATE" | sudo tee "$SERVICE_FILE" > /dev/null
-    sudo systemctl daemon-reload
-    sudo systemctl enable repricer-web
-    sudo systemctl restart repricer-web
-    echo "✅ Сервис обновлён и перезапущен"
-else
-    echo "⚠️ Файл $SERVICE_TEMPLATE не найден, пропускаем установку сервиса"
-fi
+# Создаём сервис из шаблона, подставляя переменные
+echo "=== Установка systemd сервиса ${SERVICE_NAME} ==="
+sed -e "s|{{USER}}|$CURRENT_USER|g" \
+    -e "s|{{WORKING_DIR}}|$WORKING_DIR|g" \
+    -e "s|{{PORT}}|$PORT|g" \
+    -e "s|{{INSTANCE_NAME}}|$INSTANCE_NAME|g" \
+    "deploy/repricer-web.service.template" | sudo tee "$SERVICE_FILE" > /dev/null
 
-# --- Установка/обновление cron из шаблона ---
-CRON_TEMPLATE="deploy/cron.example"
-CRON_TMP="/tmp/repricer_cron_$$"
+sudo systemctl daemon-reload
+sudo systemctl enable "$SERVICE_NAME"
+sudo systemctl restart "$SERVICE_NAME"
+echo "✅ Сервис $SERVICE_NAME перезапущен"
+
+# --- Cron (уникальные маркеры) ---
+CRON_TEMPLATE="deploy/cron.template"
+CRON_TMP="/tmp/repricer_cron_${INSTANCE_NAME}_$$"
 
 if [ -f "$CRON_TEMPLATE" ]; then
-    echo "=== Установка cron задач из $CRON_TEMPLATE ==="
-    # Заменяем плейсхолдер
-    sed -e "s|{{WORKING_DIR}}|$WORKING_DIR|g" "$CRON_TEMPLATE" > "$CRON_TMP"
+    echo "=== Установка cron задач для ${INSTANCE_NAME} ==="
+    sed -e "s|{{WORKING_DIR}}|$WORKING_DIR|g" \
+        -e "s|{{CRON_SCHEDULE}}|$CRON_SCHEDULE|g" \
+        "$CRON_TEMPLATE" > "$CRON_TMP"
     echo "" >> "$CRON_TMP"
 
-    # Удаляем старые строки, связанные с репрайсером (по пути, маркеру и комментариям)
-    crontab -l 2>/dev/null | grep -v -e "$WORKING_DIR" -e "# Repricer cron jobs" -e "# Full cycle every hour" > "$CRON_TMP.old" || true
+    # Удаляем старые строки, относящиеся к этому экземпляру (по маркеру)
+    crontab -l 2>/dev/null | grep -v "# Repricer ${INSTANCE_NAME}" > "$CRON_TMP.old" || true
 
     # Добавляем новые задачи
     cat "$CRON_TMP" >> "$CRON_TMP.old"
     crontab "$CRON_TMP.old"
     rm -f "$CRON_TMP" "$CRON_TMP.old"
-    echo "✅ Cron задачи обновлены"
+    echo "✅ Cron задачи для ${INSTANCE_NAME} обновлены"
 else
     echo "⚠️ Файл $CRON_TEMPLATE не найден, пропускаем установку cron"
 fi
@@ -63,4 +81,4 @@ fi
 echo "=== Установка прав на выполнение ==="
 chmod +x deploy.sh
 
-echo "=== Готово! ==="
+echo "=== Готово! Экземпляр $INSTANCE_NAME развёрнут ==="
