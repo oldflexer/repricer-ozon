@@ -330,6 +330,9 @@ with tab1:
             avg_month = repo.get_average_marginality(p.sku, 30)
 
             view = to_view_model(p, last_price, last_margin, avg_week, avg_month)
+
+            link = f'https://www.ozon.ru/product/{p.sku}/'
+
             rows.append({
                 "SKU": view.sku,
                 "Название": view.name,
@@ -339,11 +342,18 @@ with tab1:
                 "Маржинальность, %": f"{view.marginality_percent:.2f}" if view.marginality_percent else "—",
                 "Ср. неделя, %": f"{view.avg_week_margin:.2f}" if view.avg_week_margin else "—",
                 "Ср. месяц, %": f"{view.avg_month_margin:.2f}" if view.avg_month_margin else "—",
+                "Ссылка": link,
             })
 
         if rows:
             df = pd.DataFrame(rows)
-            st.dataframe(df, width="stretch", hide_index=True)
+            st.dataframe(
+                df, 
+                column_config={
+                    "Ссылка": st.column_config.LinkColumn("Ссылка", display_text="🔗 Открыть"),
+                },
+                width="stretch", 
+                hide_index=True)
         else:
             st.info("Нет товаров, соответствующих фильтрам.")
 

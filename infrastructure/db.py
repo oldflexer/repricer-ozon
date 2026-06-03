@@ -130,6 +130,16 @@ class SQLiteRepository(IProductRepository):
             conn.execute("INSERT OR IGNORE INTO schema_version (version) VALUES (5)")
             current = 5
 
+        if current == 5:
+            logger.info("Применяем миграцию 5 -> 6: добавление колонок FBO комиссий в product_price_history")
+            conn.execute("ALTER TABLE product_price_history ADD COLUMN fbo_deliv_to_customer_amount REAL")
+            conn.execute("ALTER TABLE product_price_history ADD COLUMN fbo_direct_flow_trans_min_amount REAL")
+            conn.execute("ALTER TABLE product_price_history ADD COLUMN fbo_direct_flow_trans_max_amount REAL")
+            conn.execute("ALTER TABLE product_price_history ADD COLUMN fbo_return_flow_amount REAL")
+            conn.execute("ALTER TABLE product_price_history ADD COLUMN fbs_return_flow_amount REAL")
+            conn.execute("INSERT OR IGNORE INTO schema_version (version) VALUES (6)")
+            current = 6
+
         if current < self.SCHEMA_VERSION:
             logger.error(f"Текущая версия {current} ниже целевой {self.SCHEMA_VERSION}, но миграций больше нет")
         elif current > self.SCHEMA_VERSION:
@@ -232,8 +242,9 @@ class SQLiteRepository(IProductRepository):
                     fbs_first_mile_min_amount, fbs_first_mile_max_amount,
                     fbs_direct_flow_trans_min_amount, fbs_direct_flow_trans_max_amount,
                     fbs_deliv_to_customer_amount,
-                    real_price, log_details
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    fbo_deliv_to_customer_amount, fbo_direct_flow_trans_min_amount,
+                    fbo_direct_flow_trans_max_amount, real_price, log_details
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 pid,
                 pricing.min_price,
@@ -256,6 +267,9 @@ class SQLiteRepository(IProductRepository):
                 pricing.fbs_direct_flow_trans_min_amount,
                 pricing.fbs_direct_flow_trans_max_amount,
                 pricing.fbs_deliv_to_customer_amount,
+                pricing.fbo_deliv_to_customer_amount,
+                pricing.fbo_direct_flow_trans_min_amount,
+                pricing.fbo_direct_flow_trans_max_amount,
                 real_price,
                 json.dumps(result.log_details, ensure_ascii=False)
             ))

@@ -46,11 +46,18 @@ class PricingData:
     # Новые поля для FBS комиссий
     sales_percent_fbs: float = 0.0
     acquiring: float = 0.0
+
     fbs_first_mile_min_amount: float = 0.0
     fbs_first_mile_max_amount: float = 0.0
+
     fbs_direct_flow_trans_min_amount: float = 0.0
     fbs_direct_flow_trans_max_amount: float = 0.0
     fbs_deliv_to_customer_amount: float = 0.0
+
+    fbo_direct_flow_trans_min_amount: float = 0.0
+    fbo_direct_flow_trans_max_amount: float = 0.0
+    fbo_deliv_to_customer_amount: float = 0.0
+    
 
     @classmethod
     def from_api_response(cls, data: dict) -> 'PricingData':
@@ -100,11 +107,17 @@ class PricingData:
             # Новые поля
             sales_percent_fbs=float(commissions.get('sales_percent_fbs', 0)),
             acquiring=float(data.get('acquiring', 0)),
+            
             fbs_first_mile_min_amount=float(commissions.get('fbs_first_mile_min_amount', 0)),
             fbs_first_mile_max_amount=float(commissions.get('fbs_first_mile_max_amount', 0)),
+
             fbs_direct_flow_trans_min_amount=float(commissions.get('fbs_direct_flow_trans_min_amount', 0)),
             fbs_direct_flow_trans_max_amount=float(commissions.get('fbs_direct_flow_trans_max_amount', 0)),
             fbs_deliv_to_customer_amount=float(commissions.get('fbs_deliv_to_customer_amount', 0)),
+
+            fbo_direct_flow_trans_min_amount=float(commissions.get('fbo_direct_flow_trans_min_amount', 0)),
+            fbo_direct_flow_trans_max_amount=float(commissions.get('fbo_direct_flow_trans_max_amount', 0)),
+            fbo_deliv_to_customer_amount=float(commissions.get('fbo_deliv_to_customer_amount', 0)),
         )
 
 @dataclass
