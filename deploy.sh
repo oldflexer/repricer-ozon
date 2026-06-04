@@ -62,6 +62,7 @@ if [ -f "$CRON_TEMPLATE" ]; then
     echo "=== Установка cron задач для ${INSTANCE_NAME} ==="
     sed -e "s|{{WORKING_DIR}}|$WORKING_DIR|g" \
         -e "s|{{CRON_SCHEDULE}}|$CRON_SCHEDULE|g" \
+        -e "s|{{INSTANCE_NAME}}|$INSTANCE_NAME|g" \
         "$CRON_TEMPLATE" > "$CRON_TMP"
     echo "" >> "$CRON_TMP"
 
