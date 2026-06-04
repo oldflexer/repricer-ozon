@@ -54,28 +54,33 @@ sudo systemctl enable "$SERVICE_NAME"
 sudo systemctl restart "$SERVICE_NAME"
 echo "✅ Сервис $SERVICE_NAME перезапущен"
 
-# --- Cron (уникальные маркеры) ---
-CRON_TEMPLATE="deploy/cron.template"
-CRON_TMP="/tmp/repricer_cron_${INSTANCE_NAME}_$$"
-
-if [ -f "$CRON_TEMPLATE" ]; then
+# --- Cron (уникальные маркеры + удаление по пути) ---
+if [ -f "deploy/cron.template" ]; then
     echo "=== Установка cron задач для ${INSTANCE_NAME} ==="
+    CRON_TMP="/tmp/repricer_cron_${INSTANCE_NAME}_$$"
+    
+    # Генерируем новую строку из шаблона
     sed -e "s|{{WORKING_DIR}}|$WORKING_DIR|g" \
         -e "s|{{CRON_SCHEDULE}}|$CRON_SCHEDULE|g" \
         -e "s|{{INSTANCE_NAME}}|$INSTANCE_NAME|g" \
-        "$CRON_TEMPLATE" > "$CRON_TMP"
-    echo "" >> "$CRON_TMP"
-
-    # Удаляем старые строки, относящиеся к этому экземпляру (по маркеру)
-    crontab -l 2>/dev/null | grep -v "# Repricer ${INSTANCE_NAME}" > "$CRON_TMP.old" || true
-
-    # Добавляем новые задачи
+        "deploy/cron.template" > "$CRON_TMP"
+    
+    # Удаляем старые строки, связанные с этим экземпляром:
+    #  - по маркеру "# Repricer ${INSTANCE_NAME}"
+    #  - по пути $WORKING_DIR (на случай, если строки без маркера)
+    crontab -l 2>/dev/null | grep -v -e "# Repricer ${INSTANCE_NAME}" -e "$WORKING_DIR" > "$CRON_TMP.old" || true
+    
+    # Добавляем новую строку (с маркером)
     cat "$CRON_TMP" >> "$CRON_TMP.old"
+    # Убедимся, что в конце есть перевод строки
+    echo "" >> "$CRON_TMP.old"
+    
+    # Применяем обновлённый crontab
     crontab "$CRON_TMP.old"
     rm -f "$CRON_TMP" "$CRON_TMP.old"
     echo "✅ Cron задачи для ${INSTANCE_NAME} обновлены"
 else
-    echo "⚠️ Файл $CRON_TEMPLATE не найден, пропускаем установку cron"
+    echo "⚠️ Шаблон cron не найден, пропускаем"
 fi
 
 echo "=== Установка прав на выполнение ==="
