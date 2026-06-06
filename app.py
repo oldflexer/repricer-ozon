@@ -25,13 +25,24 @@ def get_base64_encoded_image(image_path: Path) -> str:
     with open(image_path, "rb") as f:
         return base64.b64encode(f.read()).decode()
 
+page_title = f"Репрайсер {settings.INSTANCE_NAME}"
+st.set_page_config(page_title=page_title, layout="wide", page_icon="static/favicon.ico")
 
-st.set_page_config(page_title="Репрайсер Ozon", layout="wide", page_icon="static/favicon.ico")
-
-# Кастомизация кнопки загрузки файла (без скрытия крестика)
 st.markdown("""
 <style>
-    div[data-testid="stFileUploader"] button {
+    /* Скрываем иконку "link to heading" для всех заголовков */
+    .st-emotion-cache-1kxutg5,
+    [data-testid="stHeaderActionElements"] {
+        display: none !important;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# Кастомизация кнопок загрузки файлов
+st.markdown("""
+<style>
+    /* Общие стили для ширины и выравнивания */
+    .st-key-excel_uploader div[data-testid="stFileUploader"] button {
         width: 100% !important;
         min-width: 100% !important;
         justify-content: center !important;
@@ -40,10 +51,10 @@ st.markdown("""
         align-items: center !important;
         padding: 0 !important;
     }
-    div[data-testid="stFileUploader"] button > div {
+    .st-key-excel_uploader div[data-testid="stFileUploader"] button > div {
         display: none !important;
     }
-    div[data-testid="stFileUploader"] button::before {
+    .st-key-excel_uploader div[data-testid="stFileUploader"] button::before {
         content: "📤 Загрузить файл Excel";
         display: block;
         font-size: 1rem;
@@ -52,7 +63,7 @@ st.markdown("""
         text-align: center;
         pointer-events: none;
     }
-    div[data-testid="stFileUploader"]:has(div[data-testid="stFileChip"]) button {
+    .st-key-excel_uploader div[data-testid="stFileUploader"]:has(div[data-testid="stFileChip"]) button {
         display: none !important;
     }
 </style>
@@ -60,11 +71,12 @@ st.markdown("""
 
 icon_path = Path(__file__).parent / "static" / "favicon.ico"
 
+dashboard_title = f"Репрайсер {settings.INSTANCE_NAME}"
 st.markdown(
     f"""
     <div style="display: flex; align-items: center; margin-bottom: 1rem;">
         <img src="data:image/png;base64,{get_base64_encoded_image(icon_path)}" width="40" style="margin-right: 12px;">
-        <h1 style="display: inline; margin: 0;">Репрайсер Ozon</h1>
+        <h1 style="display: inline; margin: 0;">{dashboard_title}</h1>
     </div>
     """,
     unsafe_allow_html=True,
@@ -167,14 +179,6 @@ st.divider()
 with st.sidebar:
     st.header("Управление")
     
-    # --- Кнопка выхода ---
-    if st.button("🚪 Выйти", width="stretch"):
-        st.session_state.authenticated = False
-        st.session_state.running = False
-        st.session_state.result_message = None
-        st.session_state.result_type = None
-        st.rerun()
-    
     # --- Показываем сообщение о результате предыдущего запуска ---
     if st.session_state.result_message:
         if st.session_state.result_type == 'success':
@@ -221,10 +225,26 @@ with st.sidebar:
                 )
         else:
             st.warning("Файл Excel пока не существует.")
-        
+
         st.divider()
-        st.subheader("Обслуживание БД")
+        st.subheader("Работа с БД")
+
+        # --- Скачать БД ---
+        st.download_button(
+            "💾 Скачать БД",
+            data=open(settings.DATABASE_PATH, "rb").read(),
+            file_name=settings.DATABASE_PATH.name,
+            mime="application/octet-stream",
+            use_container_width=True,
+            disabled=st.session_state.running
+        )
+
         st.button("🧹 Удалить записи старше 1 месяца", width="stretch", disabled=True)
+
+        last_cleanup = repo.get_last_cleanup_date()
+        if last_cleanup:
+            last_cleanup_msk = last_cleanup.astimezone(TIMEZONE)
+            st.caption(f"🗑️ Последняя очистка БД: {last_cleanup_msk.strftime('%Y-%m-%d %H:%M')}")
         
         st.divider()
         st.caption(f"Файл данных: {settings.DATA_FILE.resolve()}")
@@ -254,7 +274,7 @@ with st.sidebar:
         st.divider()
         st.subheader("Работа с Excel")
         
-        uploaded_file = st.file_uploader("", type=["xlsx"], label_visibility="collapsed", width="stretch")
+        uploaded_file = st.file_uploader("Выберите Excel файл", type=["xlsx"], label_visibility="collapsed", width="stretch", key="excel_uploader")
         if uploaded_file is not None:
             with open(settings.DATA_FILE, "wb") as f:
                 f.write(uploaded_file.getbuffer())
@@ -270,21 +290,67 @@ with st.sidebar:
                 )
         else:
             st.warning("Файл Excel пока не существует.")
-        
+
         st.divider()
-        st.subheader("Обслуживание БД")
+        st.subheader("Работа с БД")
+
+        # --- Скачать БД ---
+        st.download_button(
+            "💾 Скачать БД",
+            data=open(settings.DATABASE_PATH, "rb").read(),
+            file_name=settings.DATABASE_PATH.name,
+            mime="application/octet-stream",
+            use_container_width=True,
+            disabled=st.session_state.running
+        )
+
         if st.button("🧹 Удалить записи старше 1 месяца", width="stretch"):
             deleted = repo.delete_old_records(days=30)
             st.success(f"Удалено записей: {deleted}")
+        
+        last_cleanup = repo.get_last_cleanup_date()
+        if last_cleanup:
+            last_cleanup_msk = last_cleanup.astimezone(TIMEZONE)
+            st.caption(f"🗑️ Последняя очистка БД: {last_cleanup_msk.strftime('%Y-%m-%d %H:%M')}")
         
         st.divider()
         st.caption(f"Файл данных: {settings.DATA_FILE.resolve()}")
         st.caption(f"База данных: {settings.DATABASE_PATH.resolve()}")
 
-        last_cleanup = repo.get_last_cleanup_date()
-        if last_cleanup:
-            last_cleanup_msk = last_cleanup.astimezone(TIMEZONE)
-            st.caption(f"🗑️ Последняя очистка БД: {last_cleanup_msk.strftime('%Y-%m-%d %H:%M')}")
+    # --- Изменение пароля ---
+    with st.expander("🔐 Изменить пароль"):
+        new_password = st.text_input("Новый пароль", type="password", key="new_pass")
+        confirm_password = st.text_input("Подтвердите пароль", type="password", key="confirm_pass")
+        if st.button("Сохранить пароль", use_container_width=True):
+            if new_password and new_password == confirm_password:
+                # Обновляем .env файл
+                env_path = Path(__file__).parent / ".env"
+                if env_path.exists():
+                    with open(env_path, "r", encoding="utf-8") as f:
+                        lines = f.readlines()
+                    with open(env_path, "w", encoding="utf-8") as f:
+                        for line in lines:
+                            if line.startswith("WEB_PASS="):
+                                f.write(f"WEB_PASS={new_password}\n")
+                            else:
+                                f.write(line)
+                    st.success("Пароль изменён! Перезапустите приложение для применения изменений.")
+                    # Обновляем settings (чтобы текущая сессия видела новый пароль)
+                    settings.WEB_PASS = new_password
+                    # st.rerun()  # раскомментировать, если нужно перезагрузить страницу
+                else:
+                    st.error("Файл .env не найден")
+            else:
+                st.error("Пароли не совпадают или пусты")
+        
+    # --- Кнопка выхода ---
+    st.divider()
+    if st.button("🚪 Выйти", width="stretch"):
+        st.session_state.authenticated = False
+        st.session_state.running = False
+        st.session_state.result_message = None
+        st.session_state.result_type = None
+        st.rerun()
 
 # --------------------------------------------------------------
 # Основные вкладки (весь остальной код без изменений)

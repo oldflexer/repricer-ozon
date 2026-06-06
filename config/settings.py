@@ -12,6 +12,8 @@ load_dotenv(BASE_DIR / '.env')
 
 
 class Settings(BaseSettings):
+    INSTANCE_NAME: str = "Ozon"
+    
     OZON_CLIENT_ID: Optional[str] = None
     OZON_API_KEY: Optional[str] = None
     OZON_API_URL: str = "https://api-seller.ozon.ru"
