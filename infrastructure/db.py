@@ -539,3 +539,188 @@ class SQLiteRepository(IProductRepository):
                 WHERE ph.rn = 1
             """
             return pd.read_sql_query(query, conn)
+        
+    # ---------- Методы для UI статистики и анализа ----------
+    def get_recent_history(self, limit: int = 100) -> pd.DataFrame:
+        """Последние изменения цен."""
+        with self._get_connection() as conn:
+            return pd.read_sql_query('''
+                SELECT 
+                    p.sku as "SKU",
+                    ph.timestamp,
+                    ROUND(ph.result_target_price * ph.discount_coef, 0) as "Цена",
+                    ph.marginality as "Маржинальность"
+                FROM product_price_history ph
+                JOIN product p ON p.product_id = ph.product_id
+                ORDER BY ph.timestamp DESC
+                LIMIT ?
+            ''', conn, params=(limit,))
+
+    def get_strategy_counts(self) -> Dict[str, int]:
+        """Количество товаров по типам стратегий."""
+        with self._get_connection() as conn:
+            # Получаем все товары и их стратегии
+            rows = conn.execute("""
+                SELECT p.sku, ps.strategy_id
+                FROM product p
+                JOIN product_strategy ps ON p.product_id = ps.product_id
+            """).fetchall()
+            counts = {"Ниже": 0, "Выше": 0, "Равная": 0, "Смешанная": 0}
+            per_sku = {}
+            for r in rows:
+                sku = r['sku']
+                sid = r['strategy_id']
+                per_sku.setdefault(sku, set()).add(sid)
+            for strategies in per_sku.values():
+                if len(strategies) > 1:
+                    counts["Смешанная"] += 1
+                elif 1 in strategies:
+                    counts["Ниже"] += 1
+                elif 2 in strategies:
+                    counts["Выше"] += 1
+                else:
+                    counts["Равная"] += 1
+            return counts
+
+    def get_strategy_performance(self, days: int = 30) -> pd.DataFrame:
+        """Эффективность стратегий за последние days дней."""
+        with self._get_connection() as conn:
+            df = pd.read_sql_query('''
+                SELECT 
+                    s.strategy_name as "Стратегия",
+                    AVG(ph.marginality) * 100 as "Средняя маржинальность (%)",
+                    COUNT(*) as "Количество обновлений (30 дней)"
+                FROM product_price_history ph
+                JOIN product_strategy ps ON ph.product_id = ps.product_id
+                JOIN strategy s ON ps.strategy_id = s.id
+                WHERE ph.timestamp >= datetime('now', ? || ' days')
+                GROUP BY s.id
+            ''', conn, params=(-days,))
+            return df
+
+    def get_daily_deviation(self, days: int = 30) -> pd.DataFrame:
+        """Среднее отношение цены к индексу Ozon по дням."""
+        with self._get_connection() as conn:
+            return pd.read_sql_query('''
+                SELECT 
+                    DATE(ph.timestamp) as day,
+                    AVG( (ph.result_target_price * ph.discount_coef) / NULLIF(ph.ozon_index_data_price, 0) ) as avg_ratio
+                FROM product_price_history ph
+                WHERE ph.ozon_index_data_price > 0
+                AND ph.timestamp >= datetime('now', ? || ' days')
+                GROUP BY day
+                ORDER BY day
+            ''', conn, params=(-days,))
+
+    def get_stale_products(self, days: int = 7) -> pd.DataFrame:
+        """Товары без изменений более days дней."""
+        with self._get_connection() as conn:
+            df = pd.read_sql_query('''
+                SELECT 
+                    p.sku, p.product_name,
+                    MAX(ph.timestamp) as last_update,
+                    JULIANDAY('now') - JULIANDAY(MAX(ph.timestamp)) as days_stale
+                FROM product_price_history ph
+                JOIN product p ON p.product_id = ph.product_id
+                GROUP BY p.sku
+                HAVING days_stale > ?
+                ORDER BY days_stale DESC
+            ''', conn, params=(days,))
+            return df
+
+    def get_update_heatmap(self, days: int = 90) -> pd.DataFrame:
+        """Тепловая карта обновлений по дням недели и часам."""
+        with self._get_connection() as conn:
+            return pd.read_sql_query('''
+                SELECT 
+                    strftime('%w', timestamp) as weekday,
+                    strftime('%H', timestamp) as hour,
+                    COUNT(*) as updates
+                FROM product_price_history
+                WHERE timestamp >= datetime('now', ? || ' days')
+                GROUP BY weekday, hour
+            ''', conn, params=(-days,))
+
+    def get_daily_trends(self, days: int = 7) -> pd.DataFrame:
+        """Средняя цена и маржинальность по дням."""
+        with self._get_connection() as conn:
+            return pd.read_sql_query('''
+                SELECT 
+                    DATE(ph.timestamp) as day,
+                    AVG(ph.result_target_price * ph.discount_coef) as avg_price,
+                    AVG(ph.marginality) as avg_margin
+                FROM product_price_history ph
+                WHERE ph.timestamp >= datetime('now', ? || ' days')
+                GROUP BY day
+                ORDER BY day
+            ''', conn, params=(-days,))
+
+    def get_top_bottom_marginality(self, limit: int = 5) -> tuple[pd.DataFrame, pd.DataFrame]:
+        """Топ N и худшие N по маржинальности."""
+        with self._get_connection() as conn:
+            df = pd.read_sql_query('''
+                SELECT 
+                    p.sku, p.product_name,
+                    ph.marginality * 100 as marginality_pct
+                FROM product_price_history ph
+                JOIN product p ON p.product_id = ph.product_id
+                WHERE ph.timestamp = (SELECT MAX(timestamp) FROM product_price_history WHERE product_id = ph.product_id)
+                ORDER BY ph.marginality DESC
+            ''', conn)
+            return df.head(limit), df.tail(limit)
+
+    def get_recent_changes(self, limit: int = 10) -> pd.DataFrame:
+        """Последние limit изменений цен."""
+        with self._get_connection() as conn:
+            return pd.read_sql_query('''
+                SELECT 
+                    p.sku, p.product_name, ph.timestamp,
+                    ROUND(ph.result_target_price * ph.discount_coef, 0) as price,
+                    ROUND(ph.marginality * 100, 2) as margin_pct
+                FROM product_price_history ph
+                JOIN product p ON p.product_id = ph.product_id
+                ORDER BY ph.timestamp DESC
+                LIMIT ?
+            ''', conn, params=(limit,))
+
+    def export_full_history(self) -> pd.DataFrame:
+        """Экспорт всей истории цен в DataFrame."""
+        with self._get_connection() as conn:
+            return pd.read_sql_query('''
+                SELECT 
+                    p.sku, p.product_name, ph.timestamp,
+                    ROUND(ph.result_target_price * ph.discount_coef, 0) as price,
+                    ROUND(ph.marginality * 100, 2) as margin_pct
+                FROM product_price_history ph
+                JOIN product p ON p.product_id = ph.product_id
+                ORDER BY ph.timestamp DESC
+            ''', conn)
+
+    def get_commission_analysis(self) -> pd.DataFrame:
+        """Анализ комиссий FBS и индексов для последних записей."""
+        with self._get_connection() as conn:
+            return pd.read_sql_query('''
+                SELECT 
+                    p.sku,
+                    p.product_name,
+                    ph.result_target_price,
+                    ph.discount_coef,
+                    ph.sales_percent_fbs,
+                    ph.fbs_first_mile_min_amount,
+                    ph.fbs_first_mile_max_amount,
+                    ph.fbs_direct_flow_trans_min_amount,
+                    ph.fbs_direct_flow_trans_max_amount,
+                    ph.fbs_deliv_to_customer_amount,
+                    ph.external_index_data_price,
+                    ph.ozon_index_data_price,
+                    ph.ozon_index_data_index,
+                    ph.self_marketplaces_index_data_price,
+                    (ph.result_target_price * ph.discount_coef) as real_price,
+                    ph.marginality
+                FROM product_price_history ph
+                JOIN product p ON p.product_id = ph.product_id
+                WHERE ph.timestamp = (
+                    SELECT MAX(timestamp) FROM product_price_history WHERE product_id = ph.product_id
+                )
+                ORDER BY p.sku
+            ''', conn)
