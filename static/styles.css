@@ -4,7 +4,7 @@
     display: none !important;
 }
 
-/* Кастомизация кнопки загрузки Excel */
+/* Кастомизация кнопки загрузки Excel (только для виджета с ключом excel_uploader) */
 .st-key-excel_uploader div[data-testid="stFileUploader"] button {
     width: 100% !important;
     min-width: 100% !important;

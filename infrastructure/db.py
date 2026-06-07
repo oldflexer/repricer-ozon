@@ -517,3 +517,25 @@ class SQLiteRepository(IProductRepository):
                 self.set_last_cleanup_date(datetime.now(timezone.utc))
                 return deleted
         return 0
+    
+    def get_all_last_prices(self) -> pd.DataFrame:
+        """Возвращает для каждого товара последнюю цену и маржинальность одним запросом."""
+        with self._get_connection() as conn:
+            query = """
+                SELECT 
+                    p.sku,
+                    p.product_name,
+                    COALESCE(p.real_customer_price, ph.customer_price) as last_price,
+                    ph.marginality as last_margin
+                FROM (
+                    SELECT product_id, 
+                        CASE WHEN real_price IS NOT NULL THEN real_price 
+                                ELSE result_target_price * discount_coef END as customer_price,
+                        marginality,
+                        ROW_NUMBER() OVER (PARTITION BY product_id ORDER BY timestamp DESC) as rn
+                    FROM product_price_history
+                ) ph
+                JOIN product p ON p.product_id = ph.product_id
+                WHERE ph.rn = 1
+            """
+            return pd.read_sql_query(query, conn)
