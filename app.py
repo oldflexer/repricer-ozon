@@ -28,46 +28,8 @@ def get_base64_encoded_image(image_path: Path) -> str:
 page_title = f"Репрайсер {settings.INSTANCE_NAME}"
 st.set_page_config(page_title=page_title, layout="wide", page_icon="static/favicon.ico")
 
-st.markdown("""
-<style>
-    /* Скрываем иконку "link to heading" для всех заголовков */
-    .st-emotion-cache-1kxutg5,
-    [data-testid="stHeaderActionElements"] {
-        display: none !important;
-    }
-</style>
-""", unsafe_allow_html=True)
-
-# Кастомизация кнопок загрузки файлов
-st.markdown("""
-<style>
-    /* Общие стили для ширины и выравнивания */
-    .st-key-excel_uploader div[data-testid="stFileUploader"] button {
-        width: 100% !important;
-        min-width: 100% !important;
-        justify-content: center !important;
-        position: relative;
-        display: flex !important;
-        align-items: center !important;
-        padding: 0 !important;
-    }
-    .st-key-excel_uploader div[data-testid="stFileUploader"] button > div {
-        display: none !important;
-    }
-    .st-key-excel_uploader div[data-testid="stFileUploader"] button::before {
-        content: "📤 Загрузить файл Excel";
-        display: block;
-        font-size: 1rem;
-        padding: 0.5rem 1rem;
-        width: 100%;
-        text-align: center;
-        pointer-events: none;
-    }
-    .st-key-excel_uploader div[data-testid="stFileUploader"]:has(div[data-testid="stFileChip"]) button {
-        display: none !important;
-    }
-</style>
-""", unsafe_allow_html=True)
+with open(Path(__file__).parent / "static" / "styles.css") as f:
+    st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
 icon_path = Path(__file__).parent / "static" / "favicon.ico"
 
@@ -85,11 +47,10 @@ st.markdown(
 # --------------------------------------------------------------
 # Аутентификация
 # --------------------------------------------------------------
-def check_auth():
-    """Проверяет и управляет аутентификацией пользователя."""
+def check_auth() -> None:
+    """Проверяет аутентификацию пользователя. При неудаче останавливает выполнение."""
     if 'authenticated' not in st.session_state:
         st.session_state.authenticated = False
-
     if not st.session_state.authenticated:
         st.title("🔐 Авторизация")
         col1, col2, col3 = st.columns([1, 2, 1])
@@ -102,7 +63,7 @@ def check_auth():
                     st.rerun()
                 else:
                     st.error("Неверный логин или пароль")
-        st.stop()  # Не показываем остальной интерфейс, пока не авторизованы
+        st.stop()
 
 # Вызов проверки
 check_auth()
@@ -110,7 +71,9 @@ check_auth()
 # --------------------------------------------------------------
 # Инициализация репозитория и состояния (только после успешного входа)
 # --------------------------------------------------------------
-repo = SQLiteRepository(settings.DATABASE_PATH)
+if 'repo' not in st.session_state:
+    st.session_state.repo = SQLiteRepository(settings.DATABASE_PATH)
+repo = st.session_state.repo
 
 if 'running' not in st.session_state:
     st.session_state.running = False
@@ -239,7 +202,13 @@ with st.sidebar:
             disabled=st.session_state.running
         )
 
-        st.button("🧹 Удалить записи старше 1 месяца", width="stretch", disabled=True)
+        if st.button("🧹 Удалить записи старше 1 месяца", width="stretch"):
+            try:
+                deleted = repo.delete_old_records(days=30)
+                st.success(f"Удалено записей: {deleted}")
+                st.cache_data.clear()
+            except Exception as e:
+                st.error(f"Ошибка при удалении: {e}")
 
         last_cleanup = repo.get_last_cleanup_date()
         if last_cleanup:
@@ -273,12 +242,16 @@ with st.sidebar:
         
         st.divider()
         st.subheader("Работа с Excel")
-        
-        uploaded_file = st.file_uploader("Выберите Excel файл", type=["xlsx"], label_visibility="collapsed", width="stretch", key="excel_uploader")
-        if uploaded_file is not None:
-            with open(settings.DATA_FILE, "wb") as f:
-                f.write(uploaded_file.getbuffer())
-            st.success(f"✅ Файл загружен: {settings.DATA_FILE.name}")
+
+        try:
+            uploaded_file = st.file_uploader("Выберите Excel файл", type=["xlsx"], label_visibility="collapsed", width="stretch", key="excel_uploader")
+            if uploaded_file is not None:
+                with open(settings.DATA_FILE, "wb") as f:
+                    f.write(uploaded_file.getbuffer())
+                st.success(f"✅ Файл загружен: {settings.DATA_FILE.name}")
+                st.cache_data.clear()  # очищаем кэш после обновления данных
+        except Exception as e:
+            st.error(f"Ошибка при загрузке файла: {e}")
         
         if settings.DATA_FILE.exists():
             with open(settings.DATA_FILE, "rb") as f:
@@ -305,8 +278,12 @@ with st.sidebar:
         )
 
         if st.button("🧹 Удалить записи старше 1 месяца", width="stretch"):
-            deleted = repo.delete_old_records(days=30)
-            st.success(f"Удалено записей: {deleted}")
+            try:
+                deleted = repo.delete_old_records(days=30)
+                st.success(f"Удалено записей: {deleted}")
+                st.cache_data.clear()
+            except Exception as e:
+                st.error(f"Ошибка при удалении: {e}")
         
         last_cleanup = repo.get_last_cleanup_date()
         if last_cleanup:

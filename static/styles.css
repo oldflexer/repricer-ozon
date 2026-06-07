@@ -1,0 +1,31 @@
+/* Скрываем иконку "link to heading" для всех заголовков */
+.st-emotion-cache-1kxutg5,
+[data-testid="stHeaderActionElements"] {
+    display: none !important;
+}
+
+/* Кастомизация кнопки загрузки Excel */
+.st-key-excel_uploader div[data-testid="stFileUploader"] button {
+    width: 100% !important;
+    min-width: 100% !important;
+    justify-content: center !important;
+    position: relative;
+    display: flex !important;
+    align-items: center !important;
+    padding: 0 !important;
+}
+.st-key-excel_uploader div[data-testid="stFileUploader"] button > div {
+    display: none !important;
+}
+.st-key-excel_uploader div[data-testid="stFileUploader"] button::before {
+    content: "📤 Загрузить файл Excel";
+    display: block;
+    font-size: 1rem;
+    padding: 0.5rem 1rem;
+    width: 100%;
+    text-align: center;
+    pointer-events: none;
+}
+.st-key-excel_uploader div[data-testid="stFileUploader"]:has(div[data-testid="stFileChip"]) button {
+    display: none !important;
+}
