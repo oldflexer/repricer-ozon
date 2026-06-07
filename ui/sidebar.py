@@ -26,22 +26,32 @@ def run_repricing(dry_run: bool = False) -> Dict[str, Any]:
 
 def execute_repricing(dry_run: bool):
     """Выполнение репрайсинга с очисткой кэша и обработкой ошибок."""
-    try:
-        stats = run_repricing(dry_run=dry_run)
-        st.cache_data.clear()
-        if dry_run:
-            msg = f"✅ Dry run завершён. Обработано товаров: {stats.get('products_loaded', 0)}, рассчитано цен: {stats.get('prices_updated', 0)}"
-        else:
-            updated = stats.get('prices_updated', 0)
-            errors = stats.get('errors', [])
-            msg = f"✅ Готово! Обновлено цен: {updated}"
-            if errors:
-                msg += f"\n⚠️ Ошибки: {', '.join(errors)}"
-        return msg, 'success'
-    except Exception as e:
-        return f"❌ Ошибка: {e}", 'error'
-    finally:
-        st.session_state.running = False
+    with st.status("🔄 Выполняется репрайсинг...", expanded=True) as status:
+        st.write("📂 Загрузка данных из Excel...")
+        try:
+            stats = run_repricing(dry_run=dry_run)
+            st.cache_data.clear()
+            status.update(label="✅ Готово!", state="complete")
+            if dry_run:
+                msg = f"✅ Dry run завершён. Обработано товаров: {stats.get('products_loaded', 0)}, рассчитано цен: {stats.get('prices_updated', 0)}"
+            else:
+                updated = stats.get('prices_updated', 0)
+                errors = stats.get('errors', [])
+                msg = f"✅ Готово! Обновлено цен: {updated}"
+                if errors:
+                    msg += f"\n⚠️ Ошибки: {', '.join(errors)}"
+            # Отображаем предупреждения Excel, если есть
+            warnings = stats.get('warnings', [])
+            if warnings:
+                with st.expander("⚠️ Предупреждения при загрузке Excel"):
+                    for w in warnings:
+                        st.warning(w)
+            return msg, 'success'
+        except Exception as e:
+            status.update(label="❌ Ошибка", state="error")
+            return f"❌ Ошибка: {e}", 'error'
+        finally:
+            st.session_state.running = False
 
 
 def render_sidebar_section(disabled: bool):
@@ -139,11 +149,10 @@ def render_sidebar():
 
     # Если запущен процесс, выполняем его (один раз)
     if st.session_state.get('running'):
-        with st.spinner("Выполняется репрайсинг. Пожалуйста, подождите..."):
-            msg, msg_type = execute_repricing(st.session_state.dry_run_mode)
-            st.session_state.result_message = msg
-            st.session_state.result_type = msg_type
-            # running сбрасывается внутри execute_repricing
+        # Здесь уже используется st.status внутри execute_repricing
+        msg, msg_type = execute_repricing(st.session_state.dry_run_mode)
+        st.session_state.result_message = msg
+        st.session_state.result_type = msg_type
         st.rerun()
 
     # Состояние после возможного запуска или без запуска
