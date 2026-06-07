@@ -5,7 +5,6 @@ from infrastructure.ozon_api import OzonApiClient
 from infrastructure.mail_notifier import MailNotifier
 
 
-# Репозиторий хранится в session_state, но кэш функций использует его
 def get_repo() -> SQLiteRepository:
     """Возвращает репозиторий из session_state."""
     return st.session_state.repo
@@ -13,7 +12,6 @@ def get_repo() -> SQLiteRepository:
 
 @st.cache_resource(ttl=3600, show_spinner=False)
 def get_cached_products():
-    """Список товаров (объекты ProductInfo)."""
     return get_repo().get_all_products()
 
 
@@ -37,17 +35,15 @@ def get_cached_last_prices():
     return get_repo().get_all_last_prices()
 
 
-@st.cache_resource
+# ------ ЭТИ ФУНКЦИИ НЕ КЭШИРУЕМ ------
 def get_excel_loader():
     from config.settings import settings
     return ExcelLoader(settings.DATA_FILE)
 
 
-@st.cache_resource
 def get_api_client():
     return OzonApiClient()
 
 
-@st.cache_resource
 def get_mail_notifier():
     return MailNotifier()
