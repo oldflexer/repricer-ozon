@@ -1,2 +1,3 @@
-# Repricer {{INSTANCE_NAME}} cron jobs
+# BEGIN_REPRICER_{{INSTANCE_NAME}}
 {{CRON_SCHEDULE}} cd {{WORKING_DIR}} && {{WORKING_DIR}}/.venv/bin/python main.py >> /var/log/repricer-{{INSTANCE_NAME}}.log 2>&1
+# END_REPRICER_{{INSTANCE_NAME}}

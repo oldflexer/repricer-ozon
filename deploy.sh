@@ -41,7 +41,6 @@ SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}"
 CURRENT_USER=$(whoami)
 WORKING_DIR=$(pwd)
 
-# Создаём сервис из шаблона, подставляя переменные
 echo "=== Установка systemd сервиса ${SERVICE_NAME} ==="
 sed -e "s|{{USER}}|$CURRENT_USER|g" \
     -e "s|{{WORKING_DIR}}|$WORKING_DIR|g" \
@@ -54,23 +53,22 @@ sudo systemctl enable "$SERVICE_NAME"
 sudo systemctl restart "$SERVICE_NAME"
 echo "✅ Сервис $SERVICE_NAME перезапущен"
 
-# --- Cron (уникальные маркеры + удаление по пути) ---
+# --- Cron с блочными маркерами ---
 if [ -f "deploy/cron.template" ]; then
     echo "=== Установка cron задач для ${INSTANCE_NAME} ==="
     CRON_TMP="/tmp/repricer_cron_${INSTANCE_NAME}_$$"
     
-    # Генерируем новую строку из шаблона
+    # Генерируем новый блок из шаблона
     sed -e "s|{{WORKING_DIR}}|$WORKING_DIR|g" \
         -e "s|{{CRON_SCHEDULE}}|$CRON_SCHEDULE|g" \
         -e "s|{{INSTANCE_NAME}}|$INSTANCE_NAME|g" \
         "deploy/cron.template" > "$CRON_TMP"
     
-    # Удаляем старые строки, связанные с этим экземпляром:
-    #  - по маркеру "# Repricer ${INSTANCE_NAME}"
-    #  - по пути $WORKING_DIR (на случай, если строки без маркера)
-    crontab -l 2>/dev/null | grep -v -e "# Repricer ${INSTANCE_NAME}" -e "$WORKING_DIR" > "$CRON_TMP.old" || true
+    # Удаляем старый блок для этого INSTANCE_NAME (если есть)
+    # Используем sed для удаления от BEGIN до END включительно
+    crontab -l 2>/dev/null | sed -e "/# BEGIN_REPRICER_${INSTANCE_NAME}/,/# END_REPRICER_${INSTANCE_NAME}/d" > "$CRON_TMP.old" || true
     
-    # Добавляем новую строку (с маркером)
+    # Добавляем новый блок
     cat "$CRON_TMP" >> "$CRON_TMP.old"
     # Убедимся, что в конце есть перевод строки
     echo "" >> "$CRON_TMP.old"
