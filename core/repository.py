@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Tuple
 from datetime import datetime
 from .entities import ProductInfo, StrategyInterval, PricingData, PriceCalculationResult
 
@@ -80,7 +80,7 @@ class IProductRepository(ABC):
 
 class ILoader(ABC):
     @abstractmethod
-    def load(self) -> List[ProductInfo]:
+    def load(self) -> Tuple[List[ProductInfo], List[str]]:
         pass
 
     @abstractmethod

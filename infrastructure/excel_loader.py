@@ -1,6 +1,6 @@
 import pandas as pd
 from pathlib import Path
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Any, Tuple
 from core.entities import PriceCalculationResult, ProductInfo, StrategyInterval
 from core.repository import ILoader
 from infrastructure.logger import logger
@@ -23,40 +23,88 @@ class ExcelLoader(ILoader):
         self._strategies: Dict[str, List[StrategyInterval]] = {}
 
     # ------------------------------------------------------------------
-    # Реализация интерфейса ILoader
+    # Реализация интерфейса ILoader (адаптированный)
     # ------------------------------------------------------------------
-    def load(self) -> List[ProductInfo]:
+    def load(self) -> Tuple[List[ProductInfo], List[str]]:
+        """
+        Загружает товары из Excel с валидацией.
+        Возвращает (список товаров, список предупреждений/ошибок).
+        """
         if not self.file_path.exists():
             logger.error(f"Файл {self.file_path} не найден")
-            return []
+            return [], ["Файл Excel не найден"]
 
         if self.file_path.suffix.lower() != '.xlsx':
             logger.error(f"Неподдерживаемый формат: {self.file_path.suffix}. Используйте .xlsx")
-            return []
+            return [], [f"Неподдерживаемый формат: {self.file_path.suffix}"]
 
         df = pd.read_excel(self.file_path, engine='openpyxl', dtype=str)
         df.columns = df.columns.str.lower().str.strip()
 
-        for sku_col in ['sku', 'артикул', 'article', 'id', 'offer_id']:
-            if sku_col in df.columns:
-                df[sku_col] = df[sku_col].str.strip()
+        # Поиск колонки SKU
+        sku_col = None
+        for col in ['sku', 'артикул', 'article', 'id', 'offer_id']:
+            if col in df.columns:
+                sku_col = col
                 break
+        if sku_col is None:
+            return [], ["Не найдена колонка SKU (ожидаются: sku, артикул, article, id, offer_id)"]
+
+        # Нормализация SKU для проверки дубликатов
+        df['_sku_normalized'] = df[sku_col].astype(str).str.strip()
+        duplicates = df[df['_sku_normalized'].duplicated(keep=False)]['_sku_normalized'].unique()
+        if len(duplicates) > 0:
+            return [], [f"Обнаружены дубликаты SKU: {', '.join(duplicates)}"]
 
         products = []
+        warnings = []
         self._strategies.clear()
 
-        for _, row in df.iterrows():
-            product, intervals = self._parse_row(row, df.columns)
-            if product:
-                products.append(product)
-                self._strategies[product.sku] = intervals
+        for i, (_, row) in enumerate(df.iterrows(), start=2):
+            sku = str(row[sku_col]).strip()
+            if not sku:
+                warnings.append(f"Строка {i}: пропущен SKU")
+                continue
 
-        logger.info(f"Загружено {len(products)} товаров")
-        return products
+            # Валидация себестоимости
+            cost_price = self._get_float(row, df.columns, ['себестоимость', 'cost_price', 'cost'], 0.0)
+            if cost_price <= 0:
+                warnings.append(f"SKU {sku}: себестоимость = {cost_price} <= 0, товар пропущен")
+                continue
+
+            min_price = self._get_float(row, df.columns, ['цена риц', 'min_price', 'rip'], 0.0)
+
+            # Валидация интервалов и стратегий
+            intervals, interval_warnings = self._parse_intervals_with_validation(row, df.columns)
+            warnings.extend(interval_warnings)
+
+            if not intervals:
+                warnings.append(f"SKU {sku}: не задано ни одного интервала стратегии, используется стратегия по умолчанию 'Равная'")
+                intervals = [StrategyInterval(start='00:00', end='23:59', strategy_type=3, percent=0.0)]
+
+            old_price = None
+            old_price_val = self._get_float(row, df.columns, ['цена до скидки', 'old_price', 'старая цена'], 0.0)
+            if old_price_val > 0:
+                old_price = old_price_val
+
+            product = ProductInfo(
+                sku=sku,
+                product_name=None,
+                cost_price=cost_price,
+                min_price=min_price,
+                current_price=0.0,
+                old_price=old_price
+            )
+            products.append(product)
+            self._strategies[sku] = intervals
+
+        logger.info(f"Загружено {len(products)} товаров, {len(warnings)} предупреждений")
+        return products, warnings
 
     def get_strategy_intervals(self, product: ProductInfo) -> List[StrategyInterval]:
         return self._strategies.get(product.sku, [])
 
+    # ------------------- Остальные методы без изменений -------------------
     def update_product_in_file(self, sku: str, updates: Dict[str, Any]) -> bool:
         try:
             from openpyxl import load_workbook
@@ -128,27 +176,19 @@ class ExcelLoader(ILoader):
             return False
 
     # ------------------------------------------------------------------
-    # Приватные вспомогательные методы
+    # Приватные вспомогательные методы (с улучшениями)
     # ------------------------------------------------------------------
     @staticmethod
     def _parse_strategy_value(value) -> int:
-        """
-        Преобразует значение стратегии в числовой код:
-        1 - Ниже, 2 - Выше, 3 - Равная.
-        Поддерживает числа (1,2,3) и строки ('Ниже', 'Выше', 'Равная', 'Равно').
-        """
+        """Преобразует значение стратегии в числовой код."""
         if pd.isna(value):
             return 3
-        
-        # Если это число - возвращаем как есть
         try:
             num = int(float(value))
             if num in (1, 2, 3):
                 return num
         except (ValueError, TypeError):
             pass
-        
-        # Преобразуем строку в нижний регистр
         str_val = str(value).strip().lower()
         if str_val in ('ниже', 'ниже индекса', '1'):
             return 1
@@ -157,11 +197,55 @@ class ExcelLoader(ILoader):
         elif str_val in ('равная', 'равно', 'равна', 'равен', '3'):
             return 3
         else:
-            # Неизвестное значение - по умолчанию "Равная"
             logger.warning(f"Неизвестное значение стратегии '{value}', используется 'Равная' (3)")
             return 3
 
+    def _parse_intervals_with_validation(self, row: pd.Series, columns: pd.Index) -> Tuple[List[StrategyInterval], List[str]]:
+        intervals = []
+        warnings = []
+        for i in range(1, self.SCHEDULE_INTERVALS_COUNT + 1):
+            time_col = self._find_column(columns, [f'интервал {i}', f'промежуток {i}'])
+            if not time_col:
+                continue
+            time_val = row.get(time_col)
+            if pd.isna(time_val) or not str(time_val).strip():
+                continue
+            time_range = str(time_val).strip()
+            if '-' not in time_range:
+                warnings.append(f"Интервал {i}: неверный формат '{time_range}', ожидается ЧЧ:ММ-ЧЧ:ММ")
+                continue
+            start, end = time_range.split('-', 1)
+            start, end = start.strip(), end.strip()
+            # Простейшая проверка формата времени
+            if not (len(start) == 5 and start[2] == ':' and start[:2].isdigit() and start[3:].isdigit()):
+                warnings.append(f"Интервал {i}: некорректное время начала '{start}'")
+            if not (len(end) == 5 and end[2] == ':' and end[:2].isdigit() and end[3:].isdigit()):
+                warnings.append(f"Интервал {i}: некорректное время окончания '{end}'")
+
+            strategy_col = self._find_column(columns, [f'стратегия {i}', f'стратеги {i}'])
+            strategy_val = row.get(strategy_col) if strategy_col else None
+            strategy = self._parse_strategy_value(strategy_val)
+
+            percent_col = self._find_column(columns, [f'процент {i}', f'percent_{i}'])
+            percent = 0.0
+            if percent_col:
+                percent_val = row.get(percent_col)
+                if pd.notna(percent_val):
+                    try:
+                        percent = float(percent_val)
+                        if strategy in (1, 2) and (percent < 0 or percent > 100):
+                            warnings.append(f"Интервал {i}: процент {percent} выходит за пределы 0-100, используется 0")
+                            percent = 0.0
+                    except Exception:
+                        warnings.append(f"Интервал {i}: процент '{percent_val}' не число, используется 0")
+            intervals.append(StrategyInterval(
+                start=start, end=end,
+                strategy_type=strategy, percent=percent
+            ))
+        return intervals, warnings
+
     def _parse_row(self, row: pd.Series, columns: pd.Index) -> tuple[Optional[ProductInfo], List[StrategyInterval]]:
+        # Оставлен для обратной совместимости (не используется, если вызывается load)
         product_dict = {}
         for std_name, synonyms in self.COLUMN_MAPPING.items():
             value = None
@@ -270,17 +354,6 @@ class ExcelLoader(ILoader):
                 return cand
         return None
 
-    def _get_int(self, row: pd.Series, columns: pd.Index, candidates: List[str], default: int) -> int:
-        col = self._find_column(columns, candidates)
-        if col:
-            val = row.get(col)
-            if pd.notna(val):
-                try:
-                    return int(float(val))
-                except Exception:
-                    pass
-        return default
-
     def _get_float(self, row: pd.Series, columns: pd.Index, candidates: List[str], default: float) -> float:
         col = self._find_column(columns, candidates)
         if col:
@@ -291,7 +364,7 @@ class ExcelLoader(ILoader):
                 except Exception:
                     pass
         return default
-    
+
     def build_excel_updates(self, product: ProductInfo, result: PriceCalculationResult,
                             marginality_week: float, marginality_month: float,
                             old_price_update: Optional[int]) -> Dict[str, Any]:
