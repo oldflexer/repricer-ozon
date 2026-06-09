@@ -3,13 +3,11 @@ from pathlib import Path
 from config.settings import settings, TIMEZONE
 from ui.cache import get_repo, get_api_client, get_excel_loader, get_mail_notifier
 from core.use_cases import RepricingUseCase
-from ui.auth import check_auth  # noqa: F401
 import asyncio
 from typing import Dict, Any
 
 
 def run_repricing(dry_run: bool = False) -> Dict[str, Any]:
-    """Запуск репрайсинга с переиспользованием клиентов."""
     async def _run():
         loader = get_excel_loader()
         api = get_api_client()
@@ -25,7 +23,6 @@ def run_repricing(dry_run: bool = False) -> Dict[str, Any]:
 
 
 def execute_repricing(dry_run: bool):
-    """Выполнение репрайсинга с очисткой кэша и обработкой ошибок."""
     with st.status("🔄 Выполняется репрайсинг...", expanded=True) as status:
         st.write("📂 Загрузка данных из Excel...")
         try:
@@ -41,7 +38,6 @@ def execute_repricing(dry_run: bool):
                 msg = f"✅ Готово! Обновлено цен: {updated}"
                 if errors:
                     msg += f"\n⚠️ Ошибки: {', '.join(errors)}"
-            # Отображаем предупреждения Excel, если есть
             warnings = stats.get('warnings', [])
             if warnings:
                 with st.expander("⚠️ Предупреждения при загрузке Excel"):
@@ -56,10 +52,9 @@ def execute_repricing(dry_run: bool):
 
 
 def render_sidebar_section(disabled: bool):
-    """Блок работы с Excel и БД."""
     repo = get_repo()
     st.divider()
-    st.subheader("Работа с Excel")
+    st.subheader("🧮 Работа с Excel")
     if disabled:
         st.info("⛔ Загрузка Excel недоступна во время выполнения репрайсинга")
         if settings.DATA_FILE.exists():
@@ -94,7 +89,7 @@ def render_sidebar_section(disabled: bool):
             st.warning("Файл Excel пока не существует.")
 
     st.divider()
-    st.subheader("Работа с БД")
+    st.subheader("🗃️ Работа с БД")
     db_data = open(settings.DATABASE_PATH, "rb").read() if settings.DATABASE_PATH.exists() else b""
     st.download_button(
         "💾 Скачать БД", data=db_data,
@@ -125,22 +120,30 @@ def render_sidebar_section(disabled: bool):
 
 
 def display_last_run():
-    """Отображение времени последнего запуска."""
     repo = get_repo()
     last_run_utc = repo.get_last_run_time()
+    st.header("🕒 Последний запуск (МСК)")
     if last_run_utc:
         last_run_msk = last_run_utc.astimezone(TIMEZONE)
-        st.metric("Последний запуск (МСК)", last_run_msk.strftime("%Y-%m-%d %H:%M"))
+        st.metric("🕒 Последний запуск (МСК)", last_run_msk.strftime("%Y-%m-%d %H:%M"), label_visibility="collapsed")
     else:
-        st.metric("Последний запуск", "—")
+        st.metric("🕒 Последний запуск (МСК)", "—", label_visibility="collapsed")
 
 
 def render_sidebar():
-    """Основная боковая панель."""
-    repo = get_repo()
-    st.header("Управление")
+    st.header("📄 Страница")
+    page = st.radio(
+        "📄 Страница",
+        options=["Сводка", "Статистика", "Аналитика", "Анализ", "Таблицы", "Запросы", "Сервис"],
+        index=0,
+        horizontal=True,
+        label_visibility="collapsed"
+    )
+    st.session_state['current_page'] = page
 
-    # Отображение сообщения о результате
+    st.divider()
+    st.header("🎛️ Управление")
+
     if st.session_state.get('result_message'):
         if st.session_state.get('result_type') == 'success':
             st.success(st.session_state.result_message)
@@ -149,19 +152,16 @@ def render_sidebar():
         st.session_state.result_message = None
         st.session_state.result_type = None
 
-    # Если запущен процесс, выполняем его (один раз)
     if st.session_state.get('running'):
-        # Здесь уже используется st.status внутри execute_repricing
         msg, msg_type = execute_repricing(st.session_state.dry_run_mode)
         st.session_state.result_message = msg
         st.session_state.result_type = msg_type
         st.rerun()
 
-    # Состояние после возможного запуска или без запуска
     if st.session_state.get('running'):
         st.warning("⏳ Репрайсинг выполняется. Пожалуйста, подождите...")
-        st.button("🚀 Полный цикл (отправка цен)", type="primary", width="stretch", disabled=True)
-        st.button("📝 Dry run (без отправки)", width="stretch", disabled=True)
+        st.button("🚀 Полный цикл", type="primary", width="stretch", disabled=True)
+        st.button("📝 Dry run", width="stretch", disabled=True)
         st.divider()
         display_last_run()
         render_sidebar_section(disabled=True)
@@ -194,8 +194,8 @@ def render_sidebar():
                                 f.write(f"WEB_PASS={new_password}\n")
                             else:
                                 f.write(line)
-                    st.success("Пароль изменён! Перезапустите приложение для применения изменений.")
                     settings.WEB_PASS = new_password
+                    st.success("✅ Пароль изменён. При следующем входе используйте новый пароль.")
                 else:
                     st.error("Файл .env не найден")
             else:
