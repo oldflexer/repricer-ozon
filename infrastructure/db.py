@@ -724,3 +724,26 @@ class SQLiteRepository(IProductRepository):
                 )
                 ORDER BY p.sku
             ''', conn)
+        
+    def delete_product(self, sku: str) -> Dict[str, int]:
+        """
+        Удаляет товар и все связанные записи из БД.
+        Возвращает словарь с количеством удалённых записей по таблицам.
+        """
+        with self._get_connection() as conn:
+            product_id_row = conn.execute("SELECT product_id FROM product WHERE sku = ?", (sku,)).fetchone()
+            if not product_id_row:
+                return {"product": 0, "strategies": 0, "price_history": 0, "margin_history": 0}
+            pid = product_id_row['product_id']
+            
+            deleted_strategies = conn.execute("DELETE FROM product_strategy WHERE product_id = ?", (pid,)).rowcount
+            deleted_price_history = conn.execute("DELETE FROM product_price_history WHERE product_id = ?", (pid,)).rowcount
+            deleted_margin_history = conn.execute("DELETE FROM product_marginality_history WHERE product_id = ?", (pid,)).rowcount
+            deleted_product = conn.execute("DELETE FROM product WHERE product_id = ?", (pid,)).rowcount
+            conn.commit()
+            return {
+                "product": deleted_product,
+                "strategies": deleted_strategies,
+                "price_history": deleted_price_history,
+                "margin_history": deleted_margin_history,
+            }
