@@ -31,6 +31,7 @@ def execute_repricing(dry_run: bool):
         try:
             stats = run_repricing(dry_run=dry_run)
             st.cache_data.clear()
+            st.cache_resource.clear()
             status.update(label="✅ Готово!", state="complete")
             if dry_run:
                 msg = f"✅ Dry run завершён. Обработано товаров: {stats.get('products_loaded', 0)}, рассчитано цен: {stats.get('prices_updated', 0)}"
@@ -79,6 +80,7 @@ def render_sidebar_section(disabled: bool):
                     f.write(uploaded_file.getbuffer())
                 st.success(f"✅ Файл загружен: {settings.DATA_FILE.name}")
                 st.cache_data.clear()
+                st.cache_resource.clear()
         except Exception as e:
             st.error(f"Ошибка при загрузке файла: {e}")
         if settings.DATA_FILE.exists():
