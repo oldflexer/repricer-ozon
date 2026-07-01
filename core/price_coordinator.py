@@ -137,7 +137,7 @@ class PriceUpdateCoordinator:
                 min_price_for_api = min_allowed
                 logger.warning(f"SKU {product.sku}: min_price скорректирован с {old_min} до {min_price_for_api} (правило Ozon 50%)")
 
-            net_price_val = int(round(pricing.net_price)) if pricing.net_price else None
+            net_price_val = int(round(product.cost_price)) if product.cost_price else pricing.net_price
 
             req = build_price_update_request(
                 product_id=product.product_id,
