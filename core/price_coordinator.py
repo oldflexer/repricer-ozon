@@ -116,16 +116,27 @@ class PriceUpdateCoordinator:
 
             old_price_for_api = calculate_old_price(
                 price=result.result_target_price,
-                manual_old_price=product.old_price,
+                manual_old_price=None,
                 multiplier=settings.OLD_PRICE_MULTIPLIER,
                 round_to=settings.PRICE_ROUND_UP_TO
             )
+
             excel_updates = self.loader.build_excel_updates(
                 product, result, marginality_week, marginality_month, old_price_for_api
             )
+
             self.loader.update_product_in_file(product.sku, excel_updates)
 
             min_price_for_api = int(round(product.min_price / discount_coef)) if discount_coef else int(round(product.min_price))
+
+            # Правило Ozon: min_price >= price * 0.5
+            price_for_api = int(round(result.result_target_price))
+            min_allowed = int(price_for_api * 0.5)
+            if min_price_for_api < min_allowed:
+                old_min = min_price_for_api
+                min_price_for_api = min_allowed
+                logger.warning(f"SKU {product.sku}: min_price скорректирован с {old_min} до {min_price_for_api} (правило Ozon 50%)")
+
             net_price_val = int(round(pricing.net_price)) if pricing.net_price else None
 
             req = build_price_update_request(
