@@ -60,47 +60,40 @@ class PriceCalculationService:
         strategy_type = active.strategy_type if active else 3
         percent = active.percent if active else 0.0
 
-        target_strategy_price = None
-        strategy_price = None
-        if pricing.ozon_index_data_price and pricing.ozon_index_data_price != 0:
-            base = pricing.ozon_index_data_price
-            if strategy_type == 1:
-                strategy_price = base * (1 - percent / 100)
-            elif strategy_type == 2:
-                strategy_price = base * (1 + percent / 100)
-            else:
-                strategy_price = base
-            target_strategy_price = strategy_price / discount_coef if discount_coef else strategy_price
-            result_target_price = max(target_strategy_price, target_min_price)
-        else:
+        # --- НОВАЯ ЛОГИКА ДЛЯ СТРАТЕГИИ 3 ---
+        if strategy_type == 3:
+            # Стратегия "Равная" — цена равна только РИЦ, без учёта индексов
             result_target_price = target_min_price
+            strategy_price = None
+            target_strategy_price = None
+        else:
+            # Стратегии 1 (Ниже) и 2 (Выше) — рассчитываются на основе индекса Ozon
+            if pricing.ozon_index_data_price and pricing.ozon_index_data_price != 0:
+                base = pricing.ozon_index_data_price
+                if strategy_type == 1:
+                    strategy_price = base * (1 - percent / 100)
+                elif strategy_type == 2:
+                    strategy_price = base * (1 + percent / 100)
+                else:
+                    strategy_price = base  # запасной вариант, но сюда не попадём
+                target_strategy_price = strategy_price / discount_coef if discount_coef else strategy_price
+                result_target_price = max(target_strategy_price, target_min_price)
+            else:
+                # Если нет индекса Ozon, используем только РИЦ (как для стратегии 3)
+                result_target_price = target_min_price
+                strategy_price = None
+                target_strategy_price = None
 
         result_target_price = round(result_target_price)
 
+        # --- Расчёт маржинальности (без изменений) ---
         sales_commission = result_target_price * (pricing.sales_percent_fbs / 100)
-        
         fbs_first_mile_avg = (pricing.fbs_first_mile_min_amount + pricing.fbs_first_mile_max_amount) / 2
         fbs_direct_flow_avg = (pricing.fbs_direct_flow_trans_min_amount + pricing.fbs_direct_flow_trans_max_amount) / 2
-        
-        fbs_total = (
-            sales_commission +
-            fbs_first_mile_avg +
-            fbs_direct_flow_avg +
-            pricing.fbs_deliv_to_customer_amount +
-            pricing.net_price
-        )
-
+        fbs_total = sales_commission + fbs_first_mile_avg + fbs_direct_flow_avg + pricing.fbs_deliv_to_customer_amount + pricing.net_price
         fbo_direct_flow_avg = (pricing.fbo_direct_flow_trans_min_amount + pricing.fbo_direct_flow_trans_max_amount) / 2
-
-        fbo_total = (
-            sales_commission +
-            fbo_direct_flow_avg +
-            pricing.fbo_deliv_to_customer_amount +
-            pricing.net_price
-        )
-
+        fbo_total = sales_commission + fbo_direct_flow_avg + pricing.fbo_deliv_to_customer_amount + pricing.net_price
         total_costs = (fbs_total + fbo_total) / 2
-
         if result_target_price > 0:
             marginality = (result_target_price - total_costs) / result_target_price
         else:
