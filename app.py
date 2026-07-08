@@ -7,7 +7,6 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from config.settings import settings
 from ui.auth import check_auth
-from ui.kpi import render_kpi
 from ui.sidebar import render_sidebar
 from ui.pages.summary import render_summary
 from ui.pages.statistics import render_statistics_page
@@ -19,31 +18,19 @@ from ui.pages.service import render_service
 from infrastructure.db import SQLiteRepository
 
 
-def get_base64_encoded_image(image_path: Path) -> str:
-    with open(image_path, "rb") as f:
-        return base64.b64encode(f.read()).decode()
-
-
 # Настройка страницы
 page_title = f"Репрайсер {settings.INSTANCE_NAME}"
 st.set_page_config(page_title=page_title, layout="wide", page_icon="static/favicon.ico")
 
+# Подключение Font Awesome 6.7.2
+st.markdown(
+    '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">',
+    unsafe_allow_html=True,
+)
+
 # CSS
 with open(Path(__file__).parent / "static" / "styles.css", encoding="utf-8") as f:
     st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
-
-# Заголовок с иконкой
-icon_path = Path(__file__).parent / "static" / "favicon.ico"
-dashboard_title = f"Репрайсер {settings.INSTANCE_NAME}"
-st.markdown(
-    f"""
-    <div style="display: flex; align-items: center; margin-bottom: 1rem;">
-        <img src="data:image/png;base64,{get_base64_encoded_image(icon_path)}" width="40" style="margin-right: 12px;">
-        <h1 style="display: inline; margin: 0;">{dashboard_title}</h1>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
 
 # Аутентификация
 check_auth()
@@ -68,10 +55,7 @@ if 'current_page' not in st.session_state:
 with st.sidebar:
     render_sidebar()
 
-# KPI панель (видна всегда)
-render_kpi()
-
-# Основная область – рендеринг выбранной страницы
+# Основная область – рендеринг выбранной страницы (KPI теперь внутри summary)
 page = st.session_state.current_page
 
 if page == "Сводка":

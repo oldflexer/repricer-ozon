@@ -4,7 +4,7 @@ from ui.cache import get_repo
 
 
 def render_tables():
-    st.header("📋 Таблицы БД")
+    st.markdown('<h2><i class="fa-solid fa-table"></i> Таблицы БД</h2>', unsafe_allow_html=True)
     repo = get_repo()
 
     # Получаем список всех таблиц

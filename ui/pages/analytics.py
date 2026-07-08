@@ -8,15 +8,38 @@ from ui.cache import get_repo, get_cached_products
 
 
 def render_analytics():
-    st.header("📈 Аналитика")
+    st.markdown('<h2><i class="fa-solid fa-chart-line"></i> Аналитика</h2>', unsafe_allow_html=True)
 
-    tab1, tab2, tab3 = st.tabs(["📊 Динамика", "🔮 Прогнозирование", "📉 Отклонения индексов"])
+    # Вкладки с Material Icons (поддерживаются нативно)
+    tabs = [
+        ("Динамика", ":material/ssid_chart:"),
+        ("Прогнозирование", ":material/mystery:"),
+        ("Отклонения индексов", ":material/show_chart:")
+    ]
 
-    with tab1:
+    if "analytics_tab" not in st.session_state:
+        st.session_state.analytics_tab = 0
+
+    cols = st.columns(len(tabs))
+    for i, (label, icon) in enumerate(tabs):
+        with cols[i]:
+            if st.button(
+                label,
+                icon=icon,
+                key=f"analytics_tab_{i}",
+                use_container_width=True,
+                type="primary" if st.session_state.analytics_tab == i else "secondary"
+            ):
+                st.session_state.analytics_tab = i
+                st.rerun()
+
+    st.divider()
+
+    if st.session_state.analytics_tab == 0:
         render_dynamics()
-    with tab2:
+    elif st.session_state.analytics_tab == 1:
         render_forecasting()
-    with tab3:
+    else:
         render_index_deviation()
 
 
@@ -165,7 +188,7 @@ def render_forecasting():
                          labels={'day': 'Дата', 'avg_margin': 'Маржинальность (%)', 'type': ''})
     st.plotly_chart(fig_margin, width="stretch")
 
-    with st.expander("📊 Детали прогноза"):
+    with st.expander("Детали прогноза"):
         st.write(f"**Использовано дней истории:** {len(daily_df)}")
         st.write(f"**Окно сглаживания:** {window} дней")
         st.write(f"**Тренд цены:** {price_trend:.2f} ₽ в день")

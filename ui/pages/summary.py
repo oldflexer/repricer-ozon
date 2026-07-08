@@ -1,13 +1,34 @@
 import streamlit as st
 import plotly.express as px
-from ui.cache import get_repo
+from ui.cache import get_repo, get_cached_kpi, get_cached_products
 
 
 def render_summary():
-    st.header("📊 Сводка")
+    st.markdown('<h2><i class="fa-solid fa-chart-simple"></i> Сводка</h2>', unsafe_allow_html=True)
     repo = get_repo()
 
-    # Графики за последнюю неделю
+    # --- KPI метрики ---
+    kpi = get_cached_kpi()
+    col1, col2, col3, col4, col5 = st.columns(5)
+    with col1:
+        delta_margin = kpi['avg_margin_today'] - kpi['avg_margin_yesterday']
+        st.metric(
+            "Средняя маржинальность (сегодня)",
+            f"{kpi['avg_margin_today']:.1f}%",
+            delta=f"{delta_margin:+.1f}%" if delta_margin != 0 else None
+        )
+    with col2:
+        st.metric("Обновлений за неделю", kpi['updates_last_week'])
+    with col3:
+        st.metric("Убыточные товары", kpi['unprofitable_count'], delta=None)
+    with col4:
+        st.metric("Без индекса Ozon", kpi['no_index_count'])
+    with col5:
+        total_products = len(get_cached_products())
+        st.metric("Всего товаров", total_products)
+    st.divider()
+
+    # --- Графики за последнюю неделю ---
     st.subheader("Динамика за последние 7 дней")
     daily_df = repo.get_daily_trends(days=7)
     if not daily_df.empty:
@@ -28,12 +49,12 @@ def render_summary():
     else:
         st.info("Недостаточно данных для отображения динамики за неделю")
 
-    # Дополнительная информация: топ-3 лучших и худших
+    # --- Топ-3 лучших и худших ---
     st.divider()
     col1, col2 = st.columns(2)
     top3, bottom3 = repo.get_top_bottom_marginality(limit=3)
     with col1:
-        st.subheader("🏆 Топ-3 по маржинальности")
+        st.markdown('<h4><i class="fa-solid fa-trophy"></i> Топ-3 по маржинальности</h4>', unsafe_allow_html=True)
         if not top3.empty:
             st.dataframe(top3[['sku', 'product_name', 'marginality_pct']].rename(
                 columns={'marginality_pct': 'Маржа, %'}
@@ -41,7 +62,7 @@ def render_summary():
         else:
             st.info("Нет данных")
     with col2:
-        st.subheader("📉 Худшие 3 по маржинальности")
+        st.markdown('<h4><i class="fa-solid fa-arrow-trend-down"></i> Худшие 3 по маржинальности</h4>', unsafe_allow_html=True)
         if not bottom3.empty:
             st.dataframe(bottom3[['sku', 'product_name', 'marginality_pct']].rename(
                 columns={'marginality_pct': 'Маржа, %'}
