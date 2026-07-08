@@ -1,13 +1,11 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
-from config.settings import TIMEZONE
 from ui.cache import get_repo, get_cached_last_prices, get_cached_strategy_roi
 
 
 def render_statistics_page():
-    st.header("📊 Статистика")
+    st.markdown('<h2><i class="fa-solid fa-chart-pie"></i> Статистика</h2>', unsafe_allow_html=True)
     repo = get_repo()
 
     last_prices_df = get_cached_last_prices()

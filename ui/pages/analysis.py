@@ -6,13 +6,35 @@ from ui.cache import get_repo, get_cached_ozon_price_df
 
 
 def render_analysis_page():
-    st.header("🔍 Анализ комиссий FBS и индексов")
+    st.markdown('<h2><i class="fa-solid fa-magnifying-glass-chart"></i> Анализ комиссий FBS и индексов</h2>', unsafe_allow_html=True)
 
-    tab1, tab2 = st.tabs(["💰 Комиссии и индексы", "📊 ABC-анализ"])
+    # Вкладки с Material Icons
+    tabs = [
+        ("Комиссии и индексы", ":material/money_bag:"),
+        ("ABC-анализ", ":material/pie_chart:")
+    ]
 
-    with tab1:
+    if "analysis_tab" not in st.session_state:
+        st.session_state.analysis_tab = 0
+
+    cols = st.columns(len(tabs))
+    for i, (label, icon) in enumerate(tabs):
+        with cols[i]:
+            if st.button(
+                label,
+                icon=icon,
+                key=f"analysis_tab_{i}",
+                use_container_width=True,
+                type="primary" if st.session_state.analysis_tab == i else "secondary"
+            ):
+                st.session_state.analysis_tab = i
+                st.rerun()
+
+    st.divider()
+
+    if st.session_state.analysis_tab == 0:
         render_commissions_analysis()
-    with tab2:
+    else:
         render_abc_analysis()
 
 
@@ -151,12 +173,11 @@ def render_abc_analysis():
                          title='Количество товаров по категориям', hole=0.3)
         st.plotly_chart(fig_pie, width="stretch")
 
-    # Диаграмма Парето (от большей прибыли к меньшей)
+    # Диаграмма Парето
     st.subheader("Диаграмма Парето")
     top_n = 20
     top_df = df_sorted.head(top_n).copy()
     top_df['sku_str'] = top_df['sku'].astype(str)
-    # Используем уже рассчитанный cumulative_percent (отсортированный по убыванию прибыли)
 
     fig_pareto = go.Figure()
     fig_pareto.add_trace(go.Bar(

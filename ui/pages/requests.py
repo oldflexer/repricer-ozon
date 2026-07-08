@@ -6,7 +6,7 @@ from ui.cache import get_repo, get_cached_products
 
 
 def render_requests_page():
-    st.header("📋 Запросы / Управление товарами")
+    st.markdown('<h2><i class="fa-solid fa-clipboard-list"></i> Запросы / Управление товарами</h2>', unsafe_allow_html=True)
     repo = get_repo()
     products = get_cached_products()
     if not products:
@@ -63,7 +63,7 @@ def render_requests_page():
             st.divider()
             st.subheader("Удаление товара")
             st.warning("Удаление товара приведёт к удалению всех связанных записей (стратегии, история цен, история маржинальности). Действие необратимо.")
-            if st.button(f"🗑️ Удалить товар {product.sku}", type="secondary", key="delete_product_btn"):
+            if st.button(f"Удалить товар {product.sku}", type="secondary", key="delete_product_btn", icon=":material/delete:"):
                 result = repo.delete_product(product.sku)
                 if result['product'] > 0:
                     st.success(f"Товар {product.sku} удалён. Удалено записей: product={result['product']}, strategies={result['strategies']}, price_history={result['price_history']}, margin_history={result['margin_history']}")
