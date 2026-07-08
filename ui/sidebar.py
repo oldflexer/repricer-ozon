@@ -35,24 +35,24 @@ def execute_repricing(dry_run: bool):
             stats = run_repricing(dry_run=dry_run)
             st.cache_data.clear()
             st.cache_resource.clear()
-            status.update(label="✅ Готово!", state="complete")
+            status.update(label="Готово!", state="complete")
             if dry_run:
-                msg = f"✅ Dry run завершён. Обработано товаров: {stats.get('products_loaded', 0)}, рассчитано цен: {stats.get('prices_updated', 0)}"
+                msg = f"Dry run завершён. Обработано товаров: {stats.get('products_loaded', 0)}, рассчитано цен: {stats.get('prices_updated', 0)}"
             else:
                 updated = stats.get('prices_updated', 0)
                 errors = stats.get('errors', [])
-                msg = f"✅ Готово! Обновлено цен: {updated}"
+                msg = f"Готово! Обновлено цен: {updated}"
                 if errors:
-                    msg += f"\n⚠️ Ошибки: {', '.join(errors)}"
+                    msg += f"\nОшибки: {', '.join(errors)}"
             warnings = stats.get('warnings', [])
             if warnings:
-                with st.expander("⚠️ Предупреждения при загрузке Excel"):
+                with st.expander("Предупреждения при загрузке Excel"):
                     for w in warnings:
-                        st.warning(w)
+                        st.warning(w, icon=":material/warning:")
             return msg, 'success'
         except Exception as e:
-            status.update(label="❌ Ошибка", state="error")
-            return f"❌ Ошибка: {e}", 'error'
+            status.update(label="Ошибка", state="error")
+            return f"Ошибка: {e}", 'error'
         finally:
             st.session_state.running = False
 
@@ -60,7 +60,7 @@ def execute_repricing(dry_run: bool):
 def render_sidebar_section_excel(disabled: bool):
     """Только секция работы с Excel (загрузка/скачивание)"""
     if disabled:
-        st.info("Загрузка Excel недоступна во время выполнения репрайсинга")
+        st.info("Загрузка Excel недоступна во время выполнения репрайсинга", icon=":material/info:")
         if settings.DATA_FILE.exists():
             with open(settings.DATA_FILE, "rb") as f:
                 st.download_button(
@@ -77,11 +77,11 @@ def render_sidebar_section_excel(disabled: bool):
             if uploaded_file is not None:
                 with open(settings.DATA_FILE, "wb") as f:
                     f.write(uploaded_file.getbuffer())
-                st.success(f"✅ Файл загружен: {settings.DATA_FILE.name}")
+                st.success(f"Файл загружен: {settings.DATA_FILE.name}", icon=":material/check_circle:")
                 st.cache_data.clear()
                 st.cache_resource.clear()
         except Exception as e:
-            st.error(f"Ошибка при загрузке файла: {e}")
+            st.error(f"Ошибка при загрузке файла: {e}", icon=":material/cancel:")
         if settings.DATA_FILE.exists():
             with open(settings.DATA_FILE, "rb") as f:
                 st.download_button(
@@ -90,7 +90,7 @@ def render_sidebar_section_excel(disabled: bool):
                     width="stretch"
                 )
         else:
-            st.warning("Файл Excel пока не существует.")
+            st.warning("Файл Excel пока не существует.", icon=":material/warning:")
 
 
 def render_sidebar():
@@ -121,9 +121,9 @@ def render_sidebar():
 
     if st.session_state.get('result_message'):
         if st.session_state.get('result_type') == 'success':
-            st.success(st.session_state.result_message)
+            st.success(st.session_state.result_message, icon=":material/check_circle:")
         else:
-            st.error(st.session_state.result_message)
+            st.error(st.session_state.result_message, icon=":material/cancel:")
         st.session_state.result_message = None
         st.session_state.result_type = None
 
@@ -134,7 +134,7 @@ def render_sidebar():
         st.rerun()
 
     if st.session_state.get('running'):
-        st.warning("Репрайсинг выполняется. Пожалуйста, подождите...")
+        st.warning("Репрайсинг выполняется. Пожалуйста, подождите...", icon=":material/warning:")
         st.button("Полный цикл", type="primary", width="stretch", disabled=True)
         st.button("Dry run", width="stretch", disabled=True)
     else:

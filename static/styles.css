@@ -8,12 +8,12 @@
     display: none !important;
 }
 [data-testid="stSidebarUserContent"] {
-    padding-top: 10px !important;
+    padding-top: 12px !important;
 }
 
 /* Убираем лишний отступ сверху у основного контейнера */
 [data-testid="stMainBlockContainer"] {
-    padding-top: 24px !important;
+    padding-top: 12px !important;
 }
 
 /* Кастомизация кнопки загрузки Excel (только для виджета с ключом excel_uploader) */

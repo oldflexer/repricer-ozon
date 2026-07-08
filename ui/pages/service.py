@@ -24,7 +24,7 @@ def render_service():
                                 aspect="auto", color_continuous_scale="Viridis")
         st.plotly_chart(fig_heatmap, width="stretch")
     else:
-        st.info("Недостаточно данных для тепловой карты")
+        st.info("Недостаточно данных для тепловой карты", icon=":material/info:")
 
     st.divider()
 
@@ -54,10 +54,10 @@ def render_service():
         if st.button("Удалить записи старше 1 месяца", icon=":material/cleaning_services:"):
             try:
                 deleted = repo.delete_old_records(days=30)
-                st.success(f"Удалено записей: {deleted}")
+                st.success(f"Удалено записей: {deleted}", icon=":material/check_circle:")
                 st.cache_data.clear()
             except Exception as e:
-                st.error(f"Ошибка при удалении: {e}")
+                st.error(f"Ошибка при удалении: {e}", icon=":material/cancel:")
 
     last_cleanup = repo.get_last_cleanup_date()
     if last_cleanup:
@@ -87,11 +87,11 @@ def render_service():
                                 f.write(f"WEB_PASS={new_password}\n")
                             else:
                                 f.write(line)
-                    st.success("✅ Пароль изменён. При следующем входе используйте новый пароль.")
+                    st.success("Пароль изменён. При следующем входе используйте новый пароль.", icon=":material/check_circle:")
                 else:
-                    st.error("Файл .env не найден")
+                    st.error("Файл .env не найден", icon=":material/cancel:")
             else:
-                st.error("Пароли не совпадают или пусты")
+                st.error("Пароли не совпадают или пусты", icon=":material/cancel:")
 
     # Диагностика
     st.divider()
@@ -99,6 +99,6 @@ def render_service():
     if st.button("Проверить соединение с БД", icon=":material/database:"):
         try:
             repo.get_last_run_time()
-            st.success("✅ База данных доступна")
+            st.success("База данных доступна", icon=":material/check_circle:")
         except Exception as e:
-            st.error(f"❌ Ошибка: {e}")
+            st.error(f"Ошибка: {e}", icon=":material/cancel:")

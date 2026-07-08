@@ -98,15 +98,15 @@ def render_forecasting():
     # Получаем исторические данные за последние 60 дней
     daily_df = repo.get_daily_trends(days=60)
     if daily_df.empty:
-        st.warning("Недостаточно исторических данных для прогнозирования")
+        st.warning("Недостаточно исторических данных для прогнозирования", icon=":material/warning:")
         return
 
     # Параметры прогноза
     col1, col2 = st.columns(2)
     with col1:
-        window = st.slider("Окно сглаживания (дней)", min_value=3, max_value=30, value=7, step=1,
-                           help="Скользящее среднее для сглаживания исторических данных",
-                           key="forecast_window")
+        degree = st.selectbox("Степень полинома", options=[2, 3, 4], index=0,
+                              help="Степень полинома для аппроксимации тренда (2 – парабола, 3 – кубическая и т.д.)",
+                              key="poly_degree")
     with col2:
         forecast_days = st.slider("Период прогноза (дней)", min_value=1, max_value=30, value=7, step=1,
                                   key="forecast_days")
@@ -119,84 +119,116 @@ def render_forecasting():
     daily_df = daily_df.sort_values('day')
 
     if daily_df.empty:
-        st.warning("Недостаточно числовых данных для прогнозирования")
+        st.warning("Недостаточно числовых данных для прогнозирования", icon=":material/warning:")
         return
 
-    # Переводим маржинальность в проценты (0-100) для наглядности
+    # Переводим маржинальность в проценты (0-100)
     daily_df['avg_margin_pct'] = daily_df['avg_margin'] * 100
 
-    # Сглаживаем ряды скользящим средним
-    price_smoothed = daily_df['avg_price'].rolling(window=window, min_periods=1).mean()
-    margin_smoothed = daily_df['avg_margin_pct'].rolling(window=window, min_periods=1).mean()
-
-    daily_df['price_smoothed'] = price_smoothed
-    daily_df['margin_smoothed'] = margin_smoothed
-
-    # Линейная регрессия для прогноза (используем последние 2*window точек для тренда)
-    train_len = min(len(daily_df), max(14, window * 2))
+    # Используем последние train_len дней для построения тренда (все доступные)
+    train_len = len(daily_df)
     x_train = np.arange(train_len)
-    price_train = daily_df['price_smoothed'].iloc[-train_len:].astype(float).to_numpy()
-    margin_train = daily_df['margin_smoothed'].iloc[-train_len:].astype(float).to_numpy()
+    price_train = daily_df['avg_price'].astype(float).to_numpy()
+    margin_train = daily_df['avg_margin_pct'].astype(float).to_numpy()
 
-    # Линейная регрессия для цены
-    if len(x_train) > 1:
-        price_coeffs = np.polyfit(x_train, price_train, 1)
-        price_trend = price_coeffs[0]
-        price_intercept = price_coeffs[1]
-    else:
-        price_trend = 0
-        price_intercept = price_train[0] if len(price_train) > 0 else 0
+    # Проверяем, что данных достаточно для выбранной степени
+    if train_len <= degree:
+        st.warning(f"Недостаточно данных для полинома степени {degree}. Нужно больше {degree} точек.", icon=":material/warning:")
+        return
 
-    # Линейная регрессия для маржинальности
-    if len(x_train) > 1:
-        margin_coeffs = np.polyfit(x_train, margin_train, 1)
-        margin_trend = margin_coeffs[0]
-        margin_intercept = margin_coeffs[1]
-    else:
-        margin_trend = 0
-        margin_intercept = margin_train[0] if len(margin_train) > 0 else 0
+    # Полиномиальная регрессия для цены
+    price_coeffs = np.polyfit(x_train, price_train, degree)
+    price_poly = np.poly1d(price_coeffs)
 
-    # Прогноз
-    last_x = train_len - 1
-    forecast_x = np.arange(last_x + 1, last_x + forecast_days + 1)
-    price_forecast = price_intercept + price_trend * forecast_x
-    margin_forecast = margin_intercept + margin_trend * forecast_x
+    # Полиномиальная регрессия для маржинальности
+    margin_coeffs = np.polyfit(x_train, margin_train, degree)
+    margin_poly = np.poly1d(margin_coeffs)
 
-    price_forecast = np.maximum(price_forecast, 0)
-    margin_forecast = np.clip(margin_forecast, 0, 100)
+    # Прогноз на будущие дни (используем индексы от 0 до train_len+forecast_days-1)
+    total_len = train_len + forecast_days
+    x_full = np.arange(total_len)
+    price_forecast_full = price_poly(x_full)
+    margin_forecast_full = margin_poly(x_full)
 
+    # Ограничиваем прогноз разумными пределами
+    price_forecast_full = np.maximum(price_forecast_full, 0)
+    margin_forecast_full = np.clip(margin_forecast_full, 0, 100)
+
+    # Даты: исторические + прогнозные
     last_date = daily_df['day'].max()
     forecast_dates = pd.date_range(start=last_date + pd.Timedelta(days=1), periods=forecast_days)
+    all_dates = list(daily_df['day']) + list(forecast_dates)
 
-    hist_price = daily_df[['day', 'price_smoothed']].rename(columns={'price_smoothed': 'avg_price'}).assign(type='История')
-    hist_margin = daily_df[['day', 'margin_smoothed']].rename(columns={'margin_smoothed': 'avg_margin'}).assign(type='История')
+    # Разделяем на историю и прогноз
+    hist_price = price_forecast_full[:train_len]
+    forecast_price = price_forecast_full[train_len:]
+    hist_margin = margin_forecast_full[:train_len]
+    forecast_margin = margin_forecast_full[train_len:]
 
-    forecast_price_df = pd.DataFrame({'day': forecast_dates, 'avg_price': price_forecast, 'type': 'Прогноз'})
-    forecast_margin_df = pd.DataFrame({'day': forecast_dates, 'avg_margin': margin_forecast, 'type': 'Прогноз'})
+    # Создаём DataFrame для графика
+    df_plot = pd.DataFrame({
+        'day': all_dates,
+        'price_actual': list(daily_df['avg_price']) + [None] * forecast_days,
+        'price_trend': list(hist_price) + list(forecast_price),
+        'margin_actual': list(daily_df['avg_margin_pct']) + [None] * forecast_days,
+        'margin_trend': list(hist_margin) + list(forecast_margin),
+        'type': ['История'] * train_len + ['Прогноз'] * forecast_days
+    })
 
-    combined_price = pd.concat([hist_price, forecast_price_df])
-    combined_margin = pd.concat([hist_margin, forecast_margin_df])
-
-    st.subheader(f"Прогноз средней цены (линейный тренд, окно={window})")
-    fig_price = px.line(combined_price, x='day', y='avg_price', color='type',
-                        title='Средняя цена', labels={'day': 'Дата', 'avg_price': 'Цена (₽)', 'type': ''})
+    # График цены (фактические точки + кривая тренда)
+    st.subheader(f"Прогноз средней цены (полином степени {degree})")
+    fig_price = go.Figure()
+    fig_price.add_trace(go.Scatter(
+        x=df_plot['day'], y=df_plot['price_actual'],
+        mode='markers',
+        name='Факт',
+        marker=dict(color='blue', size=6)
+    ))
+    fig_price.add_trace(go.Scatter(
+        x=df_plot['day'], y=df_plot['price_trend'],
+        mode='lines',
+        name='Тренд + прогноз',
+        line=dict(color='red', width=2, dash='solid')
+    ))
+    fig_price.update_layout(
+        title='Средняя цена (факт и тренд)',
+        xaxis_title='Дата',
+        yaxis_title='Цена (₽)',
+        legend=dict(orientation="h", y=-0.2)
+    )
     st.plotly_chart(fig_price, width="stretch")
 
-    st.subheader(f"Прогноз средней маржинальности (линейный тренд, окно={window})")
-    fig_margin = px.line(combined_margin, x='day', y='avg_margin', color='type',
-                         title='Средняя маржинальность',
-                         labels={'day': 'Дата', 'avg_margin': 'Маржинальность (%)', 'type': ''})
+    # График маржинальности
+    st.subheader(f"Прогноз средней маржинальности (полином степени {degree})")
+    fig_margin = go.Figure()
+    fig_margin.add_trace(go.Scatter(
+        x=df_plot['day'], y=df_plot['margin_actual'],
+        mode='markers',
+        name='Факт',
+        marker=dict(color='blue', size=6)
+    ))
+    fig_margin.add_trace(go.Scatter(
+        x=df_plot['day'], y=df_plot['margin_trend'],
+        mode='lines',
+        name='Тренд + прогноз',
+        line=dict(color='red', width=2, dash='solid')
+    ))
+    fig_margin.update_layout(
+        title='Средняя маржинальность (факт и тренд)',
+        xaxis_title='Дата',
+        yaxis_title='Маржинальность (%)',
+        legend=dict(orientation="h", y=-0.2)
+    )
     st.plotly_chart(fig_margin, width="stretch")
 
+    # Детали прогноза
     with st.expander("Детали прогноза"):
-        st.write(f"**Использовано дней истории:** {len(daily_df)}")
-        st.write(f"**Окно сглаживания:** {window} дней")
-        st.write(f"**Тренд цены:** {price_trend:.2f} ₽ в день")
-        st.write(f"**Тренд маржинальности:** {margin_trend:.2f} процентных пункта в день")
-        st.write(f"**Прогнозируемая средняя цена через {forecast_days} дней:** {price_forecast[-1]:.0f} ₽")
-        st.write(f"**Прогнозируемая средняя маржинальность через {forecast_days} дней:** {margin_forecast[-1]:.1f}%")
-        st.caption("Прогноз построен методом линейной регрессии по сглаженным данным. Реальная динамика может отличаться.")
-
+        st.write(f"**Использовано дней истории:** {train_len}")
+        st.write(f"**Степень полинома:** {degree}")
+        st.write(f"**Прогнозируемая средняя цена через {forecast_days} дней:** {forecast_price[-1]:.0f} ₽")
+        st.write(f"**Прогнозируемая средняя маржинальность через {forecast_days} дней:** {forecast_margin[-1]:.1f}%")
+        st.caption("Прогноз построен методом полиномиальной регрессии (кривая) по историческим данным. Реальная динамика может отличаться.")
+        
 
 def render_index_deviation():
     """Вкладка динамики среднего отклонения от индекса Ozon"""
