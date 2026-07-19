@@ -51,6 +51,12 @@ if 'dry_run_mode' not in st.session_state:
 if 'current_page' not in st.session_state:
     st.session_state.current_page = "Сводка"
 
+# Состояния для парсера конкурентов
+if 'parsing_running' not in st.session_state:
+    st.session_state.parsing_running = False
+if 'parsing_dry_run' not in st.session_state:
+    st.session_state.parsing_dry_run = False
+
 # Боковая панель
 with st.sidebar:
     render_sidebar()

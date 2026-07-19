@@ -6,6 +6,7 @@ from ui.cache import get_repo, get_api_client, get_excel_loader, get_mail_notifi
 from core.use_cases import RepricingUseCase
 import asyncio
 from typing import Dict, Any
+from update_competitor_prices import update_prices
 
 
 def get_base64_encoded_image(image_path: Path) -> str:
@@ -55,6 +56,30 @@ def execute_repricing(dry_run: bool):
             return f"Ошибка: {e}", 'error'
         finally:
             st.session_state.running = False
+
+
+def execute_parsing(dry_run: bool):
+    """Запуск парсинга цен конкурентов с последующим обновлением Excel."""
+    with st.status("Выполняется парсинг конкурентов...", expanded=True) as status:
+        st.write("Инициализация браузера и загрузка страниц Ozon...")
+        try:
+            stats = update_prices(dry_run=dry_run)
+            if not dry_run:
+                st.cache_data.clear()
+                st.cache_resource.clear()
+            status.update(label="Парсинг завершён!", state="complete")
+            
+            msg = (
+                f"Готово! Обновлено цен: {stats.get('updated', 0)}, "
+                f"ошибок: {stats.get('errors', 0)}, "
+                f"пропущено: {stats.get('skipped', 0)}"
+            )
+            return msg, 'success'
+        except Exception as e:
+            status.update(label="Ошибка парсинга", state="error")
+            return f"Ошибка: {e}", 'error'
+        finally:
+            st.session_state.parsing_running = False
 
 
 def render_sidebar_section_excel(disabled: bool):
@@ -119,6 +144,20 @@ def render_sidebar():
     st.divider()
     st.markdown('<h2><i class="fa-solid fa-sliders"></i> Управление</h2>', unsafe_allow_html=True)
 
+    if st.session_state.get('running'):
+        msg, msg_type = execute_repricing(st.session_state.dry_run_mode)
+        st.session_state.result_message = msg
+        st.session_state.result_type = msg_type
+        st.rerun()
+
+    # Обработка состояния парсинга конкурентов
+    if st.session_state.get('parsing_running'):
+        p_msg, p_msg_type = execute_parsing(st.session_state.parsing_dry_run)
+        st.session_state.result_message = p_msg
+        st.session_state.result_type = p_msg_type
+        st.rerun()
+
+    # Вывод результата (общий для репрайсинга и парсинга)
     if st.session_state.get('result_message'):
         if st.session_state.get('result_type') == 'success':
             st.success(st.session_state.result_message, icon=":material/check_circle:")
@@ -127,27 +166,42 @@ def render_sidebar():
         st.session_state.result_message = None
         st.session_state.result_type = None
 
-    if st.session_state.get('running'):
-        msg, msg_type = execute_repricing(st.session_state.dry_run_mode)
-        st.session_state.result_message = msg
-        st.session_state.result_type = msg_type
-        st.rerun()
+    # Блокировка одновременного запуска репрайсинга и парсинга
+    is_busy = st.session_state.get('running') or st.session_state.get('parsing_running')
+
+    # --- Кнопки репрайсинга ---
+    st.markdown('<h3><i class="fa-solid fa-arrows-up-down"></i> Репрайсинг</h3>', unsafe_allow_html=True)
+    if is_busy:
+        st.warning("Выполняется задача. Пожалуйста, подождите...", icon=":material/warning:")
 
     if st.session_state.get('running'):
-        st.warning("Репрайсинг выполняется. Пожалуйста, подождите...", icon=":material/warning:")
-        st.button("Полный цикл", type="primary", width="stretch", disabled=True)
-        st.button("Dry run", width="stretch", disabled=True)
+        st.button("Репрайсинг товаров", type="primary", width="stretch", disabled=True, icon=":material/rocket_launch:")
+        st.button("Тест репрайсинга", width="stretch", disabled=True, icon=":material/bug_report:")
     else:
-        if st.button("Полный цикл", type="primary", width="stretch", icon=":material/rocket_launch:"):
+        if st.button("Репрайсинг товаров", type="primary", width="stretch", icon=":material/rocket_launch:"):
             st.session_state.running = True
             st.session_state.dry_run_mode = False
             st.rerun()
-        if st.button("Dry run", width="stretch", icon=":material/edit:"):
+        if st.button("Тест репрайсинга", width="stretch", icon=":material/bug_report:"):
             st.session_state.running = True
             st.session_state.dry_run_mode = True
             st.rerun()
 
-    st.divider()
+    # --- Кнопки парсинга конкурентов ---
+    st.markdown('<h3><i class="fa-solid fa-spider"></i> Парсинг конкурентов</h3>', unsafe_allow_html=True)
+    if st.session_state.get('parsing_running'):
+        st.button("Парсинг цен", type="primary", width="stretch", disabled=True, icon=":material/rocket_launch:")
+        st.button("Тест парсинга", width="stretch", disabled=True, icon=":material/bug_report:")
+    else:
+        if st.button("Парсинг цен", type="primary", width="stretch", icon=":material/rocket_launch:"):
+            st.session_state.parsing_running = True
+            st.session_state.parsing_dry_run = False
+            st.rerun()
+        if st.button("Тест парсинга", width="stretch", icon=":material/bug_report:"):
+            st.session_state.parsing_running = True
+            st.session_state.parsing_dry_run = True
+            st.rerun()
+
     # Секция Excel (всегда видна, но кнопки могут быть disabled)
     st.markdown('<h3><i class="fa-solid fa-table-cells"></i> Работа с Excel</h3>', unsafe_allow_html=True)
-    render_sidebar_section_excel(disabled=st.session_state.get('running', False))
+    render_sidebar_section_excel(disabled=bool(is_busy))

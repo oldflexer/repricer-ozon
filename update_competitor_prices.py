@@ -10,6 +10,7 @@
 import argparse
 import logging
 import os
+import sys
 import time
 import random
 from pathlib import Path
@@ -18,7 +19,6 @@ from typing import Dict, Optional
 import pandas as pd
 
 # Корректный путь до модулей проекта
-import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from config.settings import settings
@@ -112,8 +112,8 @@ def update_prices(dry_run: bool = False) -> Dict[str, int]:
         logger.error(f"Не удалось прочитать Excel: {e}")
         return {"updated": 0, "errors": 0, "skipped": 0}
 
-    # Гарантируем наличие колонок для цен
-    price_cols = [f'Цена конкурента {i}' for i in range(1, MAX_COMPETITORS + 1)]
+    # Гарантируем наличие колонок для цен конкурентов (в файле они называются "Цена 1"..."Цена 5")
+    price_cols = [f'Цена {i}' for i in range(1, MAX_COMPETITORS + 1)]
     for col in price_cols:
         if col not in df.columns:
             df[col] = None
@@ -128,7 +128,7 @@ def update_prices(dry_run: bool = False) -> Dict[str, int]:
 
             for i in range(1, MAX_COMPETITORS + 1):
                 url_col = f'Конкурент {i}'
-                price_col = f'Цена конкурента {i}'
+                price_col = f'Цена {i}'
 
                 url = row.get(url_col)
 
