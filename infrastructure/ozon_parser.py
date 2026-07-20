@@ -2,13 +2,15 @@ import re
 import time
 import random
 import logging
-from typing import Optional, Any
+from typing import Optional
 from selenium.webdriver.remote.webdriver import WebDriver
+from selenium.webdriver.chrome.service import Service as ChromeService
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
 import undetected_chromedriver as uc
+from webdriver_manager.chrome import ChromeDriverManager
 
 logger = logging.getLogger(__name__)
 
@@ -23,22 +25,94 @@ class OzonPriceParser:
         self.headless = headless
         self.driver = None
         self.wait = None
+    def _build_options(self) -> uc.ChromeOptions:
+        """Создаёт новый объект ChromeOptions для UC при каждой попытке.
 
-    def _init_driver(self):
-        """Инициализация драйвера с настройками для обхода блокировок."""
-        options = uc.ChromeOptions()
+        UC не позволяет переиспользовать ChromeOptions между запусками
+        (raises 'you cannot reuse the ChromeOptions object'), поэтому
+        каждое создание драйвера получает свежий объект настроек.
+
+        UC не поддерживает add_experimental_option('excludeSwitches', ...)
+        — это вызывает ошибку 'unrecognized chrome option: excludeSwitches'.
+        Вместо этого UC по умолчанию уже скрывает признаки автоматизации,
+        а флаг --disable-blink-features=AutomationControlled ниже убирает
+        navigator.webdriver.
+        """
+        options =uc.ChromeOptions()
         if self.headless:
-            options.add_argument('--headless')
+            options.add_argument('--headless=new')
         options.add_argument('--no-sandbox')
         options.add_argument('--disable-dev-shm-usage')
         options.add_argument('--disable-gpu')
         options.add_argument('--disable-blink-features=AutomationControlled')
-        options.add_experimental_option('excludeSwitches', ['enable-automation'])
-        options.add_experimental_option('useAutomationExtension', False)
+        return options
 
-        self.driver = uc.Chrome(options=options)
+    def _init_driver(self):
+        """Инициализация драйвера с настройками для обхода блокировок.
+
+        Стратегия:
+        1. Находим драйвер через webdriver-manager (локальный кэш) —
+           это предотвращает попытки UC лезть в github.io за апдейтом.
+        2. Создаём свежий uc.ChromeOptions (UC не переиспользуует options).
+        3. Запускаем uc.Chrome с service=... и options=...
+        4. Fallback: если что-то упало, пересоздаём options (UC consumирует
+           объект при попытке) и запускаем чистый UC без webdriver-manager.
+        """
+        driver_path = None
+        try:
+            driver_path = ChromeDriverManager().install()
+        except Exception as e:
+            logger.warning(f"webdriver-manager не смог получить драйвер ({e}), "
+                           "будет использован дефолтный механизм UC")
+
+        # Попытка 1: через webdriver-manager
+        if driver_path:
+            try:
+                service = ChromeService(executable_path=driver_path)
+                self.driver = uc.Chrome(service=service, options=self._build_options(), version_main=150)
+                self._configure_driver()
+                return
+            except Exception as e:
+                logger.warning(f"Запуск UC через webdriver-manager не удался ({e}), "
+                               "переходим к fallback-варианту")
+                # важно: старый драйвер мог остаться в полузапущенном состоянии
+                self._safe_quit()
+
+        # Попытка 2 (fallback): чистый UC со своим встроенным драйвером
+        # Создаём НОВЫЙ options — UC не разрешает переиспользовать старый.
+        try:
+            self.driver = uc.Chrome(options=self._build_options())
+            self._configure_driver()
+        except Exception as e:
+            logger.error(f"Не удалось инициализировать UC даже fallback-методом: {e}")
+            raise
+
+    def _configure_driver(self) -> None:
+        """Общие настройки драйвера после успешного создания."""
+        assert self.driver is not None, "Driver not initialized in _configure_driver"
         self.driver.set_page_load_timeout(30)
         self.wait = WebDriverWait(self.driver, 10)
+
+    def _safe_quit(self) -> None:
+        """Безопасное закрытие драйвера без выброса исключений."""
+        if self.driver is not None:
+            try:
+                self.driver.quit()
+            except Exception:
+                pass
+        self.driver = None
+        self.wait = None
+
+    def restart(self) -> None:
+        """Пересоздать драйвер с нуля (закрыть + инициализировать заново).
+
+        Полезен, когда текущий драйвер завис или оказался в невалидном
+        состоянии: обычный get_price уже не сможет загрузить страницу,
+        нужно полностью перезапустить браузер.
+        """
+        logger.info("Перезапуск драйвера (restart)...")
+        self._safe_quit()
+        self._init_driver()
 
     def get_price(self, product_url: str) -> Optional[float]:
         """
@@ -90,7 +164,6 @@ class OzonPriceParser:
             if not price_element:
                 logger.warning(f"Цена не найдена на странице {product_url}")
                 return None
-
             raw_price = price_element.text.strip()
             # Очищаем от всего, кроме цифр, точки и запятой
             cleaned = re.sub(r'[^\d.,]', '', raw_price)
@@ -112,6 +185,5 @@ class OzonPriceParser:
 
     def close(self):
         """Закрыть драйвер."""
-        if self.driver:
-            self.driver.quit()
-            self.driver = None
+        self._safe_quit()
+

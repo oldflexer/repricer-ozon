@@ -6,6 +6,13 @@
 Использование:
     python update_competitor_prices.py
     python update_competitor_prices.py --dry-run
+
+Логирование:
+    Все логи парсера (включая UC, WDM, selenium) пишутся в parser.log
+    и НЕ попадают в repricer.log. Изоляция достигается через:
+    - отдельный FileHandler для модулей парсера;
+    - propagate=False для суб-логгеров UC/WDM/patcher
+      (их логи не «всплывают» в корневой логгер repricer.log).
 """
 import argparse
 import logging
@@ -13,6 +20,7 @@ import os
 import sys
 import time
 import random
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -23,14 +31,68 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from config.settings import settings
 from infrastructure.ozon_parser import OzonPriceParser
-from infrastructure.logger import logger as struct_logger
 
-# Базовая настройка логирования для консоли
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+# === Изолированное логирование парсера ===
+# Парсер пишет в parser.log, отдельный обработчик не даёт логам
+# попасть в repricer.log (куда StructLog пишет репрайсер).
+# Sub-логгеры UC/WDM/patcher также направляем в parser.log с propagate=False.
+_LOG_FORMAT = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+_LOG_FILE = Path(__file__).resolve().parent / 'parser.log'
+
+# Модули, чьи логи нужно изолировать в parser.log
+_PARSER_LOGGERS = [
+    'update_competitor_prices',
+    'infrastructure.ozon_parser',
+    'undetected_chromedriver',
+    'undetected_chromedriver.patcher',
+    'uc',
+    'WDM',
+    'selenium',
+    'urllib3',
+    'webdriver_manager',
+]
+
+
+def setup_parser_logging() -> logging.Logger:
+    """
+    Настраивает изолированное логирование для парсера.
+
+    - parser.log: единый файл для всех компонентов парсера.
+    - RotatingFileHandler 5 MB × 3 файла (защита от бесконтрольного роста).
+    - propagate=False для всех суб-логгеров UC/WDM/patcher.
+    - Корневой логгер НЕ модифицируется (repricer.log остаётся чистым).
+    """
+    file_handler = RotatingFileHandler(
+        _LOG_FILE, maxBytes=5_000_000, backupCount=3, encoding='utf-8'
+    )
+    file_handler.setFormatter(logging.Formatter(_LOG_FORMAT))
+    file_handler.setLevel(logging.INFO)
+
+    # Консольный обработчик — чтобы видеть прогресс при ручном запуске из CLI
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setFormatter(logging.Formatter(_LOG_FORMAT))
+    console_handler.setLevel(logging.INFO)
+
+    for name in _PARSER_LOGGERS:
+        sub = logging.getLogger(name)
+        sub.setLevel(logging.INFO)
+        # Снимаем все внешние обработчики (на случай повторного вызова из Streamlit)
+        sub.handlers.clear()
+        sub.addHandler(file_handler)
+        sub.addHandler(console_handler)
+        # Запрещаем всплывание в корневой логгер (repricer.log)
+        sub.propagate = False
+
+    log = logging.getLogger(__name__)
+    log.setLevel(logging.INFO)
+    log.handlers.clear()
+    log.addHandler(file_handler)
+    log.addHandler(console_handler)
+    log.propagate = False
+    return log
+
+
+logger = setup_parser_logging()
 
 MAX_COMPETITORS = 5
 REQUEST_DELAY_RANGE = (2, 4)  # Задержка между запросами для защиты от бана
@@ -38,24 +100,30 @@ PARSER_RETRIES = 2             # Кол-во попыток парсинга о�
 LOCK_WAIT_TIMEOUT = 60        # Таймаут ожидания разблокировки Excel (в секундах)
 
 
-def wait_for_excel_available(file_path: Path, timeout: int = 300) -> bool:
+def wait_for_excel_available(file_path: Path, timeout: int = LOCK_WAIT_TIMEOUT) -> bool:
     """
     Проверяет, доступен ли файл для записи (не открыт ли он другим процессом).
-    Простая проверка попыткой переименования/удаления временного файла.
+
+    Опрос с интервалом 2 сек. в течение timeout сек.
+    Простая проверка попыткой создания и удаления файла-маркера.
     """
     test_file = file_path.with_suffix('.lock_test')
-    try:
-        # Пытаемся создать файл-маркер, если получилось — Excel свободен
-        with open(test_file, 'w') as f:
-            f.write('lock_test')
-        os.remove(test_file)
-        return True
-    except PermissionError:
-        logger.error(f"Файл {file_path} занят другим процессом (прод-циклом?).")
-        return False
-    except Exception as e:
-        logger.error(f"Непредвиденная ошибка доступа к файлу: {e}")
-        return False
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            # Пытаемся создать файл-маркер, если получилось — Excel свободен
+            with open(test_file, 'w') as f:
+                f.write('lock_test')
+            os.remove(test_file)
+            return True
+        except PermissionError:
+            logger.warning(f"Файл {file_path} занят. Ожидание освобождения...")
+            time.sleep(2)
+        except Exception as e:
+            logger.error(f"Непредвиденная ошибка доступа к файлу: {e}")
+            return False
+    logger.error(f"Файл {file_path} оставался занятым дольше {timeout} сек.")
+    return False
 
 
 def save_safely(df: pd.DataFrame, file_path: Path):
@@ -77,7 +145,12 @@ def save_safely(df: pd.DataFrame, file_path: Path):
 
 
 def parse_price_with_retry(parser: OzonPriceParser, url: str) -> Optional[float]:
-    """Делает несколько попыток получить цену."""
+    """Делает несколько попыток получить цену.
+
+    Между попытками перезапускает драйвер, т.к. если get_price вернул None
+    из-за зависшего/упавшего браузера, повторный запрос к тому же драйверу
+    бессмысленен. restart() закрывает и пересоздаёт браузер с нуля.
+    """
     for attempt in range(1, PARSER_RETRIES + 1):
         try:
             price = parser.get_price(url)
@@ -87,7 +160,15 @@ def parse_price_with_retry(parser: OzonPriceParser, url: str) -> Optional[float]
         except Exception as e:
             logger.error(f"Попытка {attempt}/{PARSER_RETRIES}: ошибка парсинга {url}: {e}")
 
+        # Перезапуск драйвера между попытками — иначе повтор упадёт в тот же
+        # зависший браузер и весь цикл парсинга пройдёт впустую.
         if attempt < PARSER_RETRIES:
+            logger.info(f"Перезапуск драйвера перед повторной попыткой {attempt + 1}...")
+            try:
+                parser.restart()
+            except Exception as restart_err:
+                logger.error(f"Не удалось перезапустить драйвер: {restart_err}")
+                return None
             time.sleep(random.uniform(2.0, 4.0))
 
     return None
@@ -119,7 +200,8 @@ def update_prices(dry_run: bool = False) -> Dict[str, int]:
             df[col] = None
 
     stats = {"updated": 0, "errors": 0, "skipped": 0}
-    parser = OzonPriceParser(headless=True)
+    # headless=True для прод-запуска через cron/systemd (без иксов)
+    parser = OzonPriceParser(headless=False)
 
     try:
         # Проходим по всем строкам и всем 5 конкурентам
@@ -155,8 +237,8 @@ def update_prices(dry_run: bool = False) -> Dict[str, int]:
                 # Задержка между запросами
                 time.sleep(random.uniform(*REQUEST_DELAY_RANGE))
 
-    except Exception as e:
-        logger.exception(f"Критическая ошибка во время парсинга. Сохраняем то, что успели.")
+    except Exception:
+        logger.exception("Критическая ошибка во время парсинга. Сохраняем то, что успели.")
     finally:
         parser.close()
 
@@ -168,9 +250,9 @@ def update_prices(dry_run: bool = False) -> Dict[str, int]:
             except Exception:
                 pass # Ошибки уже залогированы в save_safely
         else:
-            logger.error(f"Файл стал недоступен перед сохранением. Данные не сохранены.")
+            logger.error("Файл стал недоступен перед сохранением. Данные не сохранены.")
     else:
-        logger.info(f"Dry-run режим. Данные в Excel не записаны.")
+        logger.info("Dry-run режим. Данные в Excel не записаны.")
         logger.info(f"Статистика: {stats}")
 
     return stats
@@ -192,4 +274,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
