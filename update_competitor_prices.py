@@ -9,10 +9,8 @@
 
 Логирование:
     Все логи парсера (включая UC, WDM, selenium) пишутся в parser.log
-    и НЕ попадают в repricer.log. Изоляция достигается через:
-    - отдельный FileHandler для модулей парсера;
-    - propagate=False для суб-логгеров UC/WDM/patcher
-      (их логи не «всплывают» в корневой логгер repricer.log).
+    и НЕ попадают в repricer.log. Настройка логирования делегирована в
+    infrastructure.logger.setup_parser_logging().
 """
 import argparse
 import logging
@@ -20,7 +18,6 @@ import os
 import sys
 import time
 import random
-from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -31,66 +28,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from config.settings import settings
 from infrastructure.ozon_parser import OzonPriceParser
-
-# === Изолированное логирование парсера ===
-# Парсер пишет в parser.log, отдельный обработчик не даёт логам
-# попасть в repricer.log (куда StructLog пишет репрайсер).
-# Sub-логгеры UC/WDM/patcher также направляем в parser.log с propagate=False.
-_LOG_FORMAT = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-_LOG_FILE = Path(__file__).resolve().parent / 'parser.log'
-
-# Модули, чьи логи нужно изолировать в parser.log
-_PARSER_LOGGERS = [
-    'update_competitor_prices',
-    'infrastructure.ozon_parser',
-    'undetected_chromedriver',
-    'undetected_chromedriver.patcher',
-    'uc',
-    'WDM',
-    'selenium',
-    'urllib3',
-    'webdriver_manager',
-]
-
-
-def setup_parser_logging() -> logging.Logger:
-    """
-    Настраивает изолированное логирование для парсера.
-
-    - parser.log: единый файл для всех компонентов парсера.
-    - RotatingFileHandler 5 MB × 3 файла (защита от бесконтрольного роста).
-    - propagate=False для всех суб-логгеров UC/WDM/patcher.
-    - Корневой логгер НЕ модифицируется (repricer.log остаётся чистым).
-    """
-    file_handler = RotatingFileHandler(
-        _LOG_FILE, maxBytes=5_000_000, backupCount=3, encoding='utf-8', mode='w'
-    )
-    file_handler.setFormatter(logging.Formatter(_LOG_FORMAT))
-    file_handler.setLevel(logging.INFO)
-
-    # Консольный обработчик — чтобы видеть прогресс при ручном запуске из CLI
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setFormatter(logging.Formatter(_LOG_FORMAT))
-    console_handler.setLevel(logging.INFO)
-
-    for name in _PARSER_LOGGERS:
-        sub = logging.getLogger(name)
-        sub.setLevel(logging.INFO)
-        # Снимаем все внешние обработчики (на случай повторного вызова из Streamlit)
-        sub.handlers.clear()
-        sub.addHandler(file_handler)
-        sub.addHandler(console_handler)
-        # Запрещаем всплывание в корневой логгер (repricer.log)
-        sub.propagate = False
-
-    log = logging.getLogger(__name__)
-    log.setLevel(logging.INFO)
-    log.handlers.clear()
-    log.addHandler(file_handler)
-    log.addHandler(console_handler)
-    log.propagate = False
-    return log
-
+from infrastructure.logger import setup_parser_logging
 
 logger = setup_parser_logging()
 
