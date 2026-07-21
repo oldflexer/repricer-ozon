@@ -63,7 +63,7 @@ def setup_parser_logging() -> logging.Logger:
     - Корневой логгер НЕ модифицируется (repricer.log остаётся чистым).
     """
     file_handler = RotatingFileHandler(
-        _LOG_FILE, maxBytes=5_000_000, backupCount=3, encoding='utf-8'
+        _LOG_FILE, maxBytes=5_000_000, backupCount=3, encoding='utf-8', mode='w'
     )
     file_handler.setFormatter(logging.Formatter(_LOG_FORMAT))
     file_handler.setLevel(logging.INFO)

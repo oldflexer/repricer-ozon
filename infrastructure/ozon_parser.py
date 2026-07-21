@@ -10,9 +10,47 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
 import undetected_chromedriver as uc
+from undetected_chromedriver.patcher import Patcher
 from webdriver_manager.chrome import ChromeDriverManager
 
 logger = logging.getLogger(__name__)
+
+# Мажорная версия Chrome, установленного на машине.
+# Явно фиксируем, чтобы UC не пытался определить версию браузера
+# и не лез в интернет за latest-release.
+CHROME_VERSION_MAIN = 150
+
+
+def _patch_fetch_release_number() -> None:
+    """
+    Monkey-patch метода Patcher.fetch_release_number.
+
+    Оригинальный метод UC обращается в интернет
+    (https://googlechromelabs.github.io/chrome-for-testing) за JSON,
+    даже если version_main указан явно. Это вызывало WinError 10054
+    в закрытых средах.
+
+    Патч заменяет сетевой запрос на чтение версии напрямую из
+    локального бинарника chromedriver через parse_exe_version().
+    """
+    def _patched(self: Patcher):
+        version = self.parse_exe_version()
+        if version:
+            logger.debug(f"Версия драйвера прочитана из бинарника: {version}")
+            return version
+        # Фоллбэк: передаём мажорную версию.
+        # UC ожидает LooseVersion (импортируется самим UC из distutils.version
+        # на верхнем уровне patcher.py). Переиспользуем его оттуда, чтобы не
+        # тянуть distutils напрямую (устаревший модуль в Python 3.12+) и
+        # не получать IDE-warnings о неразрешённом импорте.
+        from undetected_chromedriver.patcher import LooseVersion  # type: ignore[attr-defined]
+        return LooseVersion(str(self.version_main or CHROME_VERSION_MAIN))
+
+    Patcher.fetch_release_number = _patched
+
+
+# Применяем патч один раз при импорте модуля
+_patch_fetch_release_number()
 
 
 class OzonPriceParser:
@@ -21,10 +59,11 @@ class OzonPriceParser:
     driver: Optional[WebDriver]
     wait: Optional[WebDriverWait]
 
-    def __init__(self, headless: bool = True):
+    def __init__(self, headless: bool = False):
         self.headless = headless
         self.driver = None
         self.wait = None
+
     def _build_options(self) -> uc.ChromeOptions:
         """Создаёт новый объект ChromeOptions для UC при каждой попытке.
 
@@ -38,7 +77,7 @@ class OzonPriceParser:
         а флаг --disable-blink-features=AutomationControlled ниже убирает
         navigator.webdriver.
         """
-        options =uc.ChromeOptions()
+        options = uc.ChromeOptions()
         if self.headless:
             options.add_argument('--headless=new')
         options.add_argument('--no-sandbox')
@@ -69,7 +108,11 @@ class OzonPriceParser:
         if driver_path:
             try:
                 service = ChromeService(executable_path=driver_path)
-                self.driver = uc.Chrome(service=service, options=self._build_options(), version_main=150)
+                self.driver = uc.Chrome(
+                    service=service,
+                    options=self._build_options(),
+                    version_main=CHROME_VERSION_MAIN,
+                )
                 self._configure_driver()
                 return
             except Exception as e:
@@ -81,7 +124,10 @@ class OzonPriceParser:
         # Попытка 2 (fallback): чистый UC со своим встроенным драйвером
         # Создаём НОВЫЙ options — UC не разрешает переиспользовать старый.
         try:
-            self.driver = uc.Chrome(options=self._build_options())
+            self.driver = uc.Chrome(
+                options=self._build_options(),
+                version_main=CHROME_VERSION_MAIN,
+            )
             self._configure_driver()
         except Exception as e:
             logger.error(f"Не удалось инициализировать UC даже fallback-методом: {e}")
@@ -164,6 +210,7 @@ class OzonPriceParser:
             if not price_element:
                 logger.warning(f"Цена не найдена на странице {product_url}")
                 return None
+
             raw_price = price_element.text.strip()
             # Очищаем от всего, кроме цифр, точки и запятой
             cleaned = re.sub(r'[^\d.,]', '', raw_price)
@@ -186,4 +233,3 @@ class OzonPriceParser:
     def close(self):
         """Закрыть драйвер."""
         self._safe_quit()
-
