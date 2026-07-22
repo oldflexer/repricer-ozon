@@ -101,7 +101,13 @@ class PriceUpdateCoordinator:
                 continue
 
             intervals = self.repo.get_strategies(product.sku)
-            result = self.calc.calculate(product.sku, pricing, product.min_price, intervals)
+            result = self.calc.calculate(
+                product.sku,
+                pricing,
+                product.min_price,
+                intervals,
+                competitor_min_price=product.competitor_min_price
+            )
             results_data.append((product, pricing, result))
 
             avg_week = self.repo.get_average_marginality(product.sku, 7)

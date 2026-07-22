@@ -1,7 +1,6 @@
 from dataclasses import dataclass
 from typing import Optional
 
-# DTO для загрузки/передачи товара между слоями
 @dataclass
 class ProductDTO:
     sku: str
@@ -13,6 +12,8 @@ class ProductDTO:
     product_id: Optional[int] = None
     offer_id: Optional[str] = None
     real_customer_price: Optional[float] = None
+    competitor_min_price: Optional[float] = None
+
 
 @dataclass
 class StrategyIntervalDTO:
@@ -20,6 +21,7 @@ class StrategyIntervalDTO:
     end: str
     strategy_type: int
     percent: float = 0.0
+
 
 @dataclass
 class PriceUpdateRequestDTO:
@@ -29,6 +31,7 @@ class PriceUpdateRequestDTO:
     net_price: Optional[int] = None
     old_price: Optional[int] = None
     manage_elastic_boosting_through_price: bool = False
+
 
 @dataclass
 class ProductViewModel:
@@ -40,3 +43,4 @@ class ProductViewModel:
     marginality_percent: Optional[float]
     avg_week_margin: Optional[float]
     avg_month_margin: Optional[float]
+    competitor_min_price: Optional[float] = None

@@ -11,15 +11,10 @@ class PriceCalculationService:
         self.default_coefficient = default_coefficient
 
     def calculate(self, sku: str, pricing: PricingData, rip: float,
-                  intervals: List[StrategyInterval]) -> PriceCalculationResult:
+                  intervals: List[StrategyInterval],
+                  competitor_min_price: Optional[float] = None) -> PriceCalculationResult:
         """
         Вычисляет целевую цену для отправки в Ozon и маржинальность.
-        
-        :param sku: Артикул товара.
-        :param pricing: Данные о ценах, индексах и комиссиях из API.
-        :param rip: Минимальная допустимая цена (РИЦ) из Excel.
-        :param intervals: Список временных интервалов стратегий.
-        :return: Результат расчёта, включающий целевую цену, маржинальность и логи.
         """
         index_prices = []
         index_data = []
@@ -56,37 +51,39 @@ class PriceCalculationService:
             (inv for inv in intervals if inv.start_time <= now <= inv.end_time),
             None
         )
-        
+
         strategy_type = active.strategy_type if active else 3
         percent = active.percent if active else 0.0
 
-        # --- НОВАЯ ЛОГИКА ДЛЯ СТРАТЕГИИ 3 ---
         if strategy_type == 3:
-            # Стратегия "Равная" — цена равна только РИЦ, без учёта индексов
             result_target_price = target_min_price
             strategy_price = None
             target_strategy_price = None
         else:
-            # Стратегии 1 (Ниже) и 2 (Выше) — рассчитываются на основе индекса Ozon
-            if pricing.ozon_index_data_price and pricing.ozon_index_data_price != 0:
-                base = pricing.ozon_index_data_price
+            # Стратегии 1 (Ниже) и 2 (Выше)
+            # Приоритет: цена конкурента > ozon_index_data_price
+            base_price = None
+            if competitor_min_price is not None and competitor_min_price > 0:
+                base_price = competitor_min_price
+            elif pricing.ozon_index_data_price and pricing.ozon_index_data_price != 0:
+                base_price = pricing.ozon_index_data_price
+
+            if base_price is not None:
                 if strategy_type == 1:
-                    strategy_price = base * (1 - percent / 100)
+                    strategy_price = base_price * (1 - percent / 100)
                 elif strategy_type == 2:
-                    strategy_price = base * (1 + percent / 100)
+                    strategy_price = base_price * (1 + percent / 100)
                 else:
-                    strategy_price = base  # запасной вариант, но сюда не попадём
+                    strategy_price = base_price
                 target_strategy_price = strategy_price / discount_coef if discount_coef else strategy_price
                 result_target_price = max(target_strategy_price, target_min_price)
             else:
-                # Если нет индекса Ozon, используем только РИЦ (как для стратегии 3)
                 result_target_price = target_min_price
                 strategy_price = None
                 target_strategy_price = None
 
         result_target_price = round(result_target_price)
 
-        # --- Расчёт маржинальности (без изменений) ---
         sales_commission = result_target_price * (pricing.sales_percent_fbs / 100)
         fbs_first_mile_avg = (pricing.fbs_first_mile_min_amount + pricing.fbs_first_mile_max_amount) / 2
         fbs_direct_flow_avg = (pricing.fbs_direct_flow_trans_min_amount + pricing.fbs_direct_flow_trans_max_amount) / 2
@@ -112,6 +109,7 @@ class PriceCalculationService:
             "result_target_price": result_target_price,
             "real_price": real_price,
             "ozon_index_data_price": pricing.ozon_index_data_price,
+            "competitor_min_price": competitor_min_price,
             "intervals_used": len(intervals),
             "index_prices_count": len(index_prices),
             "marginality_components": {

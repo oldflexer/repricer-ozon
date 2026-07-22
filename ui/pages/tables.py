@@ -1,6 +1,8 @@
 import streamlit as st
 import pandas as pd
-from ui.cache import get_repo
+from core.mappers import to_view_model
+from config.settings import TIMEZONE
+from ui.cache import get_repo, get_cached_products
 
 
 def render_tables():
@@ -28,3 +30,4 @@ def render_tables():
                 st.dataframe(df, width="stretch", hide_index=True)
             else:
                 st.info(f"Таблица '{table_name}' пуста")
+
