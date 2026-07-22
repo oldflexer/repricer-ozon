@@ -265,6 +265,7 @@ class PriceUpdateCoordinator:
                         if real_price_value is not None:
                             self.repo.update_real_customer_price(product.sku, real_price_value)
                             self.repo.save_price_history(product.sku, pricing, result, real_price=real_price_value)
+                            self.repo.save_daily_aggregates(product.sku, pricing, result, real_price=real_price_value)
                             for u in updates:
                                 if u['sku'] == product.sku:
                                     u['new_price'] = real_price_value
@@ -277,3 +278,4 @@ class PriceUpdateCoordinator:
             else:
                 for product, pricing, result in results_data:
                     self.repo.save_price_history(product.sku, pricing, result, real_price=None)
+                    self.repo.save_daily_aggregates(product.sku, pricing, result, real_price=None)
