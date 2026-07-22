@@ -1,5 +1,3 @@
-import subprocess
-import sys
 import sqlite3
 import json
 from pathlib import Path
@@ -27,150 +25,29 @@ class SQLiteRepository(IProductRepository):
 
     def _ensure_migrations(self):
         """
-        Проверяет состояние миграций и применяет их безопасно.
-        - Если есть alembic_version → ничего не делаем.
-        - Если есть schema_version=6 → выполняем автоматический переход на Alembic 002.
-        - Если есть schema_version<6 → пробуем upgrade (маловероятно).
-        - Если ничего нет → выполняем upgrade head (новая БД).
+        Проверяет, инициализирован ли Alembic.
+        Если нет — выполняет upgrade head для создания/обновления схемы.
         """
         try:
             conn = self._get_connection()
             cursor = conn.cursor()
-
-            # Проверяем alembic_version
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='alembic_version'")
-            if cursor.fetchone() is not None:
-                conn.close()
-                logger.info("Alembic уже инициализирован.")
-                return
-
-            # Проверяем schema_version
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='schema_version'")
-            if cursor.fetchone() is not None:
-                cursor.execute("SELECT MAX(version) FROM schema_version")
-                row = cursor.fetchone()
-                ver = int(row[0]) if row and row[0] is not None else 0
-                conn.close()
-
-                if ver == 6:
-                    # Целевая версия для автоматического перехода
-                    logger.info("Обнаружена БД с schema_version=6, выполняем автоматический переход на Alembic 002.")
-                    self._migrate_from_schema_version_6()
-                    return
-                elif ver > 6:
-                    # Это может быть версия 7, но без alembic_version (если что-то пошло не так)
-                    # Просто зафиксируем как 002
-                    logger.warning(f"Обнаружена БД с schema_version={ver}, фиксируем как Alembic 002.")
-                    self._stamp_migration("002")
-                    return
-                else:
-                    # Более старые версии (0-5) – пробуем upgrade
-                    logger.warning(f"Обнаружена БД с schema_version={ver}, пробуем выполнить upgrade head.")
-                    self._run_upgrade()
-                    return
-
+            has_alembic = cursor.fetchone() is not None
             conn.close()
-            # Новая БД (нет ни alembic_version, ни schema_version)
-            logger.info("Новая БД, выполняем все миграции.")
-            self._run_upgrade()
 
-        except sqlite3.Error as e:
-            logger.error(f"Ошибка SQLite: {e}")
-            raise
+            if not has_alembic:
+                logger.info("Alembic не инициализирован, выполняем upgrade head...")
+                self._run_upgrade()
+            else:
+                logger.info("Alembic уже инициализирован.")
         except Exception as e:
-            logger.error(f"Ошибка при проверке миграций: {e}")
+            logger.error(f"Ошибка при проверке/применении миграций: {e}")
             raise
-
-    def _migrate_from_schema_version_6(self):
-        """
-        Выполняет переход из schema_version=6 в Alembic версии 002.
-        Создаёт таблицы агрегатов и логов, заполняет агрегаты, фиксирует версию.
-        """
-        logger.info("Начинаем миграцию из schema_version=6...")
-
-        # 1. Создаём недостающие таблицы (если их нет)
-        with self._get_connection() as conn:
-            # Таблица дневных агрегатов
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS product_price_daily (
-                    product_id INTEGER REFERENCES product(product_id),
-                    date DATE,
-                    avg_price REAL,
-                    avg_marginality REAL,
-                    min_price REAL,
-                    max_price REAL,
-                    updates_count INTEGER,
-                    PRIMARY KEY (product_id, date)
-                )
-            """)
-            # Таблица для вынесенных логов
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS price_calculation_logs (
-                    history_id INTEGER PRIMARY KEY REFERENCES product_price_history(id),
-                    log_details TEXT
-                )
-            """)
-            # Индексы
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_history_timestamp ON product_price_history(timestamp)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_history_product_marginality ON product_price_history(product_id, marginality)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_daily_product_date ON product_price_daily(product_id, date)")
-            conn.commit()
-
-        logger.info("Таблицы и индексы созданы (если отсутствовали).")
-
-        # 2. Заполняем агрегаты из истории (если есть данные)
-        self._fill_daily_aggregates()
-
-        # 3. Фиксируем Alembic версию 002
-        self._stamp_migration("002")
-
-        # 4. Удаляем старую таблицу schema_version (опционально)
-        try:
-            with self._get_connection() as conn:
-                conn.execute("DROP TABLE schema_version")
-                conn.commit()
-                logger.info("Таблица schema_version удалена.")
-        except Exception as e:
-            logger.warning(f"Не удалось удалить schema_version: {e}")
-
-        logger.info("Переход на Alembic 002 завершён.")
-
-    def _fill_daily_aggregates(self):
-        """Заполняет таблицу product_price_daily из существующей истории."""
-        try:
-            # Импортируем migrate_aggregates, чтобы использовать ту же логику
-            from migrate_aggregates import migrate_aggregates
-            migrate_aggregates()
-        except ImportError:
-            # Если скрипт не найден, выполняем SQL-запрос напрямую (повторяем логику)
-            logger.warning("Скрипт migrate_aggregates не найден, выполняем SQL-запрос напрямую.")
-            with self._get_connection() as conn:
-                # Проверяем, есть ли уже данные в агрегатах
-                count = conn.execute("SELECT COUNT(*) FROM product_price_daily").fetchone()[0]
-                if count > 0:
-                    logger.info("В таблице product_price_daily уже есть данные, пропускаем.")
-                    return
-
-                query = """
-                    INSERT OR REPLACE INTO product_price_daily (product_id, date, avg_price, avg_marginality, min_price, max_price, updates_count)
-                    SELECT 
-                        product_id,
-                        DATE(timestamp) as date,
-                        AVG(real_price) as avg_price,
-                        AVG(marginality) as avg_marginality,
-                        MIN(real_price) as min_price,
-                        MAX(real_price) as max_price,
-                        COUNT(*) as updates_count
-                    FROM product_price_history
-                    WHERE real_price IS NOT NULL
-                    GROUP BY product_id, DATE(timestamp)
-                """
-                conn.execute(query)
-                conn.commit()
-                logger.info("Агрегаты заполнены напрямую.")
 
     def _run_upgrade(self):
         """Запускает alembic upgrade head."""
+        import subprocess
+        import sys
         root_dir = Path(__file__).resolve().parent.parent
         try:
             result = subprocess.run(
@@ -188,25 +65,7 @@ class SQLiteRepository(IProductRepository):
             logger.error(f"Не удалось запустить alembic: {e}")
             raise
 
-    def _stamp_migration(self, revision: str):
-        """Выполняет alembic stamp <revision> для существующей БД."""
-        root_dir = Path(__file__).resolve().parent.parent
-        try:
-            result = subprocess.run(
-                [sys.executable, "-m", "alembic", "stamp", revision],
-                cwd=root_dir,
-                capture_output=True,
-                text=True,
-                check=False
-            )
-            if result.returncode != 0:
-                logger.error(f"Ошибка stamping миграции {revision}: {result.stderr}")
-                raise RuntimeError(f"Не удалось зафиксировать версию {revision}: {result.stderr}")
-            logger.info(f"БД зафиксирована как версия {revision}.")
-        except Exception as e:
-            logger.error(f"Не удалось запустить alembic stamp: {e}")
-            raise
-
+    # ---------- Все методы работы с данными (без изменений) ----------
     def get_all_products(self) -> List[ProductInfo]:
         with self._get_connection() as conn:
             rows = conn.execute("""
@@ -328,7 +187,7 @@ class SQLiteRepository(IProductRepository):
                 pricing.fbo_direct_flow_trans_min_amount,
                 pricing.fbo_direct_flow_trans_max_amount,
                 real_price,
-                None  # log_details сохраняем отдельно
+                None
             ))
             history_id = cursor.lastrowid
 
@@ -416,7 +275,6 @@ class SQLiteRepository(IProductRepository):
             """
             return pd.read_sql_query(query, conn, params=(-days,))
 
-    # ---------- Остальные методы ----------
     def get_price_history(self, sku: str) -> List[dict]:
         with self._get_connection() as conn:
             rows = conn.execute("""
