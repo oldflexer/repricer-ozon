@@ -1,3 +1,40 @@
+import sys
+from types import ModuleType
+
+# --- HACK: эмуляция distutils.version для Python 3.12+ ---
+# undetected-chromedriver импортирует distutils.version.LooseVersion,
+# но distutils удалён в Python 3.12. Подменяем модуль до импорта uc.
+
+class _LooseVersion:
+    def __init__(self, vstring):
+        self.vstring = str(vstring)
+    def __repr__(self):
+        return f"LooseVersion('{self.vstring}')"
+    def __eq__(self, other):
+        return self.vstring == str(other)
+    def __lt__(self, other):
+        return self.vstring < str(other)
+    def __le__(self, other):
+        return self.vstring <= str(other)
+    def __gt__(self, other):
+        return self.vstring > str(other)
+    def __ge__(self, other):
+        return self.vstring >= str(other)
+
+class _DistutilsVersionModule(ModuleType):
+    def __getattr__(self, name):
+        if name == 'LooseVersion':
+            return _LooseVersion
+        raise AttributeError(name)
+
+# Создаём и регистрируем модуль distutils.version
+if 'distutils.version' not in sys.modules:
+    sys.modules['distutils.version'] = _DistutilsVersionModule('distutils.version')
+# Также создаём родительский модуль distutils, если его нет
+if 'distutils' not in sys.modules:
+    sys.modules['distutils'] = ModuleType('distutils')
+
+# --- Остальные импорты ---
 import re
 import time
 import random
@@ -16,40 +53,19 @@ from webdriver_manager.chrome import ChromeDriverManager
 logger = logging.getLogger(__name__)
 
 # Мажорная версия Chrome, установленного на машине.
-# Явно фиксируем, чтобы UC не пытался определить версию браузера
-# и не лез в интернет за latest-release.
 CHROME_VERSION_MAIN = 150
 
-
 def _patch_fetch_release_number() -> None:
-    """
-    Monkey-patch метода Patcher.fetch_release_number.
-
-    Оригинальный метод UC обращается в интернет
-    (https://googlechromelabs.github.io/chrome-for-testing) за JSON,
-    даже если version_main указан явно. Это вызывало WinError 10054
-    в закрытых средах.
-
-    Патч заменяет сетевой запрос на чтение версии напрямую из
-    локального бинарника chromedriver через parse_exe_version().
-    """
+    """Monkey-patch метода Patcher.fetch_release_number."""
     def _patched(self: Patcher):
         version = self.parse_exe_version()
         if version:
             logger.debug(f"Версия драйвера прочитана из бинарника: {version}")
             return version
-        # Фоллбэк: передаём мажорную версию.
-        # UC ожидает LooseVersion (импортируется самим UC из distutils.version
-        # на верхнем уровне patcher.py). Переиспользуем его оттуда, чтобы не
-        # тянуть distutils напрямую (устаревший модуль в Python 3.12+) и
-        # не получать IDE-warnings о неразрешённом импорте.
-        from undetected_chromedriver.patcher import LooseVersion  # type: ignore[attr-defined]
+        from undetected_chromedriver.patcher import LooseVersion
         return LooseVersion(str(self.version_main or CHROME_VERSION_MAIN))
-
     Patcher.fetch_release_number = _patched
 
-
-# Применяем патч один раз при импорте модуля
 _patch_fetch_release_number()
 
 
