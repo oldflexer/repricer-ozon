@@ -65,19 +65,24 @@ class OzonPriceParser:
         self.wait = None
 
     def _build_options(self) -> uc.ChromeOptions:
-        """Создаёт новый объект ChromeOptions для UC при каждой попытке.
+        """Создаёт новый объект uc.ChromeOptions для undetected-chromedriver.
 
-        UC не позволяет переиспользовать ChromeOptions между запусками
-        (raises 'you cannot reuse the ChromeOptions object'), поэтому
-        каждое создание драйвера получает свежий объект настроек.
-
-        UC не поддерживает add_experimental_option('excludeSwitches', ...)
-        — это вызывает ошибку 'unrecognized chrome option: excludeSwitches'.
-        Вместо этого UC по умолчанию уже скрывает признаки автоматизации,
-        а флаг --disable-blink-features=AutomationControlled ниже убирает
-        navigator.webdriver.
+        UC не позволяет переиспользовать ChromeOptions между запусками,
+        поэтому каждое создание драйвера получает свежий объект настроек.
         """
         options = uc.ChromeOptions()
+        if self.headless:
+            options.add_argument('--headless=new')
+        options.add_argument('--no-sandbox')
+        options.add_argument('--disable-dev-shm-usage')
+        options.add_argument('--disable-gpu')
+        options.add_argument('--disable-blink-features=AutomationControlled')
+        return options
+
+    def _build_selenium_options(self):
+        """Создаёт стандартные selenium ChromeOptions для fallback-режима."""
+        from selenium.webdriver.chrome.options import Options as ChromeOptions
+        options = ChromeOptions()
         if self.headless:
             options.add_argument('--headless=new')
         options.add_argument('--no-sandbox')
@@ -104,7 +109,7 @@ class OzonPriceParser:
             logger.warning(f"webdriver-manager не смог получить драйвер ({e}), "
                            "будет использован дефолтный механизм UC")
 
-        # Попытка 1: через webdriver-manager
+        # Попытка 1: UC с driver_executable_path от webdriver-manager
         if driver_path:
             try:
                 service = ChromeService(executable_path=driver_path)
@@ -112,25 +117,25 @@ class OzonPriceParser:
                     service=service,
                     options=self._build_options(),
                     version_main=CHROME_VERSION_MAIN,
+                    driver_executable_path=driver_path,
                 )
                 self._configure_driver()
                 return
             except Exception as e:
-                logger.warning(f"Запуск UC через webdriver-manager не удался ({e}), "
-                               "переходим к fallback-варианту")
-                # важно: старый драйвер мог остаться в полузапущенном состоянии
+                logger.warning(
+                    f"UC не смог запуститься с webdriver-manager ({e}), "
+                    "переключаемся на обычный Selenium"
+                )
                 self._safe_quit()
 
-        # Попытка 2 (fallback): чистый UC со своим встроенным драйвером
-        # Создаём НОВЫЙ options — UC не разрешает переиспользовать старый.
+        # Попытка 2 (fallback): обычный Selenium Chrome без UC
         try:
-            self.driver = uc.Chrome(
-                options=self._build_options(),
-                version_main=CHROME_VERSION_MAIN,
-            )
+            service = ChromeService(executable_path=driver_path) if driver_path else ChromeService()
+            from selenium import webdriver
+            self.driver = webdriver.Chrome(service=service, options=self._build_selenium_options())
             self._configure_driver()
         except Exception as e:
-            logger.error(f"Не удалось инициализировать UC даже fallback-методом: {e}")
+            logger.error(f"Не удалось инициализировать Chrome драйвер: {e}")
             raise
 
     def _configure_driver(self) -> None:
