@@ -16,7 +16,7 @@ class SQLiteRepository(IProductRepository):
     # Текущая версия схемы БД (увеличивать при добавлении миграций)
     SCHEMA_VERSION = 6
 
-    def __init__(self, db_path: Path = settings.DATABASE_PATH):
+    def __init__(self, db_path: Path = settings.DATABASE_PATH_PATH):
         self.db_path = db_path
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._init_tables()

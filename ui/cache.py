@@ -38,7 +38,7 @@ def get_cached_last_prices():
 # ------ ЭТИ ФУНКЦИИ НЕ КЭШИРУЕМ ------
 def get_excel_loader():
     from config.settings import settings
-    return ExcelLoader(settings.DATA_FILE)
+    return ExcelLoader(settings.DATA_FILE_PATH)
 
 
 def get_api_client():

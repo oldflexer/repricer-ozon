@@ -13,8 +13,6 @@
     infrastructure.logger.setup_parser_logging().
 """
 import argparse
-import logging
-import os
 import sys
 import time
 import random
@@ -23,12 +21,12 @@ from typing import Dict, Optional
 
 import pandas as pd
 
-# Корректный путь до модулей проекта
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from config.settings import settings
 from infrastructure.ozon_parser import OzonPriceParser
 from infrastructure.logger import setup_parser_logging
+from infrastructure.file_utils import wait_for_excel_available, save_safely
 
 logger = setup_parser_logging()
 
@@ -38,57 +36,8 @@ PARSER_RETRIES = 2             # Кол-во попыток парсинга о�
 LOCK_WAIT_TIMEOUT = 60        # Таймаут ожидания разблокировки Excel (в секундах)
 
 
-def wait_for_excel_available(file_path: Path, timeout: int = LOCK_WAIT_TIMEOUT) -> bool:
-    """
-    Проверяет, доступен ли файл для записи (не открыт ли он другим процессом).
-
-    Опрос с интервалом 2 сек. в течение timeout сек.
-    Простая проверка попыткой создания и удаления файла-маркера.
-    """
-    test_file = file_path.with_suffix('.lock_test')
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        try:
-            # Пытаемся создать файл-маркер, если получилось — Excel свободен
-            with open(test_file, 'w') as f:
-                f.write('lock_test')
-            os.remove(test_file)
-            return True
-        except PermissionError:
-            logger.warning(f"Файл {file_path} занят. Ожидание освобождения...")
-            time.sleep(2)
-        except Exception as e:
-            logger.error(f"Непредвиденная ошибка доступа к файлу: {e}")
-            return False
-    logger.error(f"Файл {file_path} оставался занятым дольше {timeout} сек.")
-    return False
-
-
-def save_safely(df: pd.DataFrame, file_path: Path):
-    """
-    Атомарное сохранение Excel.
-    Сначала пишем во временный файл, затем заменяем оригинальный.
-    Защищает от потери данных при падении во время сохранения.
-    """
-    tmp_path = file_path.with_suffix('.tmp.xlsx')
-    try:
-        df.to_excel(tmp_path, index=False, engine='openpyxl')
-        os.replace(tmp_path, file_path)
-        logger.info(f"Файл {file_path} успешно сохранен.")
-    except Exception as e:
-        logger.error(f"Ошибка при сохранении файла {file_path}: {e}")
-        if tmp_path.exists():
-            os.remove(tmp_path)
-        raise
-
-
 def parse_price_with_retry(parser: OzonPriceParser, url: str) -> Optional[float]:
-    """Делает несколько попыток получить цену.
-
-    Между попытками перезапускает драйвер, т.к. если get_price вернул None
-    из-за зависшего/упавшего браузера, повторный запрос к тому же драйверу
-    бессмысленен. restart() закрывает и пересоздаёт браузер с нуля.
-    """
+    """Делает несколько попыток получить цену."""
     for attempt in range(1, PARSER_RETRIES + 1):
         try:
             price = parser.get_price(url)
@@ -98,8 +47,6 @@ def parse_price_with_retry(parser: OzonPriceParser, url: str) -> Optional[float]
         except Exception as e:
             logger.error(f"Попытка {attempt}/{PARSER_RETRIES}: ошибка парсинга {url}: {e}")
 
-        # Перезапуск драйвера между попытками — иначе повтор упадёт в тот же
-        # зависший браузер и весь цикл парсинга пройдёт впустую.
         if attempt < PARSER_RETRIES:
             logger.info(f"Перезапуск драйвера перед повторной попыткой {attempt + 1}...")
             try:
@@ -114,45 +61,51 @@ def parse_price_with_retry(parser: OzonPriceParser, url: str) -> Optional[float]
 
 def update_prices(dry_run: bool = False) -> Dict[str, int]:
     """Основная логика обновления цен конкурентов."""
-    excel_path = settings.DATA_FILE
+    excel_path = settings.DATA_FILE_PATH
 
     if not excel_path.exists():
         logger.error(f"Файл не найден: {excel_path}")
         return {"updated": 0, "errors": 0, "skipped": 0}
 
-    # Проверяем доступность файла перед тяжелыми операциями
     if not wait_for_excel_available(excel_path):
         return {"updated": 0, "errors": 0, "skipped": 0}
 
-    # Загружаем данные
     try:
         df = pd.read_excel(excel_path, engine='openpyxl')
+        df.columns = df.columns.str.strip()
     except Exception as e:
         logger.error(f"Не удалось прочитать Excel: {e}")
         return {"updated": 0, "errors": 0, "skipped": 0}
 
-    # Гарантируем наличие колонок для цен конкурентов (в файле они называются "Цена 1"..."Цена 5")
-    price_cols = [f'Цена {i}' for i in range(1, MAX_COMPETITORS + 1)]
-    for col in price_cols:
-        if col not in df.columns:
-            df[col] = None
+    col_indices = {}
+    for i in range(1, MAX_COMPETITORS + 1):
+        url_col_name = f'Конкурент {i}'
+        price_col_name = f'Цена {i}'
+        if url_col_name in df.columns and price_col_name in df.columns:
+            col_indices[i] = {
+                'url_col': df.columns.get_loc(url_col_name) + 1,
+                'price_col': df.columns.get_loc(price_col_name) + 1,
+            }
+
+    if not col_indices:
+        logger.error("Не найдены колонки 'Конкурент N' / 'Цена N' в файле.")
+        return {"updated": 0, "errors": 0, "skipped": 0}
 
     stats = {"updated": 0, "errors": 0, "skipped": 0}
-    # headless=True для прод-запуска через cron/systemd (без иксов)
     parser = OzonPriceParser(headless=False)
+    excel_updates = {}
 
     try:
-        # Проходим по всем строкам и всем 5 конкурентам
-        for idx, row in df.iterrows():
-            sku = row.get('SKU') or row.get('sku') or f"row_{idx}"
+        for row_num, (_, row) in enumerate(df.iterrows(), start=2):
+            sku = row.get('SKU') or row.get('sku') or f"row_{row_num}"
 
             for i in range(1, MAX_COMPETITORS + 1):
-                url_col = f'Конкурент {i}'
-                price_col = f'Цена {i}'
+                cols = col_indices.get(i)
+                if not cols:
+                    stats["skipped"] += 1
+                    continue
 
-                url = row.get(url_col)
-
-                # Пропускаем только если нет URL конкурента
+                url = row.get(f'Конкурент {i}')
                 if pd.isna(url) or not str(url).strip():
                     stats["skipped"] += 1
                     continue
@@ -161,18 +114,15 @@ def update_prices(dry_run: bool = False) -> Dict[str, int]:
                 new_price = parse_price_with_retry(parser, str(url))
 
                 if new_price is not None:
-                    # Успешно получили цену — обновляем
-                    df.at[idx, price_col] = new_price
+                    excel_updates[(row_num, cols['price_col'])] = new_price
                     stats["updated"] += 1
                     logger.info(f"SKU {sku}, конкурент {i}: {new_price} ₽")
                 else:
-                    # Ошибка парсинга — оставляем старую цену как есть!
                     stats["errors"] += 1
-                    old_price = row.get(price_col)
+                    old_price = row.get(f'Цена {i}')
                     old_display = f"{old_price} ₽" if pd.notna(old_price) else "нет данных"
                     logger.warning(f"SKU {sku}, конкурент {i}: ошибка парсинга. Оставлена прежняя цена: {old_display}")
 
-                # Задержка между запросами
                 time.sleep(random.uniform(*REQUEST_DELAY_RANGE))
 
     except Exception:
@@ -180,15 +130,17 @@ def update_prices(dry_run: bool = False) -> Dict[str, int]:
     finally:
         parser.close()
 
-    # Сохраняем результат, если не dry-run и файл не занят
     if not dry_run:
-        if wait_for_excel_available(excel_path):
-            try:
-                save_safely(df, excel_path)
-            except Exception:
-                pass # Ошибки уже залогированы в save_safely
-        else:
-            logger.error("Файл стал недоступен перед сохранением. Данные не сохранены.")
+        if excel_updates:
+            if wait_for_excel_available(excel_path):
+                try:
+                    save_safely(excel_updates, excel_path)
+                except Exception:
+                    pass
+            else:
+                logger.error("Файл стал недоступен перед сохранением. Данные не сохранены.")
+        elif stats["updated"] == 0:
+            logger.info("Нет обновлённых цен — файл не перезаписывается.")
     else:
         logger.info("Dry-run режим. Данные в Excel не записаны.")
         logger.info(f"Статистика: {stats}")
@@ -198,11 +150,7 @@ def update_prices(dry_run: bool = False) -> Dict[str, int]:
 
 def main():
     parser = argparse.ArgumentParser(description="Парсер цен конкурентов для Ozon.")
-    parser.add_argument(
-        '--dry-run',
-        action='store_true',
-        help="Тестовый режим: парсить, но не сохранять в Excel"
-    )
+    parser.add_argument('--dry-run', action='store_true', help="Тестовый режим: парсить, но не сохранять в Excel")
     args = parser.parse_args()
 
     logger.info("=== Запуск парсера конкурентов ===")

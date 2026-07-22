@@ -43,11 +43,11 @@ def render_service():
     col1, col2 = st.columns(2)
     with col1:
         if st.button("Скачать БД", icon=":material/save:"):
-            db_data = open(settings.DATABASE_PATH, "rb").read() if settings.DATABASE_PATH.exists() else b""
+            db_data = open(settings.DATABASE_PATH_PATH, "rb").read() if settings.DATABASE_PATH_PATH.exists() else b""
             st.download_button(
                 "Скачать",
                 data=db_data,
-                file_name=settings.DATABASE_PATH.name,
+                file_name=settings.DATABASE_PATH_PATH.name,
                 mime="application/octet-stream",
             )
     with col2:
@@ -67,8 +67,8 @@ def render_service():
     # Информация о файлах
     st.divider()
     st.subheader("Информация о файлах")
-    st.caption(f"Файл данных: {settings.DATA_FILE.resolve()}")
-    st.caption(f"База данных: {settings.DATABASE_PATH.resolve()}")
+    st.caption(f"Файл данных: {settings.DATA_FILE_PATH.resolve()}")
+    st.caption(f"База данных: {settings.DATABASE_PATH_PATH.resolve()}")
 
     # Изменение пароля
     st.divider()

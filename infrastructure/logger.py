@@ -2,8 +2,11 @@ import structlog
 import logging
 import sys
 from pathlib import Path
+from logging.handlers import TimedRotatingFileHandler
 
 _ROOT = Path(__file__).resolve().parent.parent
+_LOG_DIR = _ROOT / "logs"
+_LOG_DIR.mkdir(exist_ok=True)
 
 _LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
@@ -22,14 +25,29 @@ _PARSER_LOGGERS = [
 
 
 def setup_logging():
-    """Настраивает логирование репрайсера (repricer.log)."""
-    logging.basicConfig(
-        level=logging.INFO,
-        format=_LOG_FORMAT,
-        handlers=[
-            logging.FileHandler(_ROOT / "repricer.log", mode="w", encoding="utf-8")
-        ]
+    """Настраивает логирование репрайсера (repricer.log) с ротацией."""
+    # Очищаем существующие хендлеры, чтобы избежать дублирования
+    root_logger = logging.getLogger()
+    for handler in root_logger.handlers[:]:
+        root_logger.removeHandler(handler)
+
+    file_handler = TimedRotatingFileHandler(
+        _LOG_DIR / "repricer.log",
+        when="midnight",
+        interval=1,
+        backupCount=7,
+        encoding="utf-8"
     )
+    file_handler.setFormatter(logging.Formatter(_LOG_FORMAT))
+    file_handler.setLevel(logging.INFO)
+
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setFormatter(logging.Formatter(_LOG_FORMAT))
+    console_handler.setLevel(logging.INFO)
+
+    root_logger.setLevel(logging.INFO)
+    root_logger.addHandler(file_handler)
+    root_logger.addHandler(console_handler)
 
     structlog.configure(
         processors=[
@@ -51,19 +69,14 @@ def setup_logging():
 
 def setup_parser_logging() -> logging.Logger:
     """
-    Настраивает изолированное логирование парсера (parser.log).
-
-    - parser.log ПОЛНОСТЬЮ перезаписывается при каждом запуске (mode='w').
-    - Используется обычный FileHandler — без ротации, т.к. для cron-задачи
-      важен только последний прогон.
-    - propagate=False для всех суб-логгеров UC/WDM/selenium — их логи
-      не попадают в repricer.log.
-    - Возвращает логгер для update_competitor_prices.
+    Настраивает изолированное логирование парсера (parser.log) с ротацией.
     """
-    log_file = _ROOT / "parser.log"
-
-    file_handler = logging.FileHandler(
-        log_file, mode="w", encoding="utf-8"
+    file_handler = TimedRotatingFileHandler(
+        _LOG_DIR / "parser.log",
+        when="midnight",
+        interval=1,
+        backupCount=7,
+        encoding="utf-8"
     )
     file_handler.setFormatter(logging.Formatter(_LOG_FORMAT))
     file_handler.setLevel(logging.INFO)
