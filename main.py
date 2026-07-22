@@ -20,10 +20,10 @@ async def main():
     parser.add_argument('--dry-run', action='store_true')
     args = parser.parse_args()
 
-    repo = SQLiteRepository(settings.DATABASE_PATH)
+    repo = SQLiteRepository(settings.DATABASE_PATH_PATH)
     api = OzonApiClient()
     notifier = MailNotifier()
-    loader = ExcelLoader(settings.DATA_FILE)
+    loader = ExcelLoader(settings.DATA_FILE_PATH)
 
     use_case = RepricingUseCase(repo, api, notifier, loader)
     stats = await use_case.execute(dry_run=args.dry_run)

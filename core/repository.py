@@ -1,6 +1,8 @@
 from abc import ABC, abstractmethod
 from typing import List, Optional, Dict, Any, Tuple
 from datetime import datetime
+
+import pandas as pd
 from .entities import ProductInfo, StrategyInterval, PricingData, PriceCalculationResult
 
 
@@ -47,34 +49,34 @@ class IProductRepository(ABC):
     def get_last_run_time(self) -> Optional[datetime]:
         pass
 
-    # ------------------- Обслуживание БД (ручная очистка) -------------------
+    # ---------- Обслуживание ----------
     @abstractmethod
     def delete_old_records(self, days: int) -> int:
-        """Ручная очистка записей старше указанного количества дней."""
         pass
 
-    # ------------------- Автоматическая очистка (старше 3 месяцев) -------------------
     @abstractmethod
     def delete_records_older_than(self, months: int = 3) -> int:
-        """Удаляет записи старше указанного числа месяцев."""
         pass
 
     @abstractmethod
     def get_last_cleanup_date(self) -> Optional[datetime]:
-        """Возвращает дату последней автоматической очистки."""
         pass
 
     @abstractmethod
     def set_last_cleanup_date(self, dt: datetime):
-        """Сохраняет дату последней очистки."""
         pass
 
     @abstractmethod
     def auto_cleanup_if_needed(self, months: int = 3, days_threshold: int = 1) -> int:
-        """
-        Автоматически запускает очистку, если с последней очистки прошло больше days_threshold дней.
-        Возвращает количество удалённых записей (0, если очистка не производилась).
-        """
+        pass
+
+    # ---------- Новые методы для агрегации ----------
+    @abstractmethod
+    def save_daily_aggregates(self, sku: str, pricing: PricingData, result: PriceCalculationResult, real_price: Optional[float] = None):
+        pass
+
+    @abstractmethod
+    def get_daily_trends_aggregated(self, days: int = 7) -> pd.DataFrame:
         pass
 
 

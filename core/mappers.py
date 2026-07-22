@@ -15,6 +15,7 @@ def product_to_dto(product: ProductInfo) -> ProductDTO:
         product_id=product.product_id,
         offer_id=product.offer_id,
         real_customer_price=product.real_customer_price,
+        competitor_min_price=product.competitor_min_price,
     )
 
 
@@ -29,6 +30,7 @@ def dto_to_product(dto: ProductDTO) -> ProductInfo:
         product_id=dto.product_id,
         offer_id=dto.offer_id,
         real_customer_price=dto.real_customer_price,
+        competitor_min_price=dto.competitor_min_price,
     )
 
 
@@ -75,4 +77,5 @@ def to_view_model(product: ProductInfo, last_price: Optional[float], last_margin
         marginality_percent=last_margin * 100 if last_margin is not None else None,
         avg_week_margin=avg_week * 100 if avg_week is not None else None,
         avg_month_margin=avg_month * 100 if avg_month is not None else None,
+        competitor_min_price=product.competitor_min_price,
     )

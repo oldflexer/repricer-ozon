@@ -37,7 +37,7 @@ check_auth()
 
 # Инициализация репозитория в session_state
 if 'repo' not in st.session_state:
-    st.session_state.repo = SQLiteRepository(settings.DATABASE_PATH)
+    st.session_state.repo = SQLiteRepository(settings.DATABASE_PATH_PATH)
 
 # Состояния
 if 'running' not in st.session_state:
@@ -51,11 +51,17 @@ if 'dry_run_mode' not in st.session_state:
 if 'current_page' not in st.session_state:
     st.session_state.current_page = "Сводка"
 
+# Состояния для парсера конкурентов
+if 'parsing_running' not in st.session_state:
+    st.session_state.parsing_running = False
+if 'parsing_dry_run' not in st.session_state:
+    st.session_state.parsing_dry_run = False
+
 # Боковая панель
 with st.sidebar:
     render_sidebar()
 
-# Основная область – рендеринг выбранной страницы (KPI теперь внутри summary)
+# Основная область – рендеринг выбранной страницы
 page = st.session_state.current_page
 
 if page == "Сводка":
