@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from datetime import datetime, time
-from typing import Optional
+from typing import Optional, List
 
 @dataclass
 class ProductInfo:
@@ -14,6 +14,7 @@ class ProductInfo:
     product_id: Optional[int] = None
     offer_id: Optional[str] = None
     real_customer_price: Optional[float] = None
+    competitor_min_price: Optional[float] = None
 
 @dataclass
 class StrategyInterval:

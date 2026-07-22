@@ -1,4 +1,3 @@
-# config/settings.py
 from pathlib import Path
 from dotenv import load_dotenv
 import pytz
@@ -30,8 +29,8 @@ class Settings(BaseSettings):
     PRICE_ROUND_UP_TO: int = 100
     MANAGE_ELASTIC_BOOSTING: bool = False
 
-    DATA_FILE: Path = BASE_DIR / "data" / "products.xlsx"
-    DATABASE_PATH: Path = BASE_DIR / "data" / "repricer.db"
+    DATA_FILE: str = "./data/products.xlsx"
+    DATABASE_PATH: str = "./data/repricer.db"
 
     NOTIFICATION_MAX_DETAILS: int = 20
 
@@ -39,6 +38,22 @@ class Settings(BaseSettings):
     WEB_PASS: str = "changeme"
 
     model_config = SettingsConfigDict(extra='ignore')
+
+    @property
+    def DATA_FILE_PATH(self) -> Path:
+        """Возвращает Path к файлу данных с подстановкой INSTANCE_NAME."""
+        path = self.DATA_FILE
+        if "{{INSTANCE_NAME}}" in path:
+            path = path.replace("{{INSTANCE_NAME}}", self.INSTANCE_NAME)
+        return Path(path)
+
+    @property
+    def DATABASE_PATH_PATH(self) -> Path:
+        """Возвращает Path к файлу БД с подстановкой INSTANCE_NAME."""
+        path = self.DATABASE_PATH
+        if "{{INSTANCE_NAME}}" in path:
+            path = path.replace("{{INSTANCE_NAME}}", self.INSTANCE_NAME)
+        return Path(path)
 
 
 settings = Settings()

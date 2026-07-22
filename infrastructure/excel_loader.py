@@ -74,6 +74,21 @@ class ExcelLoader(ILoader):
 
             min_price = self._get_float(row, df.columns, ['цена риц', 'min_price', 'rip'], 0.0)
 
+            # Чтение цен конкурентов
+            competitor_prices = []
+            for j in range(1, 6):  # максимум 5 конкурентов
+                price_col = f'Цена {j}'
+                if price_col in df.columns:
+                    val = row.get(price_col)
+                    if pd.notna(val):
+                        try:
+                            price = float(val)
+                            if price > 0:
+                                competitor_prices.append(price)
+                        except (ValueError, TypeError):
+                            pass
+            competitor_min_price = min(competitor_prices) if competitor_prices else None
+
             # Валидация интервалов и стратегий
             intervals, interval_warnings = self._parse_intervals_with_validation(row, df.columns)
             warnings.extend(interval_warnings)
@@ -93,7 +108,8 @@ class ExcelLoader(ILoader):
                 cost_price=cost_price,
                 min_price=min_price,
                 current_price=0.0,
-                old_price=old_price
+                old_price=old_price,
+                competitor_min_price=competitor_min_price
             )
             products.append(product)
             self._strategies[sku] = intervals

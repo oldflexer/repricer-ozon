@@ -42,6 +42,13 @@ class PriceUpdateCoordinator:
         stats = {'products_loaded': 0, 'prices_updated': 0, 'errors': [], 'warnings': []}
         updates = []
 
+        # Проверка доступности Excel перед загрузкой (аналогично парсеру)
+        from infrastructure.file_utils import wait_for_excel_available
+        if not wait_for_excel_available(settings.DATA_FILE_PATH):
+            logger.error("Excel-файл занят другим процессом, репрайсинг отменён")
+            self.notifier.send_detailed_report([], ["Excel-файл занят"], dry_run=dry_run)
+            return stats
+
         # 1. Загрузка Excel с валидацией
         if self.progress_callback:
             self.progress_callback(0, 1, "Загрузка Excel...")
@@ -94,7 +101,13 @@ class PriceUpdateCoordinator:
                 continue
 
             intervals = self.repo.get_strategies(product.sku)
-            result = self.calc.calculate(product.sku, pricing, product.min_price, intervals)
+            result = self.calc.calculate(
+                product.sku,
+                pricing,
+                product.min_price,
+                intervals,
+                competitor_min_price=product.competitor_min_price
+            )
             results_data.append((product, pricing, result))
 
             avg_week = self.repo.get_average_marginality(product.sku, 7)
@@ -252,6 +265,7 @@ class PriceUpdateCoordinator:
                         if real_price_value is not None:
                             self.repo.update_real_customer_price(product.sku, real_price_value)
                             self.repo.save_price_history(product.sku, pricing, result, real_price=real_price_value)
+                            self.repo.save_daily_aggregates(product.sku, pricing, result, real_price=real_price_value)
                             for u in updates:
                                 if u['sku'] == product.sku:
                                     u['new_price'] = real_price_value
@@ -264,3 +278,4 @@ class PriceUpdateCoordinator:
             else:
                 for product, pricing, result in results_data:
                     self.repo.save_price_history(product.sku, pricing, result, real_price=None)
+                    self.repo.save_daily_aggregates(product.sku, pricing, result, real_price=None)
