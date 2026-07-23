@@ -11,7 +11,8 @@ fi
 # --- Значения по умолчанию ---
 INSTANCE_NAME="${INSTANCE_NAME:-$(basename "$(pwd)")}"
 PORT="${PORT:-8501}"
-CRON_SCHEDULE="${CRON_SCHEDULE:-0 * * * *}"   # каждый час по умолчанию
+CRON_SCHEDULE="${CRON_SCHEDULE:-0 * * * *}"          # каждый час
+PARSER_CRON_SCHEDULE="${PARSER_CRON_SCHEDULE:-30 2,10,18 * * *}"  # 02:30, 10:30, 18:30
 
 echo "=== Развёртывание экземпляра: $INSTANCE_NAME (порт $PORT) ==="
 
@@ -35,6 +36,23 @@ echo "=== Установка зависимостей ==="
 .venv/bin/pip install --upgrade pip
 .venv/bin/pip install -r requirements.txt
 
+# --- Установка Chrome для парсера (если не установлен) ---
+if ! command -v google-chrome &> /dev/null && ! command -v chromium-browser &> /dev/null; then
+    echo "=== Установка Chrome для парсера ==="
+    if [ -f /etc/debian_version ]; then
+        # Debian/Ubuntu
+        sudo apt-get update
+        sudo apt-get install -y chromium-browser
+    elif [ -f /etc/redhat-release ]; then
+        # RHEL/CentOS/Fedora
+        sudo yum install -y chromium
+    else
+        echo "⚠️ Не удалось определить дистрибутив для установки Chrome. Установите вручную."
+    fi
+else
+    echo "✅ Chrome уже установлен"
+fi
+
 # --- systemd сервис (уникальное имя) ---
 SERVICE_NAME="repricer-${INSTANCE_NAME}.service"
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}"
@@ -53,32 +71,46 @@ sudo systemctl enable "$SERVICE_NAME"
 sudo systemctl restart "$SERVICE_NAME"
 echo "✅ Сервис $SERVICE_NAME перезапущен"
 
-# --- Cron с блочными маркерами ---
+# --- Cron для основного репрайсера ---
 if [ -f "deploy/cron.template" ]; then
-    echo "=== Установка cron задач для ${INSTANCE_NAME} ==="
+    echo "=== Установка cron задач для репрайсера (${INSTANCE_NAME}) ==="
     CRON_TMP="/tmp/repricer_cron_${INSTANCE_NAME}_$$"
     
-    # Генерируем новый блок из шаблона
     sed -e "s|{{WORKING_DIR}}|$WORKING_DIR|g" \
         -e "s|{{CRON_SCHEDULE}}|$CRON_SCHEDULE|g" \
         -e "s|{{INSTANCE_NAME}}|$INSTANCE_NAME|g" \
         "deploy/cron.template" > "$CRON_TMP"
     
-    # Удаляем старый блок для этого INSTANCE_NAME (если есть)
-    # Используем sed для удаления от BEGIN до END включительно
+    # Удаляем старые блоки для этого INSTANCE_NAME
     crontab -l 2>/dev/null | sed -e "/# BEGIN_REPRICER_${INSTANCE_NAME}/,/# END_REPRICER_${INSTANCE_NAME}/d" > "$CRON_TMP.old" || true
-    
-    # Добавляем новый блок
     cat "$CRON_TMP" >> "$CRON_TMP.old"
-    # Убедимся, что в конце есть перевод строки
     echo "" >> "$CRON_TMP.old"
-    
-    # Применяем обновлённый crontab
     crontab "$CRON_TMP.old"
     rm -f "$CRON_TMP" "$CRON_TMP.old"
-    echo "✅ Cron задачи для ${INSTANCE_NAME} обновлены"
+    echo "✅ Cron задачи для репрайсера обновлены"
 else
     echo "⚠️ Шаблон cron не найден, пропускаем"
+fi
+
+# --- Cron для парсера конкурентов ---
+if [ -f "deploy/parser.cron.template" ]; then
+    echo "=== Установка cron задач для парсера конкурентов (${INSTANCE_NAME}) ==="
+    PARSER_CRON_TMP="/tmp/parser_cron_${INSTANCE_NAME}_$$"
+    
+    sed -e "s|{{WORKING_DIR}}|$WORKING_DIR|g" \
+        -e "s|{{PARSER_CRON_SCHEDULE}}|$PARSER_CRON_SCHEDULE|g" \
+        -e "s|{{INSTANCE_NAME}}|$INSTANCE_NAME|g" \
+        "deploy/parser.cron.template" > "$PARSER_CRON_TMP"
+    
+    # Удаляем старые блоки для парсера
+    crontab -l 2>/dev/null | sed -e "/# BEGIN_PARSER_REPRICER_${INSTANCE_NAME}/,/# END_PARSER_REPRICER_${INSTANCE_NAME}/d" > "$PARSER_CRON_TMP.old" || true
+    cat "$PARSER_CRON_TMP" >> "$PARSER_CRON_TMP.old"
+    echo "" >> "$PARSER_CRON_TMP.old"
+    crontab "$PARSER_CRON_TMP.old"
+    rm -f "$PARSER_CRON_TMP" "$PARSER_CRON_TMP.old"
+    echo "✅ Cron задачи для парсера обновлены"
+else
+    echo "⚠️ Шаблон парсера не найден, пропускаем"
 fi
 
 echo "=== Установка прав на выполнение ==="
