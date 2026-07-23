@@ -59,6 +59,10 @@ SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}"
 CURRENT_USER=$(whoami)
 WORKING_DIR=$(pwd)
 
+# --- Создание папки логов ---
+mkdir -p "$WORKING_DIR/logs"
+chmod 755 "$WORKING_DIR/logs"
+
 echo "=== Установка systemd сервиса ${SERVICE_NAME} ==="
 sed -e "s|{{USER}}|$CURRENT_USER|g" \
     -e "s|{{WORKING_DIR}}|$WORKING_DIR|g" \
