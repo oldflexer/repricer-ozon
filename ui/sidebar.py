@@ -1,4 +1,5 @@
 import base64
+import os
 import streamlit as st
 from pathlib import Path
 import asyncio
@@ -64,6 +65,10 @@ async def run_parsing(dry_run: bool = False) -> Dict[str, Any]:
     Асинхронный запуск парсинга конкурентов.
     Запускает синхронную функцию update_prices в отдельном потоке.
     """
+    # Устанавливаем переменные окружения для процесса парсера
+    os.environ['DISPLAY'] = ':11.0'   # или возьмите из переменной окружения, если она есть
+    os.environ['XAUTHORITY'] = '/home/server/.Xauthority'
+    
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, update_prices, dry_run)
 

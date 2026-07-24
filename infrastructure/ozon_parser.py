@@ -81,11 +81,6 @@ class OzonPriceParser:
         self.wait = None
 
     def _build_options(self) -> uc.ChromeOptions:
-        """Создаёт новый объект uc.ChromeOptions для undetected-chromedriver.
-
-        UC не позволяет переиспользовать ChromeOptions между запусками,
-        поэтому каждое создание драйвера получает свежий объект настроек.
-        """
         options = uc.ChromeOptions()
         if self.headless:
             options.add_argument('--headless=new')
@@ -93,6 +88,16 @@ class OzonPriceParser:
         options.add_argument('--disable-dev-shm-usage')
         options.add_argument('--disable-gpu')
         options.add_argument('--disable-blink-features=AutomationControlled')
+        options.add_argument('--disable-features=IsolateOrigins,site-per-process')
+        options.add_argument('--disable-site-isolation-trials')
+        options.add_argument('--disable-web-security')
+        options.add_argument('--disable-features=TranslateUI')
+        options.add_argument('--disable-features=OptimizationGuideModelDownloading')
+        options.add_argument('--disable-features=OptimizationHints')
+        options.add_argument('--disable-features=OptimizationHintsFetching')
+        options.add_argument('--disable-features=OptimizationHintsPush')
+        # Постоянный профиль
+        options.add_argument('--user-data-dir=/home/server/chrome_profile')
         return options
 
     def _build_selenium_options(self):
@@ -198,7 +203,7 @@ class OzonPriceParser:
             logger.info(f"Загрузка страницы: {product_url}")
             self.driver.get(product_url)
             # Случайная задержка для имитации человека
-            time.sleep(random.uniform(3, 5))
+            time.sleep(random.uniform(5, 10))
 
             # Ожидаем появления хотя бы одного элемента с ценой
             # Используем несколько селекторов
