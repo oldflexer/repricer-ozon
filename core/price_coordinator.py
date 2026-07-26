@@ -140,9 +140,15 @@ class PriceUpdateCoordinator:
 
             self.loader.update_product_in_file(product.sku, excel_updates)
 
-            min_price_for_api = int(round(product.min_price / discount_coef)) if discount_coef else int(round(product.min_price))
+            # Определяем минимальную цену для API
+            if result.strategy_price is not None:
+                # Если стратегия была применена, устанавливаем min_price = price
+                min_price_for_api = int(round(result.result_target_price))
+            else:
+                # Иначе используем РИЦ / discount_coef
+                min_price_for_api = int(round(product.min_price / discount_coef)) if discount_coef else int(round(product.min_price))
 
-            # Правило Ozon: min_price >= price * 0.5
+            # Правило Ozon: min_price >= price * 0.5 (оставляем как страховку)
             price_for_api = int(round(result.result_target_price))
             min_allowed = int(price_for_api * 0.5)
             if min_price_for_api < min_allowed:
