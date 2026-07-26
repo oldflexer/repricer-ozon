@@ -13,11 +13,14 @@
     infrastructure.logger.setup_parser_logging().
 """
 import argparse
+import os
 import sys
+import tempfile
 import time
 import random
 from pathlib import Path
 from typing import Dict, Optional
+from filelock import FileLock, Timeout
 
 import pandas as pd
 
@@ -27,6 +30,7 @@ from config.settings import settings
 from infrastructure.ozon_parser import OzonPriceParser
 from infrastructure.logger import setup_parser_logging
 from infrastructure.file_utils import wait_for_excel_available, save_safely
+from infrastructure.x_display import get_available_display
 
 logger = setup_parser_logging(f'parser-{settings.INSTANCE_NAME}.log', mode='a')
 
@@ -34,6 +38,9 @@ MAX_COMPETITORS = 5
 REQUEST_DELAY_RANGE = (5, 10)
 PARSER_RETRIES = 2
 LOCK_WAIT_TIMEOUT = 60
+
+LOCK_FILE = os.path.join(tempfile.gettempdir(), 'repricer_parser.lock')
+LOCK_TIMEOUT = 1800
 
 
 def parse_price_with_retry(parser: OzonPriceParser, url: str) -> Optional[float]:
@@ -149,13 +156,32 @@ def update_prices(dry_run: bool = False) -> Dict[str, int]:
 
 
 def main():
+    # Определяем DISPLAY только на Linux/Unix
+    if not sys.platform.startswith('win'):
+        if 'DISPLAY' not in os.environ:
+            from infrastructure.x_display import get_available_display
+            display = get_available_display()
+            if display:
+                os.environ['DISPLAY'] = display
+                logger.info(f"Установлен DISPLAY={display}")
+            else:
+                logger.error("Не найден доступный X-сервер. Парсинг невозможен.")
+                return
+
     parser = argparse.ArgumentParser(description="Парсер цен конкурентов для Ozon.")
     parser.add_argument('--dry-run', action='store_true', help="Тестовый режим: парсить, но не сохранять в Excel")
     args = parser.parse_args()
 
-    logger.info("=== Запуск парсера конкурентов ===")
-    stats = update_prices(dry_run=args.dry_run)
-    logger.info(f"=== Завершено. Обновлено: {stats['updated']}, ошибок: {stats['errors']}, пропущено: {stats['skipped']} ===")
+    lock = FileLock(LOCK_FILE, timeout=LOCK_TIMEOUT)
+    try:
+        with lock.acquire(timeout=LOCK_TIMEOUT):
+            logger.info("=== Запуск парсера конкурентов ===")
+            stats = update_prices(dry_run=args.dry_run)
+            logger.info(f"=== Завершено. Обновлено: {stats['updated']}, ошибок: {stats['errors']}, пропущено: {stats['skipped']} ===")
+    except Timeout:
+        logger.error(f"Не удалось получить блокировку парсера за {LOCK_TIMEOUT} секунд. Парсер уже выполняется.")
+    except Exception as e:
+        logger.exception(f"Критическая ошибка: {e}")
 
 
 if __name__ == '__main__':

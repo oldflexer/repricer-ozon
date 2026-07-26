@@ -1,5 +1,7 @@
 import base64
 import os
+import sys
+import tempfile
 import streamlit as st
 from pathlib import Path
 import asyncio
@@ -10,6 +12,10 @@ from ui.cache import get_repo, get_api_client, get_excel_loader, get_mail_notifi
 from core.use_cases import RepricingUseCase
 from parser import update_prices
 from infrastructure.logger import setup_logging, setup_parser_logging
+from filelock import FileLock, Timeout
+
+LOCK_FILE = os.path.join(tempfile.gettempdir(), 'repricer_parser.lock')
+LOCK_TIMEOUT = 1800
 
 
 def get_base64_encoded_image(image_path: Path) -> str:
@@ -65,42 +71,49 @@ def execute_repricing(dry_run: bool):
 
 
 async def run_parsing(dry_run: bool = False) -> Dict[str, Any]:
-    """
-    Асинхронный запуск парсинга конкурентов.
-    Запускает синхронную функцию update_prices в отдельном потоке.
-    """
     logger = setup_parser_logging('parser.log', mode='w')
     logger.info("=== Запуск парсинга из дашборда ===")
-    
-    # Устанавливаем переменные окружения для процесса парсера
-    os.environ['DISPLAY'] = ':11.0'   # или возьмите из переменной окружения, если она есть
-    os.environ['XAUTHORITY'] = '/home/server/.Xauthority'
-    
+
+    # Настройка окружения только для Linux
+    if not sys.platform.startswith('win'):
+        from infrastructure.x_display import get_available_display
+        display = get_available_display()
+        if display:
+            os.environ['DISPLAY'] = display
+            logger.info(f"Установлен DISPLAY={display}")
+            if 'XAUTHORITY' not in os.environ:
+                os.environ['XAUTHORITY'] = '/home/server/.Xauthority'
+        else:
+            logger.warning("X-сервер не найден. Возможно, парсинг не сможет открыть браузер.")
+    # На Windows ничего не делаем – DISPLAY не требуется
+
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, update_prices, dry_run)
 
 
 def execute_parsing(dry_run: bool):
-    """Запуск парсинга цен конкурентов (асинхронно)."""
-    with st.status("Выполняется парсинг конкурентов...", expanded=True) as status:
-        st.write("Инициализация браузера и загрузка страниц Ozon...")
-        try:
-            stats = asyncio.run(run_parsing(dry_run=dry_run))
-            if not dry_run:
-                st.cache_data.clear()
-                st.cache_resource.clear()
-            status.update(label="Парсинг завершён!", state="complete")
-            msg = (
-                f"Готово! Обновлено цен: {stats.get('updated', 0)}, "
-                f"ошибок: {stats.get('errors', 0)}, "
-                f"пропущено: {stats.get('skipped', 0)}"
-            )
-            return msg, 'success'
-        except Exception as e:
-            status.update(label="Ошибка парсинга", state="error")
-            return f"Ошибка: {e}", 'error'
-        finally:
-            st.session_state.parsing_running = False
+    lock = FileLock(LOCK_FILE, timeout=LOCK_TIMEOUT)
+    try:
+        with lock.acquire(timeout=LOCK_TIMEOUT):
+            with st.status("Выполняется парсинг конкурентов...", expanded=True) as status:
+                st.write("Инициализация браузера и загрузка страниц Ozon...")
+                try:
+                    stats = asyncio.run(run_parsing(dry_run=dry_run))
+                    if not dry_run:
+                        st.cache_data.clear()
+                        st.cache_resource.clear()
+                    status.update(label="Парсинг завершён!", state="complete")
+                    msg = f"Готово! Обновлено цен: {stats.get('updated', 0)}, ошибок: {stats.get('errors', 0)}, пропущено: {stats.get('skipped', 0)}"
+                    return msg, 'success'
+                except Exception as e:
+                    status.update(label="Ошибка парсинга", state="error")
+                    return f"Ошибка: {e}", 'error'
+                finally:
+                    st.session_state.parsing_running = False
+    except Timeout:
+        st.error(f"Парсер уже выполняется. Попробуйте позже.", icon=":material/cancel:")
+        st.session_state.parsing_running = False
+        return "Парсер занят", 'error'
 
 
 def render_sidebar_section_excel(disabled: bool):
