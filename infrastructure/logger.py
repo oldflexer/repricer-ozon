@@ -2,6 +2,7 @@ import structlog
 import logging
 import sys
 from pathlib import Path
+from typing import Optional
 from logging.handlers import TimedRotatingFileHandler
 
 _ROOT = Path(__file__).resolve().parent.parent
@@ -10,7 +11,6 @@ _LOG_DIR.mkdir(exist_ok=True)
 
 _LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
-# Модули, чьи логи нужно изолировать в parser.log
 _PARSER_LOGGERS = [
     "update_competitor_prices",
     "infrastructure.ozon_parser",
@@ -24,20 +24,34 @@ _PARSER_LOGGERS = [
 ]
 
 
-def setup_logging():
-    """Настраивает логирование репрайсера (repricer.log) с ротацией."""
-    # Очищаем существующие хендлеры, чтобы избежать дублирования
+def setup_logging(log_file: Optional[str] = None, mode: str = 'a'):
+    """
+    Настраивает логирование репрайсера.
+    :param log_file: имя файла (без пути). Если None, используется 'repricer.log'
+    :param mode: режим открытия файла ('a' - дописывать, 'w' - перезаписывать)
+    """
     root_logger = logging.getLogger()
     for handler in root_logger.handlers[:]:
         root_logger.removeHandler(handler)
 
-    file_handler = TimedRotatingFileHandler(
-        _LOG_DIR / "repricer.log",
-        when="midnight",
-        interval=1,
-        backupCount=7,
-        encoding="utf-8"
-    )
+    if log_file is None:
+        log_file = "repricer.log"
+    file_path = _LOG_DIR / log_file
+
+    # Используем обычный FileHandler для перезаписи или TimedRotatingFileHandler для ротации
+    if mode == 'a':
+        # Для ротации по дням
+        file_handler = TimedRotatingFileHandler(
+            file_path,
+            when="midnight",
+            interval=1,
+            backupCount=7,
+            encoding="utf-8"
+        )
+    else:
+        # Для перезаписи при каждом запуске
+        file_handler = logging.FileHandler(file_path, mode=mode, encoding="utf-8")
+
     file_handler.setFormatter(logging.Formatter(_LOG_FORMAT))
     file_handler.setLevel(logging.INFO)
 
@@ -67,17 +81,27 @@ def setup_logging():
     return structlog.get_logger()
 
 
-def setup_parser_logging() -> logging.Logger:
+def setup_parser_logging(log_file: Optional[str] = None, mode: str = 'a') -> logging.Logger:
     """
-    Настраивает изолированное логирование парсера (parser.log) с ротацией.
+    Настраивает изолированное логирование парсера.
+    :param log_file: имя файла (без пути). Если None, используется 'parser.log'
+    :param mode: режим открытия файла ('a' - дописывать, 'w' - перезаписывать)
     """
-    file_handler = TimedRotatingFileHandler(
-        _LOG_DIR / "parser.log",
-        when="midnight",
-        interval=1,
-        backupCount=7,
-        encoding="utf-8"
-    )
+    if log_file is None:
+        log_file = "parser.log"
+    file_path = _LOG_DIR / log_file
+
+    if mode == 'a':
+        file_handler = TimedRotatingFileHandler(
+            file_path,
+            when="midnight",
+            interval=1,
+            backupCount=7,
+            encoding="utf-8"
+        )
+    else:
+        file_handler = logging.FileHandler(file_path, mode=mode, encoding="utf-8")
+
     file_handler.setFormatter(logging.Formatter(_LOG_FORMAT))
     file_handler.setLevel(logging.INFO)
 
@@ -85,6 +109,7 @@ def setup_parser_logging() -> logging.Logger:
     console_handler.setFormatter(logging.Formatter(_LOG_FORMAT))
     console_handler.setLevel(logging.INFO)
 
+    # Перенастраиваем логгеры для модулей парсера
     for name in _PARSER_LOGGERS:
         sub = logging.getLogger(name)
         sub.setLevel(logging.INFO)
@@ -101,5 +126,6 @@ def setup_parser_logging() -> logging.Logger:
     log.propagate = False
     return log
 
-
+# По умолчанию создаём логгер (для обратной совместимости) – будет использоваться,
+# если не вызвана настройка с параметрами.
 logger = setup_logging()

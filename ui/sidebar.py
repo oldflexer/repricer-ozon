@@ -9,6 +9,7 @@ from config.settings import settings
 from ui.cache import get_repo, get_api_client, get_excel_loader, get_mail_notifier
 from core.use_cases import RepricingUseCase
 from parser import update_prices
+from infrastructure.logger import setup_logging, setup_parser_logging
 
 
 def get_base64_encoded_image(image_path: Path) -> str:
@@ -17,6 +18,9 @@ def get_base64_encoded_image(image_path: Path) -> str:
 
 
 def run_repricing(dry_run: bool = False) -> Dict[str, Any]:
+    logger = setup_logging('repricer.log', mode='w')
+    logger.info("=== Запуск репрайсинга из дашборда ===")
+
     async def _run():
         loader = get_excel_loader()
         api = get_api_client()
@@ -65,6 +69,9 @@ async def run_parsing(dry_run: bool = False) -> Dict[str, Any]:
     Асинхронный запуск парсинга конкурентов.
     Запускает синхронную функцию update_prices в отдельном потоке.
     """
+    logger = setup_parser_logging('parser.log', mode='w')
+    logger.info("=== Запуск парсинга из дашборда ===")
+    
     # Устанавливаем переменные окружения для процесса парсера
     os.environ['DISPLAY'] = ':11.0'   # или возьмите из переменной окружения, если она есть
     os.environ['XAUTHORITY'] = '/home/server/.Xauthority'

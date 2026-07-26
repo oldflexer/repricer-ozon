@@ -12,7 +12,10 @@ from infrastructure.db import SQLiteRepository
 from infrastructure.ozon_api import OzonApiClient
 from infrastructure.mail_notifier import MailNotifier
 from core.use_cases import RepricingUseCase
-from infrastructure.logger import logger
+from infrastructure.logger import setup_logging
+
+# Настраиваем логгер для этого экземпляра
+logger = setup_logging(f'repricer-{settings.INSTANCE_NAME}.log', mode='a')
 
 
 async def main():
