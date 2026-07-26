@@ -1,5 +1,7 @@
 import base64
 import os
+import sys
+import tempfile
 import streamlit as st
 from pathlib import Path
 import asyncio
@@ -12,7 +14,7 @@ from parser import update_prices
 from infrastructure.logger import setup_logging, setup_parser_logging
 from filelock import FileLock, Timeout
 
-LOCK_FILE = '/tmp/repricer_parser.lock'
+LOCK_FILE = os.path.join(tempfile.gettempdir(), 'repricer_parser.lock')
 LOCK_TIMEOUT = 1800
 
 
@@ -69,17 +71,22 @@ def execute_repricing(dry_run: bool):
 
 
 async def run_parsing(dry_run: bool = False) -> Dict[str, Any]:
-    """
-    Асинхронный запуск парсинга конкурентов.
-    Запускает синхронную функцию update_prices в отдельном потоке.
-    """
     logger = setup_parser_logging('parser.log', mode='w')
     logger.info("=== Запуск парсинга из дашборда ===")
-    
-    # Устанавливаем переменные окружения для процесса парсера
-    os.environ['DISPLAY'] = ':10.0'
-    os.environ['XAUTHORITY'] = '/home/server/.Xauthority'
-    
+
+    # Настройка окружения только для Linux
+    if not sys.platform.startswith('win'):
+        from infrastructure.x_display import get_available_display
+        display = get_available_display()
+        if display:
+            os.environ['DISPLAY'] = display
+            logger.info(f"Установлен DISPLAY={display}")
+            if 'XAUTHORITY' not in os.environ:
+                os.environ['XAUTHORITY'] = '/home/server/.Xauthority'
+        else:
+            logger.warning("X-сервер не найден. Возможно, парсинг не сможет открыть браузер.")
+    # На Windows ничего не делаем – DISPLAY не требуется
+
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, update_prices, dry_run)
 
