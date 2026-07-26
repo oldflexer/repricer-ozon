@@ -2,6 +2,7 @@ import logging
 from datetime import datetime
 from typing import List, Optional
 from .entities import StrategyInterval, PricingData, PriceCalculationResult
+from config.settings import TIMEZONE
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +17,7 @@ class PriceCalculationService:
         """
         Вычисляет целевую цену для отправки в Ozon и маржинальность.
         """
+        # --- 1. Расчёт коэффициента дисконта ---
         index_prices = []
         index_data = []
         approx_index_price = None
@@ -46,27 +48,43 @@ class PriceCalculationService:
 
         target_min_price = rip / discount_coef if discount_coef else rip
 
-        now = datetime.now().time()
+        # --- 2. Определение активного интервала стратегии ---
+        now = datetime.now(TIMEZONE).time()
+        logger.info(
+            f"SKU {sku}: текущее время (по TIMEZONE) = {now}, интервалов: {[(i.start, i.end, i.strategy_type, i.percent) for i in intervals]}"
+        )
+
         active = next(
             (inv for inv in intervals if inv.start_time <= now <= inv.end_time),
             None
         )
 
-        strategy_type = active.strategy_type if active else 3
-        percent = active.percent if active else 0.0
+        if active:
+            strategy_type = active.strategy_type
+            percent = active.percent
+            logger.info(f"SKU {sku}: активный интервал {active.start}-{active.end}, стратегия {strategy_type}, процент {percent}")
+        else:
+            strategy_type = 3  # Равная
+            percent = 0.0
+            logger.info(f"SKU {sku}: активный интервал не найден, используется стратегия по умолчанию (Равная, 3)")
 
+        # --- 3. Применение стратегии ---
         if strategy_type == 3:
             result_target_price = target_min_price
             strategy_price = None
             target_strategy_price = None
+            reason = "стратегия 'Равная'"
+            logger.info(f"SKU {sku}: стратегия 'Равная', результат = {result_target_price:.0f}")
         else:
             # Стратегии 1 (Ниже) и 2 (Выше)
-            # Приоритет: цена конкурента > ozon_index_data_price
             base_price = None
+            source = None
             if competitor_min_price is not None and competitor_min_price > 0:
                 base_price = competitor_min_price
+                source = "цена конкурента"
             elif pricing.ozon_index_data_price and pricing.ozon_index_data_price != 0:
                 base_price = pricing.ozon_index_data_price
+                source = "индекс Ozon"
 
             if base_price is not None:
                 if strategy_type == 1:
@@ -76,14 +94,23 @@ class PriceCalculationService:
                 else:
                     strategy_price = base_price
                 target_strategy_price = strategy_price / discount_coef if discount_coef else strategy_price
-                result_target_price = max(target_strategy_price, target_min_price)
+                result_target_price = target_strategy_price
+                reason = f"стратегия {'Ниже' if strategy_type == 1 else 'Выше'} (база = {source}, {base_price:.0f} ₽, процент = {percent})"
+                logger.info(
+                    f"SKU {sku}: base_price = {base_price:.0f} ({source}), "
+                    f"strategy_price = {strategy_price:.0f}, target_strategy_price = {target_strategy_price:.0f}, "
+                    f"result_target_price = {result_target_price:.0f}"
+                )
             else:
                 result_target_price = target_min_price
                 strategy_price = None
                 target_strategy_price = None
+                reason = "базовая цена не найдена, стратегия проигнорирована"
+                logger.warning(f"SKU {sku}: базовая цена не найдена (competitor_min_price и ozon_index_data_price отсутствуют), используется РИЦ")
 
         result_target_price = round(result_target_price)
 
+        # --- 4. Расчёт маржинальности ---
         sales_commission = result_target_price * (pricing.sales_percent_fbs / 100)
         fbs_first_mile_avg = (pricing.fbs_first_mile_min_amount + pricing.fbs_first_mile_max_amount) / 2
         fbs_direct_flow_avg = (pricing.fbs_direct_flow_trans_min_amount + pricing.fbs_direct_flow_trans_max_amount) / 2
@@ -112,6 +139,7 @@ class PriceCalculationService:
             "competitor_min_price": competitor_min_price,
             "intervals_used": len(intervals),
             "index_prices_count": len(index_prices),
+            "reason": reason,
             "marginality_components": {
                 "sales_commission": sales_commission,
                 "fbo_direct_flow_avg": fbo_direct_flow_avg,
@@ -125,6 +153,10 @@ class PriceCalculationService:
                 "total_costs": total_costs,
             }
         }
+
+        logger.info(
+            f"SKU {sku}: итоговая цена = {result_target_price} ₽, маржинальность = {marginality:.2%}, причина: {reason}"
+        )
 
         return PriceCalculationResult(
             sku=sku,

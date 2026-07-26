@@ -73,7 +73,7 @@ async def run_parsing(dry_run: bool = False) -> Dict[str, Any]:
     logger.info("=== Запуск парсинга из дашборда ===")
     
     # Устанавливаем переменные окружения для процесса парсера
-    os.environ['DISPLAY'] = ':11.0'   # или возьмите из переменной окружения, если она есть
+    os.environ['DISPLAY'] = ':10.0'
     os.environ['XAUTHORITY'] = '/home/server/.Xauthority'
     
     loop = asyncio.get_event_loop()
