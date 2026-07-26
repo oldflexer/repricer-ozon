@@ -28,12 +28,12 @@ from infrastructure.ozon_parser import OzonPriceParser
 from infrastructure.logger import setup_parser_logging
 from infrastructure.file_utils import wait_for_excel_available, save_safely
 
-logger = setup_parser_logging()
+logger = setup_parser_logging(f'parser-{settings.INSTANCE_NAME}.log', mode='a')
 
 MAX_COMPETITORS = 5
-REQUEST_DELAY_RANGE = (2, 4)  # Задержка между запросами для защиты от бана
-PARSER_RETRIES = 2             # Кол-во попыток парсинга одной ссылки
-LOCK_WAIT_TIMEOUT = 60        # Таймаут ожидания разблокировки Excel (в секундах)
+REQUEST_DELAY_RANGE = (5, 10)
+PARSER_RETRIES = 2
+LOCK_WAIT_TIMEOUT = 60
 
 
 def parse_price_with_retry(parser: OzonPriceParser, url: str) -> Optional[float]:
