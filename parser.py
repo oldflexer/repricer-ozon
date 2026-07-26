@@ -18,6 +18,7 @@ import time
 import random
 from pathlib import Path
 from typing import Dict, Optional
+from filelock import FileLock, Timeout
 
 import pandas as pd
 
@@ -34,6 +35,9 @@ MAX_COMPETITORS = 5
 REQUEST_DELAY_RANGE = (5, 10)
 PARSER_RETRIES = 2
 LOCK_WAIT_TIMEOUT = 60
+
+LOCK_FILE = '/tmp/repricer_parser.lock'
+LOCK_TIMEOUT = 1800
 
 
 def parse_price_with_retry(parser: OzonPriceParser, url: str) -> Optional[float]:
@@ -153,9 +157,16 @@ def main():
     parser.add_argument('--dry-run', action='store_true', help="Тестовый режим: парсить, но не сохранять в Excel")
     args = parser.parse_args()
 
-    logger.info("=== Запуск парсера конкурентов ===")
-    stats = update_prices(dry_run=args.dry_run)
-    logger.info(f"=== Завершено. Обновлено: {stats['updated']}, ошибок: {stats['errors']}, пропущено: {stats['skipped']} ===")
+    lock = FileLock(LOCK_FILE, timeout=LOCK_TIMEOUT)
+    try:
+        with lock.acquire(timeout=LOCK_TIMEOUT):
+            logger.info("=== Запуск парсера конкурентов ===")
+            stats = update_prices(dry_run=args.dry_run)
+            logger.info(f"=== Завершено. Обновлено: {stats['updated']}, ошибок: {stats['errors']}, пропущено: {stats['skipped']} ===")
+    except Timeout:
+        logger.error(f"Не удалось получить блокировку парсера за {LOCK_TIMEOUT} секунд. Парсер уже выполняется.")
+    except Exception as e:
+        logger.exception(f"Критическая ошибка: {e}")
 
 
 if __name__ == '__main__':

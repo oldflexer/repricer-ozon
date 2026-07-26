@@ -10,6 +10,10 @@ from ui.cache import get_repo, get_api_client, get_excel_loader, get_mail_notifi
 from core.use_cases import RepricingUseCase
 from parser import update_prices
 from infrastructure.logger import setup_logging, setup_parser_logging
+from filelock import FileLock, Timeout
+
+LOCK_FILE = '/tmp/repricer_parser.lock'
+LOCK_TIMEOUT = 1800
 
 
 def get_base64_encoded_image(image_path: Path) -> str:
@@ -81,26 +85,28 @@ async def run_parsing(dry_run: bool = False) -> Dict[str, Any]:
 
 
 def execute_parsing(dry_run: bool):
-    """Запуск парсинга цен конкурентов (асинхронно)."""
-    with st.status("Выполняется парсинг конкурентов...", expanded=True) as status:
-        st.write("Инициализация браузера и загрузка страниц Ozon...")
-        try:
-            stats = asyncio.run(run_parsing(dry_run=dry_run))
-            if not dry_run:
-                st.cache_data.clear()
-                st.cache_resource.clear()
-            status.update(label="Парсинг завершён!", state="complete")
-            msg = (
-                f"Готово! Обновлено цен: {stats.get('updated', 0)}, "
-                f"ошибок: {stats.get('errors', 0)}, "
-                f"пропущено: {stats.get('skipped', 0)}"
-            )
-            return msg, 'success'
-        except Exception as e:
-            status.update(label="Ошибка парсинга", state="error")
-            return f"Ошибка: {e}", 'error'
-        finally:
-            st.session_state.parsing_running = False
+    lock = FileLock(LOCK_FILE, timeout=LOCK_TIMEOUT)
+    try:
+        with lock.acquire(timeout=LOCK_TIMEOUT):
+            with st.status("Выполняется парсинг конкурентов...", expanded=True) as status:
+                st.write("Инициализация браузера и загрузка страниц Ozon...")
+                try:
+                    stats = asyncio.run(run_parsing(dry_run=dry_run))
+                    if not dry_run:
+                        st.cache_data.clear()
+                        st.cache_resource.clear()
+                    status.update(label="Парсинг завершён!", state="complete")
+                    msg = f"Готово! Обновлено цен: {stats.get('updated', 0)}, ошибок: {stats.get('errors', 0)}, пропущено: {stats.get('skipped', 0)}"
+                    return msg, 'success'
+                except Exception as e:
+                    status.update(label="Ошибка парсинга", state="error")
+                    return f"Ошибка: {e}", 'error'
+                finally:
+                    st.session_state.parsing_running = False
+    except Timeout:
+        st.error(f"Парсер уже выполняется. Попробуйте позже.", icon=":material/cancel:")
+        st.session_state.parsing_running = False
+        return "Парсер занят", 'error'
 
 
 def render_sidebar_section_excel(disabled: bool):
