@@ -202,8 +202,15 @@ class OzonPriceParser:
         try:
             logger.info(f"Загрузка страницы: {product_url}")
             self.driver.get(product_url)
-            # Случайная задержка для имитации человека
             time.sleep(random.uniform(5, 10))
+
+            # Проверка, что товар не закончился
+            try:
+                out_of_stock = self.driver.find_element(By.XPATH, "//h2[contains(text(), 'Этот товар закончился')]")
+                logger.info(f"Товар закончился: {product_url}")
+                return None
+            except NoSuchElementException:
+                pass
 
             # Ожидаем появления хотя бы одного элемента с ценой
             # Используем несколько селекторов
