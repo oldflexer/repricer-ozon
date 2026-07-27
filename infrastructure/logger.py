@@ -82,11 +82,6 @@ def setup_logging(log_file: Optional[str] = None, mode: str = 'a'):
 
 
 def setup_parser_logging(log_file: Optional[str] = None, mode: str = 'a') -> logging.Logger:
-    """
-    Настраивает изолированное логирование парсера.
-    :param log_file: имя файла (без пути). Если None, используется 'parser.log'
-    :param mode: режим открытия файла ('a' - дописывать, 'w' - перезаписывать)
-    """
     if log_file is None:
         log_file = "parser.log"
     file_path = _LOG_DIR / log_file
@@ -105,24 +100,17 @@ def setup_parser_logging(log_file: Optional[str] = None, mode: str = 'a') -> log
     file_handler.setFormatter(logging.Formatter(_LOG_FORMAT))
     file_handler.setLevel(logging.INFO)
 
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setFormatter(logging.Formatter(_LOG_FORMAT))
-    console_handler.setLevel(logging.INFO)
-
-    # Перенастраиваем логгеры для модулей парсера
     for name in _PARSER_LOGGERS:
         sub = logging.getLogger(name)
         sub.setLevel(logging.INFO)
         sub.handlers.clear()
         sub.addHandler(file_handler)
-        sub.addHandler(console_handler)
         sub.propagate = False
 
     log = logging.getLogger("update_competitor_prices")
     log.setLevel(logging.INFO)
     log.handlers.clear()
     log.addHandler(file_handler)
-    log.addHandler(console_handler)
     log.propagate = False
     return log
 
