@@ -110,3 +110,32 @@ class OzonApiClient:
             for item in prices_data:
                 result_map[item['product_id']] = {'updated': False, 'errors': [{'code': 'EXCEPTION', 'message': str(e)}]}
         return result_map
+
+    async def get_actions(self) -> List[Dict]:
+        """Получить список всех доступных акций (/v1/actions)."""
+        url = f"{self.base_url}/v1/actions"
+        resp = await self._post(url, {})
+        return resp.get('result', []) if resp else []
+
+    async def get_auto_add_products(self, action_id: int, auto_add_date: str,
+                                    limit: int = 100, offset: int = 0) -> Dict:
+        """Получить список товаров с автодобавлением для конкретной акции."""
+        url = f"{self.base_url}/v1/actions/auto-add/products/list"
+        payload = {
+            "action_id": action_id,
+            "auto_add_date": auto_add_date,
+            "limit": limit,
+            "offset": offset
+        }
+        return await self._post(url, payload) or {}
+
+    async def delete_auto_add_products(self, action_id: int, auto_add_date: str,
+                                    product_ids: List[int]) -> Dict:
+        """Удалить товары из автодобавления в акцию."""
+        url = f"{self.base_url}/v1/actions/auto-add/products/delete"
+        payload = {
+            "action_id": action_id,
+            "auto_add_date": auto_add_date,
+            "product_ids": [str(pid) for pid in product_ids]  # документация требует строки
+        }
+        return await self._post(url, payload) or {}

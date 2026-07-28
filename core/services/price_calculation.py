@@ -1,8 +1,8 @@
 import logging
-from datetime import datetime
+from datetime import datetime, time
 from typing import List, Optional
-from .entities import StrategyInterval, PricingData, PriceCalculationResult
 from config.settings import TIMEZONE
+from core.entities import PriceCalculationResult, PricingData, StrategyInterval
 
 logger = logging.getLogger(__name__)
 
@@ -54,8 +54,15 @@ class PriceCalculationService:
             f"SKU {sku}: текущее время (по TIMEZONE) = {now}, интервалов: {[(i.start, i.end, i.strategy_type, i.percent) for i in intervals]}"
         )
 
+        def time_in_interval(t: time, start: time, end: time) -> bool:
+            if start <= end:
+                return start <= t <= end
+            else:
+                # интервал пересекает полночь
+                return t >= start or t <= end
+
         active = next(
-            (inv for inv in intervals if inv.start_time <= now <= inv.end_time),
+            (inv for inv in intervals if time_in_interval(now, inv.start_time, inv.end_time)),
             None
         )
 
@@ -64,7 +71,7 @@ class PriceCalculationService:
             percent = active.percent
             logger.info(f"SKU {sku}: активный интервал {active.start}-{active.end}, стратегия {strategy_type}, процент {percent}")
         else:
-            strategy_type = 3  # Равная
+            strategy_type = 3
             percent = 0.0
             logger.info(f"SKU {sku}: активный интервал не найден, используется стратегия по умолчанию (Равная, 3)")
 

@@ -1,10 +1,11 @@
 import asyncio
 from typing import Dict, Any, List, Optional, Callable
 from core.entities import ProductInfo, PricingData, PriceCalculationResult, StrategyInterval
-from core.services import PriceCalculationService, calculate_old_price
+
 from core.mappers import build_price_update_request
 from core.repository import IProductRepository
 from config.settings import settings
+from core.services import PriceCalculationService, calculate_old_price
 from infrastructure.logger import logger
 
 
@@ -246,7 +247,7 @@ class PriceUpdateCoordinator:
         else:
             if update_results:
                 logger.info("Запрашиваем актуальные цены для получения real_price...")
-                await asyncio.sleep(5)
+                await asyncio.sleep(10)
                 fresh_prices = await self.api.get_product_prices(valid_ids)
                 fresh_dict = {p.product_id: p for p in fresh_prices}
                 for product, pricing, result in results_data:
