@@ -121,3 +121,22 @@ echo "=== Установка прав на выполнение ==="
 chmod +x deploy.sh
 
 echo "=== Готово! Экземпляр $INSTANCE_NAME развёрнут ==="
+
+# --- Cron для отключения автодобавления в акции---
+if [ -f "deploy/disable_auto_add.cron.template" ]; then
+    echo "=== Установка cron задач для отключения автодобавления в акции (${INSTANCE_NAME}) ==="
+    CRON_TMP="/tmp/disable_auto_add_cron_${INSTANCE_NAME}_$$"
+    
+    sed -e "s|{{WORKING_DIR}}|$WORKING_DIR|g" \
+        -e "s|{{INSTANCE_NAME}}|$INSTANCE_NAME|g" \
+        "deploy/disable_auto_add.cron.template" > "$CRON_TMP"
+    
+    crontab -l 2>/dev/null | sed -e "/# BEGIN_DISABLE_AUTO_ADD_${INSTANCE_NAME}/,/# END_DISABLE_AUTO_ADD_${INSTANCE_NAME}/d" > "$CRON_TMP.old" || true
+    cat "$CRON_TMP" >> "$CRON_TMP.old"
+    echo "" >> "$CRON_TMP.old"
+    crontab "$CRON_TMP.old"
+    rm -f "$CRON_TMP" "$CRON_TMP.old"
+    echo "✅ Cron задачи для отключения автодобавления в акции обновлены"
+else
+    echo "⚠️ Шаблон disable_auto_add.cron.template не найден, пропускаем"
+fi
