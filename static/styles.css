@@ -38,9 +38,13 @@
     text-align: center;
     pointer-events: none;
 }
-.st-key-excel_uploader div[data-testid="stFileUploader"]:has(div[data-testid="stFileChip"]) button {
+/* Скрываем кнопку удаления файла (крестик) */
+.st-key-excel_uploader [data-testid="stFileChipDeleteBtn"] {
     display: none !important;
 }
+/* .st-key-excel_uploader div[data-testid="stFileUploader"]:has(div[data-testid="stFileChip"]) button {
+    display: none !important;
+} */
 
 /* Для совместимости с Font Awesome иконками в заголовках */
 h1 i, h2 i, h3 i, h4 i, h5 i, h6 i {
