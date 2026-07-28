@@ -1,10 +1,11 @@
 import asyncio
 from typing import Dict, Any, List, Optional, Callable
 from core.entities import ProductInfo, PricingData, PriceCalculationResult, StrategyInterval
-from core.services import PriceCalculationService, calculate_old_price
+
 from core.mappers import build_price_update_request
 from core.repository import IProductRepository
 from config.settings import settings
+from core.services import PriceCalculationService, calculate_old_price
 from infrastructure.logger import logger
 
 
