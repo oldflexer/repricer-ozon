@@ -44,10 +44,12 @@ LOCK_TIMEOUT = 1800
 
 
 def parse_price_with_retry(parser: OzonPriceParser, url: str) -> Optional[float]:
-    """Делает несколько попыток получить цену."""
     for attempt in range(1, PARSER_RETRIES + 1):
         try:
             price = parser.get_price(url)
+            if price == -1.0:
+                # товар закончился, не повторяем
+                return -1.0
             if price is not None and price > 0:
                 return price
             logger.warning(f"Попытка {attempt}/{PARSER_RETRIES}: цена не получена для {url}")
@@ -119,8 +121,11 @@ def update_prices(dry_run: bool = False) -> Dict[str, int]:
 
                 logger.info(f"Парсинг SKU {sku}, конкурент {i}...")
                 new_price = parse_price_with_retry(parser, str(url))
-
-                if new_price is not None:
+                if new_price == -1.0:
+                    stats["skipped"] += 1
+                    logger.info(f"SKU {sku}, конкурент {i}: товар закончился, пропускаем")
+                    continue
+                elif new_price is not None:
                     excel_updates[(row_num, cols['price_col'])] = new_price
                     stats["updated"] += 1
                     logger.info(f"SKU {sku}, конкурент {i}: {new_price} ₽")
