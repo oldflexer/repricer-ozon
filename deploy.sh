@@ -14,6 +14,11 @@ PORT="${PORT:-8501}"
 CRON_SCHEDULE="${CRON_SCHEDULE:-0 * * * *}"          # каждый час
 PARSER_CRON_SCHEDULE="${PARSER_CRON_SCHEDULE:-30 2,10,18 * * *}"  # 02:30, 10:30, 18:30
 
+SERVICE_NAME="repricer-${INSTANCE_NAME}.service"
+SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}"
+CURRENT_USER=$(whoami)
+WORKING_DIR=$(pwd)
+
 echo "=== Развёртывание экземпляра: $INSTANCE_NAME (порт $PORT) ==="
 
 # --- Создание папки логов ---
@@ -118,12 +123,7 @@ else
     echo "⚠️ Шаблон disable_auto_add.cron.template не найден, пропускаем"
 fi
 
-# --- systemd сервис (уникальное имя) ---
-SERVICE_NAME="repricer-${INSTANCE_NAME}.service"
-SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}"
-CURRENT_USER=$(whoami)
-WORKING_DIR=$(pwd)
-
+# --- systemd сервис ---
 echo "=== Установка systemd сервиса ${SERVICE_NAME} ==="
 sed -e "s|{{USER}}|$CURRENT_USER|g" \
     -e "s|{{WORKING_DIR}}|$WORKING_DIR|g" \
