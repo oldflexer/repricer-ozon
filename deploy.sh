@@ -16,6 +16,10 @@ PARSER_CRON_SCHEDULE="${PARSER_CRON_SCHEDULE:-30 2,10,18 * * *}"  # 02:30, 10:30
 
 echo "=== Развёртывание экземпляра: $INSTANCE_NAME (порт $PORT) ==="
 
+# --- Создание папки логов ---
+mkdir -p "$WORKING_DIR/logs"
+chmod 755 "$WORKING_DIR/logs"
+
 # --- Обновление кода (опционально) ---
 if git rev-parse --git-dir > /dev/null 2>&1; then
     echo "=== Обновление кода из git ==="
@@ -52,28 +56,6 @@ if ! command -v google-chrome &> /dev/null && ! command -v chromium-browser &> /
 else
     echo "✅ Chrome уже установлен"
 fi
-
-# --- systemd сервис (уникальное имя) ---
-SERVICE_NAME="repricer-${INSTANCE_NAME}.service"
-SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}"
-CURRENT_USER=$(whoami)
-WORKING_DIR=$(pwd)
-
-# --- Создание папки логов ---
-mkdir -p "$WORKING_DIR/logs"
-chmod 755 "$WORKING_DIR/logs"
-
-echo "=== Установка systemd сервиса ${SERVICE_NAME} ==="
-sed -e "s|{{USER}}|$CURRENT_USER|g" \
-    -e "s|{{WORKING_DIR}}|$WORKING_DIR|g" \
-    -e "s|{{PORT}}|$PORT|g" \
-    -e "s|{{INSTANCE_NAME}}|$INSTANCE_NAME|g" \
-    "deploy/repricer-web.service.template" | sudo tee "$SERVICE_FILE" > /dev/null
-
-sudo systemctl daemon-reload
-sudo systemctl enable "$SERVICE_NAME"
-sudo systemctl restart "$SERVICE_NAME"
-echo "✅ Сервис $SERVICE_NAME перезапущен"
 
 # --- Cron для основного репрайсера ---
 if [ -f "deploy/cron.template" ]; then
@@ -117,11 +99,6 @@ else
     echo "⚠️ Шаблон парсера не найден, пропускаем"
 fi
 
-echo "=== Установка прав на выполнение ==="
-chmod +x deploy.sh
-
-echo "=== Готово! Экземпляр $INSTANCE_NAME развёрнут ==="
-
 # --- Cron для отключения автодобавления в акции---
 if [ -f "deploy/disable_auto_add.cron.template" ]; then
     echo "=== Установка cron задач для отключения автодобавления в акции (${INSTANCE_NAME}) ==="
@@ -140,3 +117,26 @@ if [ -f "deploy/disable_auto_add.cron.template" ]; then
 else
     echo "⚠️ Шаблон disable_auto_add.cron.template не найден, пропускаем"
 fi
+
+# --- systemd сервис (уникальное имя) ---
+SERVICE_NAME="repricer-${INSTANCE_NAME}.service"
+SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}"
+CURRENT_USER=$(whoami)
+WORKING_DIR=$(pwd)
+
+echo "=== Установка systemd сервиса ${SERVICE_NAME} ==="
+sed -e "s|{{USER}}|$CURRENT_USER|g" \
+    -e "s|{{WORKING_DIR}}|$WORKING_DIR|g" \
+    -e "s|{{PORT}}|$PORT|g" \
+    -e "s|{{INSTANCE_NAME}}|$INSTANCE_NAME|g" \
+    "deploy/repricer-web.service.template" | sudo tee "$SERVICE_FILE" > /dev/null
+
+sudo systemctl daemon-reload
+sudo systemctl enable "$SERVICE_NAME"
+sudo systemctl restart "$SERVICE_NAME"
+echo "✅ Сервис $SERVICE_NAME перезапущен"
+
+echo "=== Установка прав на выполнение ==="
+chmod +x deploy.sh
+
+echo "=== Готово! Экземпляр $INSTANCE_NAME развёрнут ==="
