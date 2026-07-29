@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from parser import update_prices, parse_price_with_retry
+from scripts.parser import update_prices, parse_price_with_retry
 
 
 def test_parse_price_with_retry_success():

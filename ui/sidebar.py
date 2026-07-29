@@ -10,7 +10,7 @@ from typing import Dict, Any
 from config.settings import settings
 from ui.cache import get_repo, get_api_client, get_excel_loader, get_mail_notifier
 from core.use_cases import RepricingUseCase
-from parser import update_prices
+from scripts.parser import update_prices
 from infrastructure.logger import setup_logging, setup_parser_logging
 from filelock import FileLock, Timeout
 
