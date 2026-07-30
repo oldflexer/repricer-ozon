@@ -12,60 +12,48 @@ from config.settings import settings
 from infrastructure.logger import logger
 
 
+def run_migrations_once():
+    """
+    Запускает миграции Alembic один раз при старте приложения.
+    Вызывать явно в точке входа (scripts/repricer.py, app.py, scripts/parser.py).
+    """
+    import subprocess
+    import sys
+    root_dir = Path(__file__).resolve().parent.parent
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "alembic", "upgrade", "head"],
+            cwd=root_dir,
+            capture_output=True,
+            text=True,
+            check=False
+        )
+        if result.returncode != 0:
+            logger.error(f"Ошибка выполнения миграций: {result.stderr}")
+            raise RuntimeError(f"Не удалось применить миграции: {result.stderr}")
+        logger.info("Миграции успешно применены.")
+    except Exception as e:
+        logger.error(f"Не удалось запустить alembic: {e}")
+        raise
+
+
 class SQLiteRepository(IProductRepository):
     def __init__(self, db_path: Path = settings.DATABASE_PATH_PATH):
         self.db_path = db_path
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._ensure_migrations()
+        # Миграции НЕ запускаем здесь — они применяются один раз при старте приложения
+        # (в scripts/repricer.py, app.py, scripts/parser.py и т.д.)
+        # self._ensure_migrations()
 
     def _get_connection(self) -> sqlite3.Connection:
         conn = sqlite3.connect(str(self.db_path))
         conn.row_factory = sqlite3.Row
+        # Увеличиваем таймаут ожидания блокировки до 30 секунд
+        conn.execute("PRAGMA busy_timeout = 30000")
+        # WAL режим для лучшей конкурентности читателей/писателей
+        conn.execute("PRAGMA journal_mode = WAL")
         return conn
 
-    def _ensure_migrations(self):
-        """
-        Проверяет, инициализирован ли Alembic.
-        Если нет — выполняет upgrade head для создания/обновления схемы.
-        """
-        try:
-            conn = self._get_connection()
-            cursor = conn.cursor()
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='alembic_version'")
-            has_alembic = cursor.fetchone() is not None
-            conn.close()
-
-            if not has_alembic:
-                logger.info("Alembic не инициализирован, выполняем upgrade head...")
-                self._run_upgrade()
-            else:
-                logger.info("Alembic уже инициализирован.")
-        except Exception as e:
-            logger.error(f"Ошибка при проверке/применении миграций: {e}")
-            raise
-
-    def _run_upgrade(self):
-        """Запускает alembic upgrade head."""
-        import subprocess
-        import sys
-        root_dir = Path(__file__).resolve().parent.parent
-        try:
-            result = subprocess.run(
-                [sys.executable, "-m", "alembic", "upgrade", "head"],
-                cwd=root_dir,
-                capture_output=True,
-                text=True,
-                check=False
-            )
-            if result.returncode != 0:
-                logger.error(f"Ошибка выполнения миграций: {result.stderr}")
-                raise RuntimeError(f"Не удалось применить миграции: {result.stderr}")
-            logger.info("Миграции успешно применены.")
-        except Exception as e:
-            logger.error(f"Не удалось запустить alembic: {e}")
-            raise
-
-    # ---------- Все методы работы с данными (без изменений) ----------
     def get_all_products(self) -> List[ProductInfo]:
         with self._get_connection() as conn:
             rows = conn.execute("""
@@ -187,7 +175,7 @@ class SQLiteRepository(IProductRepository):
                 pricing.fbo_direct_flow_trans_min_amount,
                 pricing.fbo_direct_flow_trans_max_amount,
                 real_price,
-                None
+                log_details_json
             ))
             history_id = cursor.lastrowid
 

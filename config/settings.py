@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     WEB_USER: str = "admin"
     WEB_PASS: str = "changeme"
 
+    # Chrome profile path for undetected-chromedriver
+    CHROME_PROFILE_PATH: str = "/home/server/chrome_profile"
+
     model_config = SettingsConfigDict(extra='ignore')
 
     @property
