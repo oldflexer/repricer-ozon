@@ -22,20 +22,15 @@ from infrastructure.logger import setup_parser_logging
 from infrastructure.file_utils import wait_for_excel_available, save_safely
 from infrastructure.x_display import get_available_display
 from infrastructure.db import run_migrations_once
+from config.settings import settings
 
 logger = setup_parser_logging(f'parser-{settings.INSTANCE_NAME}.log', mode='a')
 
-MAX_COMPETITORS = 5
-REQUEST_DELAY_RANGE = (5, 10)
-PARSER_RETRIES = 2
-LOCK_WAIT_TIMEOUT = 60
-
 LOCK_FILE = os.path.join(tempfile.gettempdir(), 'repricer_parser.lock')
-LOCK_TIMEOUT = 1800
 
 
 def parse_price_with_retry(parser: OzonPriceParser, url: str) -> Optional[float]:
-    for attempt in range(1, PARSER_RETRIES + 1):
+    for attempt in range(1, settings.PARSER_RETRIES + 1):
         try:
             price = parser.get_price(url)
             if price == -1.0:
@@ -43,11 +38,11 @@ def parse_price_with_retry(parser: OzonPriceParser, url: str) -> Optional[float]
                 return -1.0
             if price is not None and price > 0:
                 return price
-            logger.warning(f"Попытка {attempt}/{PARSER_RETRIES}: цена не получена для {url}")
+            logger.warning(f"Попытка {attempt}/{settings.PARSER_RETRIES}: цена не получена для {url}")
         except Exception as e:
-            logger.error(f"Попытка {attempt}/{PARSER_RETRIES}: ошибка парсинга {url}: {e}")
+            logger.error(f"Попытка {attempt}/{settings.PARSER_RETRIES}: ошибка парсинга {url}: {e}")
 
-        if attempt < PARSER_RETRIES:
+        if attempt < settings.PARSER_RETRIES:
             logger.info(f"Перезапуск драйвера перед повторной попыткой {attempt + 1}...")
             try:
                 parser.restart()
@@ -78,7 +73,7 @@ def update_prices(dry_run: bool = False) -> Dict[str, int]:
         return {"updated": 0, "errors": 0, "skipped": 0}
 
     col_indices = {}
-    for i in range(1, MAX_COMPETITORS + 1):
+    for i in range(1, settings.MAX_COMPETITORS + 1):
         url_col_name = f'Конкурент {i}'
         price_col_name = f'Цена {i}'
         if url_col_name in df.columns and price_col_name in df.columns:
@@ -99,7 +94,7 @@ def update_prices(dry_run: bool = False) -> Dict[str, int]:
         for row_num, (_, row) in enumerate(df.iterrows(), start=2):
             sku = row.get('SKU') or row.get('sku') or f"row_{row_num}"
 
-            for i in range(1, MAX_COMPETITORS + 1):
+            for i in range(1, settings.MAX_COMPETITORS + 1):
                 cols = col_indices.get(i)
                 if not cols:
                     stats["skipped"] += 1
@@ -126,7 +121,7 @@ def update_prices(dry_run: bool = False) -> Dict[str, int]:
                     old_display = f"{old_price} ₽" if pd.notna(old_price) else "нет данных"
                     logger.warning(f"SKU {sku}, конкурент {i}: ошибка парсинга. Оставлена прежняя цена: {old_display}")
 
-                time.sleep(random.uniform(*REQUEST_DELAY_RANGE))
+                time.sleep(random.uniform(settings.PARSER_REQUEST_DELAY_MIN, settings.PARSER_REQUEST_DELAY_MAX))
 
     except Exception:
         logger.exception("Критическая ошибка во время парсинга. Сохраняем то, что успели.")
@@ -170,14 +165,14 @@ def main():
     parser.add_argument('--dry-run', action='store_true', help="Тестовый режим: парсить, но не сохранять в Excel")
     args = parser.parse_args()
 
-    lock = FileLock(LOCK_FILE, timeout=LOCK_TIMEOUT)
+    lock = FileLock(LOCK_FILE, timeout=settings.PARSER_LOCK_TIMEOUT)
     try:
-        with lock.acquire(timeout=LOCK_TIMEOUT):
+        with lock.acquire(timeout=settings.PARSER_LOCK_TIMEOUT):
             logger.info("=== Запуск парсера конкурентов ===")
             stats = update_prices(dry_run=args.dry_run)
             logger.info(f"=== Завершено. Обновлено: {stats['updated']}, ошибок: {stats['errors']}, пропущено: {stats['skipped']} ===")
     except Timeout:
-        logger.error(f"Не удалось получить блокировку парсера за {LOCK_TIMEOUT} секунд. Парсер уже выполняется.")
+        logger.error(f"Не удалось получить блокировку парсера за {settings.PARSER_LOCK_TIMEOUT} секунд. Парсер уже выполняется.")
     except Exception as e:
         logger.exception(f"Критическая ошибка: {e}")
 

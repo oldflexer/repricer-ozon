@@ -23,15 +23,36 @@ _PARSER_LOGGERS = [
     "webdriver_manager",
 ]
 
+# Настройка structlog – выполняется один раз при импорте
+structlog.configure(
+    processors=[
+        structlog.stdlib.add_log_level,
+        structlog.stdlib.PositionalArgumentsFormatter(),
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.StackInfoRenderer(),
+        structlog.processors.format_exc_info,
+        structlog.processors.UnicodeDecoder(),
+        structlog.processors.KeyValueRenderer(key_order=['event', 'level', 'timestamp'])
+    ],
+    context_class=dict,
+    logger_factory=structlog.stdlib.LoggerFactory(),
+    wrapper_class=structlog.stdlib.BoundLogger,
+    cache_logger_on_first_use=True,
+)
 
-def setup_logging(log_file: Optional[str] = None, mode: str = 'a'):
+# Глобальный логгер (без обработчиков – они будут добавлены через setup_logging)
+logger = structlog.get_logger()
+
+
+def setup_logging(log_file: Optional[str] = None, mode: str = 'a', console: bool = True):
     """
     Настраивает логирование репрайсера.
     :param log_file: имя файла (без пути). Если None, используется 'repricer.log'
     :param mode: режим открытия файла ('a' - дописывать, 'w' - перезаписывать)
+    :param console: добавлять ли консольный обработчик (для отладки)
     """
     root_logger = logging.getLogger()
-    
+    # Удаляем все существующие обработчики, чтобы избежать дублирования
     for handler in root_logger.handlers[:]:
         root_logger.removeHandler(handler)
 
@@ -39,9 +60,7 @@ def setup_logging(log_file: Optional[str] = None, mode: str = 'a'):
         log_file = "repricer.log"
     file_path = _LOG_DIR / log_file
 
-    # Используем обычный FileHandler для перезаписи или TimedRotatingFileHandler для ротации
     if mode == 'a':
-        # Для ротации по дням
         file_handler = TimedRotatingFileHandler(
             file_path,
             when="midnight",
@@ -50,36 +69,20 @@ def setup_logging(log_file: Optional[str] = None, mode: str = 'a'):
             encoding="utf-8"
         )
     else:
-        # Для перезаписи при каждом запуске
         file_handler = logging.FileHandler(file_path, mode=mode, encoding="utf-8")
 
     file_handler.setFormatter(logging.Formatter(_LOG_FORMAT))
     file_handler.setLevel(logging.INFO)
+    root_logger.addHandler(file_handler)
 
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setFormatter(logging.Formatter(_LOG_FORMAT))
-    console_handler.setLevel(logging.INFO)
+    if console:
+        console_handler = logging.StreamHandler(sys.stdout)
+        console_handler.setFormatter(logging.Formatter(_LOG_FORMAT))
+        console_handler.setLevel(logging.INFO)
+        root_logger.addHandler(console_handler)
 
     root_logger.setLevel(logging.INFO)
-    root_logger.addHandler(file_handler)
-    root_logger.addHandler(console_handler)
-
-    structlog.configure(
-        processors=[
-            structlog.stdlib.add_log_level,
-            structlog.stdlib.PositionalArgumentsFormatter(),
-            structlog.processors.TimeStamper(fmt="iso"),
-            structlog.processors.StackInfoRenderer(),
-            structlog.processors.format_exc_info,
-            structlog.processors.UnicodeDecoder(),
-            structlog.processors.KeyValueRenderer(key_order=['event', 'level', 'timestamp'])
-        ],
-        context_class=dict,
-        logger_factory=structlog.stdlib.LoggerFactory(),
-        wrapper_class=structlog.stdlib.BoundLogger,
-        cache_logger_on_first_use=True,
-    )
-    return structlog.get_logger()
+    return logger
 
 
 def setup_parser_logging(log_file: Optional[str] = None, mode: str = 'a') -> logging.Logger:
@@ -114,7 +117,3 @@ def setup_parser_logging(log_file: Optional[str] = None, mode: str = 'a') -> log
     log.addHandler(file_handler)
     log.propagate = False
     return log
-
-# По умолчанию создаём логгер (для обратной совместимости) – будет использоваться,
-# если не вызвана настройка с параметрами.
-logger = setup_logging()

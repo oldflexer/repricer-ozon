@@ -247,7 +247,7 @@ class PriceUpdateCoordinator:
         else:
             if update_results:
                 logger.info("Запрашиваем актуальные цены для получения real_price...")
-                await asyncio.sleep(10)
+                await asyncio.sleep(settings.WAIT_AFTER_UPDATE_SECONDS)
                 fresh_prices = await self.api.get_product_prices(valid_ids)
                 fresh_dict = {p.product_id: p for p in fresh_prices}
                 for product, pricing, result in results_data:

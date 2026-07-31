@@ -1,6 +1,7 @@
 import pandas as pd
 from pathlib import Path
 from typing import List, Dict, Optional, Any, Tuple
+from config.settings import settings
 from core.entities import PriceCalculationResult, ProductInfo, StrategyInterval
 from core.repository import ILoader
 from infrastructure.logger import logger
@@ -15,8 +16,6 @@ class ExcelLoader(ILoader):
         'min_price': ['цена риц'],
         'old_price': ['цена до скидки', 'old_price', 'старая цена'],
     }
-
-    SCHEDULE_INTERVALS_COUNT = 4
 
     def __init__(self, file_path: Path):
         self.file_path = file_path
@@ -219,7 +218,7 @@ class ExcelLoader(ILoader):
     def _parse_intervals_with_validation(self, row: pd.Series, columns: pd.Index) -> Tuple[List[StrategyInterval], List[str]]:
         intervals = []
         warnings = []
-        for i in range(1, self.SCHEDULE_INTERVALS_COUNT + 1):
+        for i in range(1, settings.SCHEDULE_INTERVALS_COUNT + 1):
             time_col = self._find_column(columns, [f'интервал {i}', f'промежуток {i}'])
             if not time_col:
                 continue
@@ -278,7 +277,7 @@ class ExcelLoader(ILoader):
             return None, []
 
         intervals = []
-        for i in range(1, self.SCHEDULE_INTERVALS_COUNT + 1):
+        for i in range(1, settings.SCHEDULE_INTERVALS_COUNT + 1):
             time_col = self._find_column(columns, [f'интервал {i}', f'промежуток {i}'])
             strategy_col = self._find_column(columns, [f'стратегия {i}', f'стратеги {i}'])
             percent_col = self._find_column(columns, [f'процент {i}', f'percent_{i}'])

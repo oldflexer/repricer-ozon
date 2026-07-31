@@ -588,7 +588,7 @@ class SQLiteRepository(IProductRepository):
             conn.commit()
             return deleted_price + deleted_margin
 
-    def delete_records_older_than(self, months: int = 3) -> int:
+    def delete_records_older_than(self, months: int = settings.CLEANUP_MONTHS) -> int:
         with self._get_connection() as conn:
             cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=months * 30)
             deleted_price = conn.execute(
@@ -628,7 +628,7 @@ class SQLiteRepository(IProductRepository):
             )
             conn.commit()
 
-    def auto_cleanup_if_needed(self, months: int = 3, days_threshold: int = 1) -> int:
+    def auto_cleanup_if_needed(self, months: int = 3, days_threshold: int = settings.CLEANUP_DAYS_THRESHOLD) -> int:
         last = self.get_last_cleanup_date()
         now_utc_naive = datetime.now(timezone.utc).replace(tzinfo=None)
         if last is None:

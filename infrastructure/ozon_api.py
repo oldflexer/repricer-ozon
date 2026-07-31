@@ -15,12 +15,12 @@ class OzonApiClient:
             'Api-Key': settings.OZON_API_KEY,
             'Content-Type': 'application/json'
         }
-        self.client = httpx.AsyncClient(timeout=30.0)
+        self.client = httpx.AsyncClient(timeout=settings.API_HTTP_TIMEOUT)
 
     async def close(self):
         await self.client.aclose()
 
-    async def _get(self, url: str, max_retries: int = 3) -> Optional[dict]:
+    async def _get(self, url: str, max_retries: int = settings.API_MAX_RETRIES) -> Optional[dict]:
         """Выполняет GET-запрос с повторными попытками."""
         for attempt in range(max_retries):
             try:
@@ -34,7 +34,7 @@ class OzonApiClient:
                 await asyncio.sleep(2 ** attempt)
         return None
 
-    async def _post(self, url: str, payload: Any, max_retries: int = 3) -> Optional[dict]:
+    async def _post(self, url: str, payload: Any, max_retries: int = settings.API_MAX_RETRIES) -> Optional[dict]:
         for attempt in range(max_retries):
             try:
                 resp = await self.client.post(url, headers=self.headers, json=payload)
@@ -50,7 +50,7 @@ class OzonApiClient:
     async def get_product_ids_by_skus(self, skus: List[str]) -> Dict[str, dict]:
         url = f"{self.base_url}/v3/product/info/list"
         result = {}
-        batch_size = 100
+        batch_size = settings.API_BATCH_SIZE
         unique_skus = list({str(sku).strip() for sku in skus if sku})
         for i in range(0, len(unique_skus), batch_size):
             batch = unique_skus[i:i+batch_size]
@@ -66,7 +66,7 @@ class OzonApiClient:
                             'price': float(item.get('price', 0)) if item.get('price') else None,
                             'product_name': item.get('name')
                         }
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(settings.API_BATCH_DELAY)
         logger.info(f"Получены product_id для {len(result)}/{len(unique_skus)} SKU")
         return result
 
@@ -79,7 +79,7 @@ class OzonApiClient:
         """
         url = f"{self.base_url}/v5/product/info/prices"
         all_prices = []
-        batch_size = 100
+        batch_size = settings.API_BATCH_SIZE
         for i in range(0, len(product_ids), batch_size):
             batch = product_ids[i:i+batch_size]
             payload = {"filter": {"product_id": batch}, "limit": batch_size}
@@ -87,7 +87,7 @@ class OzonApiClient:
             if resp_data and 'items' in resp_data:
                 for item in resp_data['items']:
                     all_prices.append(PricingData.from_api_response(item))
-            await asyncio.sleep(0.2)
+            await asyncio.sleep(settings.API_BATCH_DELAY)
         return all_prices
 
     async def update_prices(self, prices_data: List[Dict]) -> Dict[int, Dict]:

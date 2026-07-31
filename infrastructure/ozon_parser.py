@@ -17,11 +17,6 @@ from config.settings import settings
 
 logger = logging.getLogger(__name__)
 
-# Мажорная версия Chrome, установленного на машине.
-# Явно фиксируем, чтобы UC не пытался определить версию браузера
-# и не лез в интернет за latest-release.
-CHROME_VERSION_MAIN = 150
-
 
 def _patch_fetch_release_number() -> None:
     """
@@ -46,7 +41,7 @@ def _patch_fetch_release_number() -> None:
         # тянуть distutils напрямую (устаревший модуль в Python 3.12+) и
         # не получать IDE-warnings о неразрешённом импорте.
         from undetected_chromedriver.patcher import LooseVersion  # type: ignore[attr-defined]
-        return LooseVersion(str(self.version_main or CHROME_VERSION_MAIN))
+        return LooseVersion(str(self.version_main or settings.CHROME_VERSION_MAIN))
 
     Patcher.fetch_release_number = _patched
 
@@ -123,7 +118,7 @@ class OzonPriceParser:
                 self.driver = uc.Chrome(
                     service=service,
                     options=self._build_options(),
-                    version_main=CHROME_VERSION_MAIN,
+                    version_main=settings.CHROME_VERSION_MAIN,
                     driver_executable_path=driver_path,
                 )
                 self._configure_driver()

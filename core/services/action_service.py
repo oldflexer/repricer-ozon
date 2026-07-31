@@ -1,5 +1,6 @@
 import asyncio
 from typing import List, Dict, Tuple
+from config.settings import settings
 from infrastructure.logger import logger
 
 class ActionService:
@@ -24,7 +25,7 @@ class ActionService:
             
             for auto_add_date in auto_add_dates:
                 offset = 0
-                limit = 100
+                limit = settings.API_BATCH_SIZE
                 while True:
                     resp = await self.api.get_auto_add_products(
                         action_id, auto_add_date, limit, offset
@@ -43,7 +44,7 @@ class ActionService:
                         break
                     
                     offset += limit
-                    await asyncio.sleep(0.2)  # пауза между запросами
+                    await asyncio.sleep(settings.API_BATCH_DELAY)  # пауза между запросами
                 
         return results
 
