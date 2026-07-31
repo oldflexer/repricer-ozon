@@ -20,6 +20,20 @@ class OzonApiClient:
     async def close(self):
         await self.client.aclose()
 
+    async def _get(self, url: str, max_retries: int = 3) -> Optional[dict]:
+        """Выполняет GET-запрос с повторными попытками."""
+        for attempt in range(max_retries):
+            try:
+                resp = await self.client.get(url, headers=self.headers)
+                if resp.status_code == 200:
+                    return resp.json()
+                logger.warning(f"GET {url} returned {resp.status_code}, body: {resp.text[:500]}, attempt {attempt+1}")
+                await asyncio.sleep(2 ** attempt)
+            except Exception as e:
+                logger.error(f"GET error: {e}, attempt {attempt+1}")
+                await asyncio.sleep(2 ** attempt)
+        return None
+
     async def _post(self, url: str, payload: Any, max_retries: int = 3) -> Optional[dict]:
         for attempt in range(max_retries):
             try:
@@ -114,7 +128,7 @@ class OzonApiClient:
     async def get_actions(self) -> List[Dict]:
         """Получить список всех доступных акций (/v1/actions)."""
         url = f"{self.base_url}/v1/actions"
-        resp = await self._post(url, {})
+        resp = await self._get(url)
         return resp.get('result', []) if resp else []
 
     async def get_auto_add_products(self, action_id: int, auto_add_date: str,

@@ -1,16 +1,6 @@
 """
 Парсер цен конкурентов с Ozon.
-Запускается независимо от основного сервиса репрайсинга (например, через cron 2 раза в день).
-Принадлежность к магазину определяется переменной окружения INSTANCE_NAME в .env.
-
-Использование:
-    python update_competitor_prices.py
-    python update_competitor_prices.py --dry-run
-
-Логирование:
-    Все логи парсера (включая UC, WDM, selenium) пишутся в parser.log
-    и НЕ попадают в repricer.log. Настройка логирования делегирована в
-    infrastructure.logger.setup_parser_logging().
+...
 """
 import argparse
 import os
@@ -31,6 +21,7 @@ from infrastructure.ozon_parser import OzonPriceParser
 from infrastructure.logger import setup_parser_logging
 from infrastructure.file_utils import wait_for_excel_available, save_safely
 from infrastructure.x_display import get_available_display
+from infrastructure.db import run_migrations_once
 
 logger = setup_parser_logging(f'parser-{settings.INSTANCE_NAME}.log', mode='a')
 
@@ -164,7 +155,6 @@ def main():
     # Определяем DISPLAY только на Linux/Unix
     if not sys.platform.startswith('win'):
         if 'DISPLAY' not in os.environ:
-            from infrastructure.x_display import get_available_display
             display = get_available_display()
             if display:
                 os.environ['DISPLAY'] = display
@@ -172,6 +162,9 @@ def main():
             else:
                 logger.error("Не найден доступный X-сервер. Парсинг невозможен.")
                 return
+
+    # Применяем миграции (для согласованности)
+    run_migrations_once()
 
     parser = argparse.ArgumentParser(description="Парсер цен конкурентов для Ozon.")
     parser.add_argument('--dry-run', action='store_true', help="Тестовый режим: парсить, но не сохранять в Excel")

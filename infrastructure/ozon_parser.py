@@ -50,6 +50,8 @@ import undetected_chromedriver as uc
 from undetected_chromedriver.patcher import Patcher
 from webdriver_manager.chrome import ChromeDriverManager
 
+from config.settings import settings
+
 logger = logging.getLogger(__name__)
 
 # Мажорная версия Chrome, установленного на машине.
@@ -96,8 +98,8 @@ class OzonPriceParser:
         options.add_argument('--disable-features=OptimizationHints')
         options.add_argument('--disable-features=OptimizationHintsFetching')
         options.add_argument('--disable-features=OptimizationHintsPush')
-        # Постоянный профиль
-        options.add_argument('--user-data-dir=/home/server/chrome_profile')
+        # Профиль Chrome из настроек (ENV: CHROME_PROFILE_PATH)
+        options.add_argument(f'--user-data-dir={settings.CHROME_PROFILE_PATH}')
         return options
 
     def _build_selenium_options(self):
@@ -163,7 +165,7 @@ class OzonPriceParser:
         """Общие настройки драйвера после успешного создания."""
         assert self.driver is not None, "Driver not initialized in _configure_driver"
         self.driver.set_page_load_timeout(30)
-        self.wait = WebDriverWait(self.driver, 10)
+        self.wait = WebDriverWait(self.driver, 15)
 
     def _safe_quit(self) -> None:
         """Безопасное закрытие драйвера без выброса исключений."""
