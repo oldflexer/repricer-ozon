@@ -31,6 +31,7 @@ def setup_logging(log_file: Optional[str] = None, mode: str = 'a'):
     :param mode: режим открытия файла ('a' - дописывать, 'w' - перезаписывать)
     """
     root_logger = logging.getLogger()
+    
     for handler in root_logger.handlers[:]:
         root_logger.removeHandler(handler)
 

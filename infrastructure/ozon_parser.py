@@ -149,7 +149,7 @@ class OzonPriceParser:
         """Общие настройки драйвера после успешного создания."""
         assert self.driver is not None, "Driver not initialized in _configure_driver"
         self.driver.set_page_load_timeout(30)
-        self.wait = WebDriverWait(self.driver, 10)
+        self.wait = WebDriverWait(self.driver, 15)
 
     def _safe_quit(self) -> None:
         """Безопасное закрытие драйвера без выброса исключений."""
