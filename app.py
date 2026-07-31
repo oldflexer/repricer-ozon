@@ -1,26 +1,43 @@
-import streamlit as st
-import base64
-from pathlib import Path
-import sys
+"""
+Точка входа веб-интерфейса (Streamlit‑дашборд) репрайсера Ozon.
 
+Обрабатывает:
+- настройку страницы (заголовок, иконка, layout),
+- подключение внешних стилей (Font Awesome, custom CSS),
+- аутентификацию пользователя,
+- инициализацию репозитория и состояний сессии,
+- рендеринг выбранной страницы через боковое меню.
+"""
+
+import sys
+from pathlib import Path
+
+import streamlit as st
+
+# Добавляем корень проекта в sys.path для импорта локальных модулей
 sys.path.insert(0, str(Path(__file__).parent))
 
 from config.settings import settings
+from infrastructure.db import SQLiteRepository
 from ui.auth import check_auth
-from ui.sidebar import render_sidebar
-from ui.pages.summary import render_summary
-from ui.pages.statistics import render_statistics_page
-from ui.pages.analytics import render_analytics
 from ui.pages.analysis import render_analysis_page
-from ui.pages.tables import render_tables
+from ui.pages.analytics import render_analytics
 from ui.pages.requests import render_requests_page
 from ui.pages.service import render_service
-from infrastructure.db import SQLiteRepository
+from ui.pages.statistics import render_statistics_page
+from ui.pages.summary import render_summary
+from ui.pages.tables import render_tables
+from ui.sidebar import render_sidebar
 
-
-# Настройка страницы
+# ------------------------------------------------------------------
+# 1. Настройка страницы Streamlit
+# ------------------------------------------------------------------
 page_title = f"Репрайсер {settings.INSTANCE_NAME}"
-st.set_page_config(page_title=page_title, layout="wide", page_icon="static/favicon.ico")
+st.set_page_config(
+    page_title=page_title,
+    layout="wide",
+    page_icon="static/favicon.ico"
+)
 
 # Подключение Font Awesome 6.7.2
 st.markdown(
@@ -28,40 +45,53 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# CSS
-with open(Path(__file__).parent / "static" / "styles.css", encoding="utf-8") as f:
+# Подключение пользовательских CSS-стилей
+css_path = Path(__file__).parent / "static" / "styles.css"
+with open(css_path, encoding="utf-8") as f:
     st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
-# Аутентификация
+# ------------------------------------------------------------------
+# 2. Аутентификация
+# ------------------------------------------------------------------
 check_auth()
 
-# Инициализация репозитория в session_state
-if 'repo' not in st.session_state:
+# ------------------------------------------------------------------
+# 3. Инициализация состояния сессии
+# ------------------------------------------------------------------
+
+# Репозиторий БД
+if "repo" not in st.session_state:
     st.session_state.repo = SQLiteRepository(settings.DATABASE_PATH_PATH)
 
-# Состояния
-if 'running' not in st.session_state:
+# Состояния репрайсинга
+if "running" not in st.session_state:
     st.session_state.running = False
-if 'result_message' not in st.session_state:
+if "result_message" not in st.session_state:
     st.session_state.result_message = None
-if 'result_type' not in st.session_state:
+if "result_type" not in st.session_state:
     st.session_state.result_type = None
-if 'dry_run_mode' not in st.session_state:
+if "dry_run_mode" not in st.session_state:
     st.session_state.dry_run_mode = False
-if 'current_page' not in st.session_state:
-    st.session_state.current_page = "Сводка"
 
-# Состояния для парсера конкурентов
-if 'parsing_running' not in st.session_state:
+# Состояния парсера конкурентов
+if "parsing_running" not in st.session_state:
     st.session_state.parsing_running = False
-if 'parsing_dry_run' not in st.session_state:
+if "parsing_dry_run" not in st.session_state:
     st.session_state.parsing_dry_run = False
 
-# Боковая панель
+# Текущая страница
+if "current_page" not in st.session_state:
+    st.session_state.current_page = "Сводка"
+
+# ------------------------------------------------------------------
+# 4. Боковая панель
+# ------------------------------------------------------------------
 with st.sidebar:
     render_sidebar()
 
-# Основная область – рендеринг выбранной страницы
+# ------------------------------------------------------------------
+# 5. Рендеринг выбранной страницы
+# ------------------------------------------------------------------
 page = st.session_state.current_page
 
 if page == "Сводка":

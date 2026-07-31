@@ -1,33 +1,65 @@
+"""
+Боковая панель Streamlit-дашборда.
+
+Содержит:
+- переключение страниц,
+- кнопки запуска репрайсинга и парсинга (обычный и dry-run),
+- загрузку и скачивание Excel-файла,
+- отображение статуса выполнения задач.
+"""
+
+import asyncio
 import base64
 import os
 import sys
 import tempfile
-import streamlit as st
 from pathlib import Path
-import asyncio
-from typing import Dict, Any
+from typing import Any, Dict, Tuple
 
-from config.settings import settings
-from ui.cache import get_repo, get_api_client, get_excel_loader, get_mail_notifier
-from core.use_cases import RepricingUseCase
-from scripts.parser import update_prices
-from infrastructure.logger import setup_logging, setup_parser_logging
+import streamlit as st
 from filelock import FileLock, Timeout
 
-LOCK_FILE = os.path.join(tempfile.gettempdir(), 'repricer_parser.lock')
-LOCK_TIMEOUT = 1800
+from config.settings import settings
+from core.use_cases import RepricingUseCase
+from infrastructure.db import run_migrations_once
+from infrastructure.logger import setup_logging, setup_parser_logging
+from scripts.parser import update_prices
+from ui.cache import get_api_client, get_excel_loader, get_mail_notifier, get_repo
+
+LOCK_FILE = os.path.join(tempfile.gettempdir(), "repricer_parser.lock")
 
 
 def get_base64_encoded_image(image_path: Path) -> str:
+    """
+    Кодирует изображение в base64 для встраивания в HTML.
+
+    Args:
+        image_path: Путь к файлу изображения.
+
+    Returns:
+        base64-строка.
+    """
     with open(image_path, "rb") as f:
         return base64.b64encode(f.read()).decode()
 
 
 def run_repricing(dry_run: bool = False) -> Dict[str, Any]:
-    logger = setup_logging('repricer.log', mode='w')
+    """
+    Запускает репрайсинг в синхронном контексте (из Streamlit).
+
+    Args:
+        dry_run: Если True, цены не отправляются в Ozon.
+
+    Returns:
+        Словарь со статистикой выполнения.
+    """
+    # Применяем миграции (на случай, если БД ещё не создана)
+    run_migrations_once()
+
+    logger = setup_logging("repricer.log", mode="w")
     logger.info("=== Запуск репрайсинга из дашборда ===")
 
-    async def _run():
+    async def _run() -> Dict[str, Any]:
         loader = get_excel_loader()
         api = get_api_client()
         notifier = get_mail_notifier()
@@ -38,10 +70,20 @@ def run_repricing(dry_run: bool = False) -> Dict[str, Any]:
         finally:
             await api.close()
         return stats
+
     return asyncio.run(_run())
 
 
-def execute_repricing(dry_run: bool):
+def execute_repricing(dry_run: bool) -> Tuple[str, str]:
+    """
+    Выполняет репрайсинг с отображением прогресса в Streamlit.
+
+    Args:
+        dry_run: Флаг тестового запуска.
+
+    Returns:
+        Кортеж (сообщение, тип результата: 'success' или 'error').
+    """
     with st.status("Выполняется репрайсинг...", expanded=True) as status:
         st.write("Загрузка данных из Excel...")
         try:
@@ -49,40 +91,59 @@ def execute_repricing(dry_run: bool):
             st.cache_data.clear()
             st.cache_resource.clear()
             status.update(label="Готово!", state="complete")
+
             if dry_run:
-                msg = f"Dry run завершён. Обработано товаров: {stats.get('products_loaded', 0)}, рассчитано цен: {stats.get('prices_updated', 0)}"
+                msg = (
+                    f"Dry run завершён. Обработано товаров: {stats.get('products_loaded', 0)}, "
+                    f"рассчитано цен: {stats.get('prices_updated', 0)}"
+                )
             else:
-                updated = stats.get('prices_updated', 0)
-                errors = stats.get('errors', [])
+                updated = stats.get("prices_updated", 0)
+                errors = stats.get("errors", [])
                 msg = f"Готово! Обновлено цен: {updated}"
                 if errors:
                     msg += f"\nОшибки: {', '.join(errors)}"
-            warnings = stats.get('warnings', [])
+
+            warnings = stats.get("warnings", [])
             if warnings:
                 with st.expander("Предупреждения при загрузке Excel"):
                     for w in warnings:
                         st.warning(w, icon=":material/warning:")
-            return msg, 'success'
+
+            return msg, "success"
         except Exception as e:
             status.update(label="Ошибка", state="error")
-            return f"Ошибка: {e}", 'error'
+            return f"Ошибка: {e}", "error"
         finally:
             st.session_state.running = False
 
 
 async def run_parsing(dry_run: bool = False) -> Dict[str, Any]:
-    logger = setup_parser_logging('parser.log', mode='w')
+    """
+    Запускает парсинг конкурентов в асинхронном контексте (из Streamlit).
+
+    Args:
+        dry_run: Если True, данные не записываются в Excel.
+
+    Returns:
+        Словарь со статистикой {updated, errors, skipped}.
+    """
+    logger = setup_parser_logging("parser.log", mode="w")
     logger.info("=== Запуск парсинга из дашборда ===")
 
+    # Применяем миграции (на случай, если БД ещё не создана)
+    run_migrations_once()
+
     # Настройка окружения только для Linux
-    if not sys.platform.startswith('win'):
+    if not sys.platform.startswith("win"):
         from infrastructure.x_display import get_available_display
+
         display = get_available_display()
         if display:
-            os.environ['DISPLAY'] = display
+            os.environ["DISPLAY"] = display
             logger.info(f"Установлен DISPLAY={display}")
-            if 'XAUTHORITY' not in os.environ:
-                os.environ['XAUTHORITY'] = '/home/server/.Xauthority'
+            if "XAUTHORITY" not in os.environ:
+                os.environ["XAUTHORITY"] = "/home/server/.Xauthority"
         else:
             logger.warning("X-сервер не найден. Возможно, парсинг не сможет открыть браузер.")
     # На Windows ничего не делаем – DISPLAY не требуется
@@ -91,11 +152,22 @@ async def run_parsing(dry_run: bool = False) -> Dict[str, Any]:
     return await loop.run_in_executor(None, update_prices, dry_run)
 
 
-def execute_parsing(dry_run: bool):
-    lock = FileLock(LOCK_FILE, timeout=LOCK_TIMEOUT)
+def execute_parsing(dry_run: bool) -> Tuple[str, str]:
+    """
+    Выполняет парсинг конкурентов с отображением прогресса в Streamlit.
+
+    Args:
+        dry_run: Флаг тестового запуска.
+
+    Returns:
+        Кортеж (сообщение, тип результата: 'success' или 'error').
+    """
+    lock = FileLock(LOCK_FILE, timeout=settings.PARSER_LOCK_TIMEOUT)
     try:
-        with lock.acquire(timeout=LOCK_TIMEOUT):
-            with st.status("Выполняется парсинг конкурентов...", expanded=True) as status:
+        with lock.acquire(timeout=settings.PARSER_LOCK_TIMEOUT):
+            with st.status(
+                "Выполняется парсинг конкурентов...", expanded=True
+            ) as status:
                 st.write("Инициализация браузера и загрузка страниц Ozon...")
                 try:
                     stats = asyncio.run(run_parsing(dry_run=dry_run))
@@ -103,131 +175,209 @@ def execute_parsing(dry_run: bool):
                         st.cache_data.clear()
                         st.cache_resource.clear()
                     status.update(label="Парсинг завершён!", state="complete")
-                    msg = f"Готово! Обновлено цен: {stats.get('updated', 0)}, ошибок: {stats.get('errors', 0)}, пропущено: {stats.get('skipped', 0)}"
-                    return msg, 'success'
+                    msg = (
+                        f"Готово! Обновлено цен: {stats.get('updated', 0)}, "
+                        f"ошибок: {stats.get('errors', 0)}, "
+                        f"пропущено: {stats.get('skipped', 0)}"
+                    )
+                    return msg, "success"
                 except Exception as e:
                     status.update(label="Ошибка парсинга", state="error")
-                    return f"Ошибка: {e}", 'error'
+                    return f"Ошибка: {e}", "error"
                 finally:
                     st.session_state.parsing_running = False
     except Timeout:
-        st.error(f"Парсер уже выполняется. Попробуйте позже.", icon=":material/cancel:")
+        st.error("Парсер уже выполняется. Попробуйте позже.", icon=":material/cancel:")
         st.session_state.parsing_running = False
-        return "Парсер занят", 'error'
+        return "Парсер занят", "error"
 
 
-def render_sidebar_section_excel(disabled: bool):
+def render_sidebar_section_excel(disabled: bool) -> None:
+    """
+    Отрисовывает секцию работы с Excel (загрузка/скачивание).
+
+    Args:
+        disabled: Если True, кнопки и загрузка блокируются.
+    """
     if disabled:
-        st.info("Загрузка Excel недоступна во время выполнения репрайсинга", icon=":material/info:")
+        st.info(
+            "Загрузка Excel недоступна во время выполнения репрайсинга",
+            icon=":material/info:",
+        )
         if settings.DATA_FILE_PATH.exists():
             with open(settings.DATA_FILE_PATH, "rb") as f:
                 st.download_button(
-                    "Скачать текущий Excel", f,
+                    "Скачать текущий Excel",
+                    f,
                     file_name=settings.DATA_FILE_PATH.name,
-                    width="stretch", disabled=True
+                    width="stretch",
+                    disabled=True,
                 )
     else:
         try:
             uploaded_file = st.file_uploader(
-                "Выберите Excel файл", type=["xlsx"],
-                label_visibility="collapsed", width="stretch", key="excel_uploader"
+                "Выберите Excel файл",
+                type=["xlsx"],
+                label_visibility="collapsed",
+                width="stretch",
+                key="excel_uploader",
             )
             if uploaded_file is not None:
                 with open(settings.DATA_FILE_PATH, "wb") as f:
                     f.write(uploaded_file.getbuffer())
-                st.success(f"Файл загружен: {settings.DATA_FILE_PATH.name}", icon=":material/check_circle:")
+                st.success(
+                    f"Файл загружен: {settings.DATA_FILE_PATH.name}",
+                    icon=":material/check_circle:",
+                )
                 st.cache_data.clear()
                 st.cache_resource.clear()
         except Exception as e:
             st.error(f"Ошибка при загрузке файла: {e}", icon=":material/cancel:")
+
         if settings.DATA_FILE_PATH.exists():
             with open(settings.DATA_FILE_PATH, "rb") as f:
                 st.download_button(
-                    "Скачать текущий Excel", f,
+                    "Скачать текущий Excel",
+                    f,
                     file_name=settings.DATA_FILE_PATH.name,
-                    width="stretch"
+                    width="stretch",
                 )
         else:
             st.warning("Файл Excel пока не существует.", icon=":material/warning:")
 
 
-def render_sidebar():
+def render_sidebar() -> None:
+    """Отрисовывает боковую панель дашборда."""
     icon_path = Path(__file__).parent.parent / "static" / "favicon.ico"
+
+    # Заголовок с логотипом
     st.markdown(
         f"""
         <div style="display: flex; align-items: center; margin-bottom: 1rem;">
-            <img src="data:image/png;base64,{get_base64_encoded_image(icon_path)}" width="40" style="margin-right: 12px;">
-            <h1 style="display: inline; margin: 0; font-size: 1.5rem;">Репрайсер {settings.INSTANCE_NAME}</h1>
+            <img src="data:image/png;base64,{get_base64_encoded_image(icon_path)}"
+                 width="40" style="margin-right: 12px;">
+            <h1 style="display: inline; margin: 0; font-size: 1.5rem;">
+                Репрайсер {settings.INSTANCE_NAME}
+            </h1>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
+    # Выбор страницы
     st.markdown('<h2><i class="fa-solid fa-file-lines"></i> Страница</h2>', unsafe_allow_html=True)
     page = st.radio(
         "Страница",
         options=["Сводка", "Статистика", "Аналитика", "Анализ", "Таблицы", "Запросы", "Сервис"],
         index=0,
         horizontal=True,
-        label_visibility="collapsed"
+        label_visibility="collapsed",
     )
-    st.session_state['current_page'] = page
+    st.session_state["current_page"] = page
 
     st.divider()
+
+    # Секция управления
     st.markdown('<h2><i class="fa-solid fa-sliders"></i> Управление</h2>', unsafe_allow_html=True)
 
-    if st.session_state.get('running'):
+    # Обработка результатов выполнения репрайсинга
+    if st.session_state.get("running"):
         msg, msg_type = execute_repricing(st.session_state.dry_run_mode)
         st.session_state.result_message = msg
         st.session_state.result_type = msg_type
         st.rerun()
 
-    if st.session_state.get('parsing_running'):
+    # Обработка результатов выполнения парсинга
+    if st.session_state.get("parsing_running"):
         p_msg, p_msg_type = execute_parsing(st.session_state.parsing_dry_run)
         st.session_state.result_message = p_msg
         st.session_state.result_type = p_msg_type
         st.rerun()
 
-    if st.session_state.get('result_message'):
-        if st.session_state.get('result_type') == 'success':
+    # Отображение сообщения о результате
+    if st.session_state.get("result_message"):
+        if st.session_state.get("result_type") == "success":
             st.success(st.session_state.result_message, icon=":material/check_circle:")
         else:
             st.error(st.session_state.result_message, icon=":material/cancel:")
         st.session_state.result_message = None
         st.session_state.result_type = None
 
-    is_busy = st.session_state.get('running') or st.session_state.get('parsing_running')
+    is_busy = st.session_state.get("running") or st.session_state.get("parsing_running")
 
+    # Кнопки репрайсинга
     st.markdown('<h3><i class="fa-solid fa-arrows-up-down"></i> Репрайсинг</h3>', unsafe_allow_html=True)
     if is_busy:
         st.warning("Выполняется задача. Пожалуйста, подождите...", icon=":material/warning:")
 
-    if st.session_state.get('running'):
-        st.button("Репрайсинг товаров", type="primary", width="stretch", disabled=True, icon=":material/rocket_launch:")
-        st.button("Тест репрайсинга", width="stretch", disabled=True, icon=":material/bug_report:")
+    if st.session_state.get("running"):
+        st.button(
+            "Репрайсинг товаров",
+            type="primary",
+            width="stretch",
+            disabled=True,
+            icon=":material/rocket_launch:",
+        )
+        st.button(
+            "Тест репрайсинга",
+            width="stretch",
+            disabled=True,
+            icon=":material/bug_report:",
+        )
     else:
-        if st.button("Репрайсинг товаров", type="primary", width="stretch", icon=":material/rocket_launch:"):
+        if st.button(
+            "Репрайсинг товаров",
+            type="primary",
+            width="stretch",
+            icon=":material/rocket_launch:",
+        ):
             st.session_state.running = True
             st.session_state.dry_run_mode = False
             st.rerun()
-        if st.button("Тест репрайсинга", width="stretch", icon=":material/bug_report:"):
+        if st.button(
+            "Тест репрайсинга",
+            width="stretch",
+            icon=":material/bug_report:",
+        ):
             st.session_state.running = True
             st.session_state.dry_run_mode = True
             st.rerun()
 
+    # Кнопки парсинга
     st.markdown('<h3><i class="fa-solid fa-spider"></i> Парсинг конкурентов</h3>', unsafe_allow_html=True)
-    if st.session_state.get('parsing_running'):
-        st.button("Парсинг цен", type="primary", width="stretch", disabled=True, icon=":material/rocket_launch:")
-        st.button("Тест парсинга", width="stretch", disabled=True, icon=":material/bug_report:")
+    if st.session_state.get("parsing_running"):
+        st.button(
+            "Парсинг цен",
+            type="primary",
+            width="stretch",
+            disabled=True,
+            icon=":material/rocket_launch:",
+        )
+        st.button(
+            "Тест парсинга",
+            width="stretch",
+            disabled=True,
+            icon=":material/bug_report:",
+        )
     else:
-        if st.button("Парсинг цен", type="primary", width="stretch", icon=":material/rocket_launch:"):
+        if st.button(
+            "Парсинг цен",
+            type="primary",
+            width="stretch",
+            icon=":material/rocket_launch:",
+        ):
             st.session_state.parsing_running = True
             st.session_state.parsing_dry_run = False
             st.rerun()
-        if st.button("Тест парсинга", width="stretch", icon=":material/bug_report:"):
+        if st.button(
+            "Тест парсинга",
+            width="stretch",
+            icon=":material/bug_report:",
+        ):
             st.session_state.parsing_running = True
             st.session_state.parsing_dry_run = True
             st.rerun()
 
+    # Работа с Excel
     st.markdown('<h3><i class="fa-solid fa-table-cells"></i> Работа с Excel</h3>', unsafe_allow_html=True)
     render_sidebar_section_excel(disabled=bool(is_busy))

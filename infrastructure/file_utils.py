@@ -1,23 +1,43 @@
+"""
+Утилиты для работы с файлами.
+
+Содержит функции для проверки доступности файла (блокировка) и
+безопасного точечного обновления Excel-файлов с сохранением форматирования.
+"""
+
 import os
+import shutil
 import time
-import logging
 from pathlib import Path
-import pandas as pd
+
 from openpyxl import load_workbook
 
-logger = logging.getLogger(__name__)
+from infrastructure.logger import logger
 
 LOCK_WAIT_TIMEOUT = 60
+"""Таймаут ожидания освобождения Excel-файла (сек)."""
 
 
 def wait_for_excel_available(file_path: Path, timeout: int = LOCK_WAIT_TIMEOUT) -> bool:
-    """Проверяет доступность Excel-файла для записи."""
-    test_file = file_path.with_suffix('.lock_test')
+    """
+    Проверяет доступность Excel-файла для записи (не заблокирован ли другим процессом).
+
+    Создаёт временный файл .lock_test; если это удаётся – файл доступен.
+
+    Args:
+        file_path: Путь к Excel-файлу.
+        timeout: Максимальное время ожидания (сек).
+
+    Returns:
+        True, если файл доступен, иначе False.
+    """
+    test_file = file_path.with_suffix(".lock_test")
     deadline = time.time() + timeout
+
     while time.time() < deadline:
         try:
-            with open(test_file, 'w') as f:
-                f.write('lock_test')
+            with open(test_file, "w") as f:
+                f.write("lock_test")
             os.remove(test_file)
             return True
         except PermissionError:
@@ -26,25 +46,37 @@ def wait_for_excel_available(file_path: Path, timeout: int = LOCK_WAIT_TIMEOUT) 
         except Exception as e:
             logger.error(f"Непредвиденная ошибка доступа к файлу: {e}")
             return False
+
     logger.error(f"Файл {file_path} оставался занятым дольше {timeout} сек.")
     return False
 
 
-def save_safely(updates: dict, file_path: Path):
+def save_safely(updates: dict, file_path: Path) -> None:
     """
-    Точечное обновление ячеек через openpyxl (сохраняет стили).
-    updates: {(row, col): value}
+    Сохраняет точечные обновления ячеек в Excel-файл с сохранением форматирования.
+
+    Использует openpyxl: копирует исходный файл во временный, вносит изменения,
+    затем заменяет оригинал.
+
+    Args:
+        updates: Словарь {(row, col): value} для обновления.
+        file_path: Путь к Excel-файлу.
+
+    Raises:
+        ValueError: Если в книге нет активного листа.
+        Exception: Любая ошибка при сохранении.
     """
-    tmp_path = file_path.with_suffix('.tmp.xlsx')
+    tmp_path = file_path.with_suffix(".tmp.xlsx")
     try:
-        import shutil
         shutil.copy2(file_path, tmp_path)
         wb = load_workbook(tmp_path)
         ws = wb.active
         if ws is None:
             raise ValueError("Нет активного листа в книге")
+
         for (row, col), value in updates.items():
             ws.cell(row=row, column=col, value=value)
+
         wb.save(tmp_path)
         wb.close()
         os.replace(tmp_path, file_path)

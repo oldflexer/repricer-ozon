@@ -1,11 +1,25 @@
+"""
+Аутентификация пользователя для Streamlit-дашборда.
+
+Проверяет логин и пароль, сравнивая с настройками WEB_USER и WEB_PASS.
+При успешном входе устанавливает флаг authenticated в session_state.
+"""
+
 import streamlit as st
+
 from config.settings import settings
 
 
 def check_auth() -> None:
-    """Проверка аутентификации пользователя."""
-    if 'authenticated' not in st.session_state:
+    """
+    Проверяет аутентификацию пользователя.
+
+    Если пользователь не аутентифицирован, показывает форму входа.
+    После успешного входа перезагружает страницу.
+    """
+    if "authenticated" not in st.session_state:
         st.session_state.authenticated = False
+
     if not st.session_state.authenticated:
         st.markdown('<h1><i class="fa-solid fa-lock"></i> Авторизация</h1>', unsafe_allow_html=True)
         col1, col2, col3 = st.columns([1, 2, 1])
