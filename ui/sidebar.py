@@ -21,8 +21,8 @@ from filelock import FileLock, Timeout
 
 from config.settings import settings
 from core.use_cases import RepricingUseCase
-from infrastructure.db import run_migrations_once
 from infrastructure.logger import setup_logging, setup_parser_logging
+from scripts.common import run_migrations_once
 from scripts.parser import update_prices
 from ui.cache import get_api_client, get_excel_loader, get_mail_notifier, get_repo
 

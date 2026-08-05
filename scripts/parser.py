@@ -27,10 +27,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from config.settings import settings
 from infrastructure.file_utils import save_safely, wait_for_excel_available
-from infrastructure.logger import setup_parser_logging
 from infrastructure.ozon_parser import OzonPriceParser
 from infrastructure.x_display import get_available_display
-from scripts.common import register_signal_handlers, run_migrations_once, setup_parser_logging, is_shutdown_requested
+from scripts.common import register_signal_handlers, run_migrations_once, is_shutdown_requested, setup_parser_logging
 
 logger = setup_parser_logging("parser")
 

@@ -2,15 +2,12 @@
 Реализация SQLite-репозитория для работы с данными.
 
 Содержит:
-- функцию run_migrations_once() для применения миграций Alembic,
 - класс SQLiteRepository, реализующий IProductRepository,
 - все методы для CRUD, истории, агрегации и обслуживания БД.
 """
 
 import json
 import sqlite3
-import subprocess
-import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -21,31 +18,6 @@ from config.settings import settings
 from core.entities import PriceCalculationResult, PricingData, ProductInfo, StrategyInterval
 from core.repository import IProductRepository
 from infrastructure.logger import logger
-
-
-def run_migrations_once() -> None:
-    """
-    Запускает миграции Alembic один раз при старте приложения.
-
-    Вызывается явно в точках входа: scripts/repricer.py, app.py, scripts/parser.py.
-    При ошибке логирует и выбрасывает RuntimeError.
-    """
-    root_dir = Path(__file__).resolve().parent.parent
-    try:
-        result = subprocess.run(
-            [sys.executable, "-m", "alembic", "upgrade", "head"],
-            cwd=root_dir,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if result.returncode != 0:
-            logger.error(f"Ошибка выполнения миграций: {result.stderr}")
-            raise RuntimeError(f"Не удалось применить миграции: {result.stderr}")
-        logger.info("Миграции успешно применены.")
-    except Exception as e:
-        logger.error(f"Не удалось запустить alembic: {e}")
-        raise
 
 
 class SQLiteRepository(IProductRepository):

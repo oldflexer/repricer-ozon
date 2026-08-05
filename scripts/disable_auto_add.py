@@ -19,9 +19,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from config.settings import settings
 from core.use_cases.disable_auto_add import DisableAutoAddUseCase
-from infrastructure.db import run_migrations_once
 from infrastructure.logger import setup_logging
 from infrastructure.ozon_api import OzonApiClient
+from scripts.common import run_migrations_once
 
 logger = setup_logging(f"disable_auto_add-{settings.INSTANCE_NAME}.log", mode="a")
 
