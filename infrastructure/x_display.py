@@ -10,7 +10,7 @@ import logging
 import os
 import subprocess
 import sys
-from typing import Optional
+from typing import List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -35,19 +35,19 @@ def get_available_display() -> Optional[str]:
 
     # 1. Проверяем текущий DISPLAY
     if "DISPLAY" in os.environ:
-        display = os.environ["DISPLAY"]
+        display: str = os.environ["DISPLAY"]
         if _is_display_available(display):
             return display
 
     # 2. Ищем сокеты X11
-    sockets = glob.glob("/tmp/.X11-unix/X*")
-    displays = []
+    sockets: List[str] = glob.glob("/tmp/.X11-unix/X*")
+    displays: List[str] = []
     for sock in sockets:
-        num = sock.split("/")[-1][1:]  # номер после 'X'
+        num: str = sock.split("/")[-1][1:]  # номер после 'X'
         if num.isdigit():
-            display = f":{num}.0"
-            if _is_display_available(display):
-                displays.append(display)
+            display_candidate: str = f":{num}.0"
+            if _is_display_available(display_candidate):
+                displays.append(display_candidate)
 
     if not displays:
         logger.warning("Не найден доступный X-сервер. Браузер не сможет открыться.")
@@ -70,7 +70,7 @@ def _is_display_available(display: str) -> bool:
         return False
 
     # Проверка существования сокета
-    socket_path = f'/tmp/.X11-unix/X{display[1:].split(".")[0]}'
+    socket_path: str = f'/tmp/.X11-unix/X{display[1:].split(".")[0]}'
     if not os.path.exists(socket_path):
         return False
 
@@ -86,10 +86,10 @@ def _is_display_available(display: str) -> bool:
         return True
     except (subprocess.TimeoutExpired, FileNotFoundError, subprocess.CalledProcessError):
         # Если xdpyinfo нет, проверяем .Xauthority
-        xauth_file = os.environ.get("XAUTHORITY", os.path.expanduser("~/.Xauthority"))
+        xauth_file: str = os.environ.get("XAUTHORITY", os.path.expanduser("~/.Xauthority"))
         if os.path.exists(xauth_file):
             try:
-                result = subprocess.run(
+                result: subprocess.CompletedProcess[str] = subprocess.run(
                     ["xauth", "list", display],
                     capture_output=True,
                     text=True,

@@ -14,6 +14,7 @@
 import argparse
 import os
 import random
+import signal
 import sys
 import tempfile
 import time
@@ -36,6 +37,16 @@ logger = setup_parser_logging(f"parser-{settings.INSTANCE_NAME}.log", mode="a")
 
 LOCK_FILE = os.path.join(tempfile.gettempdir(), "repricer_parser.lock")
 
+# Глобальный флаг для graceful shutdown
+_shutdown_requested = False
+
+
+def _signal_handler(signum: int, frame) -> None:
+    """Обработчик сигналов для graceful shutdown."""
+    global _shutdown_requested
+    logger.warning(f"Received signal {signum}, initiating graceful shutdown...")
+    _shutdown_requested = True
+
 
 def parse_price_with_retry(parser: OzonPriceParser, url: str) -> Optional[float]:
     """
@@ -48,7 +59,12 @@ def parse_price_with_retry(parser: OzonPriceParser, url: str) -> Optional[float]
     Returns:
         Цена (float), -1.0 если товар закончился, None при ошибке.
     """
+    global _shutdown_requested
     for attempt in range(1, settings.PARSER_RETRIES + 1):
+        if _shutdown_requested:
+            logger.info("Shutdown requested, stopping price parsing")
+            return None
+            
         try:
             price = parser.get_price(url)
             if price == -1.0:
@@ -86,6 +102,8 @@ def update_prices(dry_run: bool = False) -> Dict[str, int]:
     Returns:
         Словарь со статистикой: updated, errors, skipped.
     """
+    global _shutdown_requested
+    
     excel_path = settings.DATA_FILE_PATH
 
     if not excel_path.exists():
@@ -102,11 +120,14 @@ def update_prices(dry_run: bool = False) -> Dict[str, int]:
         logger.error(f"Не удалось прочитать Excel: {e}")
         return {"updated": 0, "errors": 0, "skipped": 0}
 
-    # Определяем индексы колонок для каждого конкурента
+    # Определяем индексы колонок для каждого конкурента (используем настраиваемые префиксы)
+    url_prefix = settings.COMPETITOR_URL_COLUMN_PREFIX
+    price_prefix = settings.COMPETITOR_PRICE_COLUMN_PREFIX
+    
     col_indices = {}
     for i in range(1, settings.MAX_COMPETITORS + 1):
-        url_col_name = f"Конкурент {i}"
-        price_col_name = f"Цена {i}"
+        url_col_name = f"{url_prefix} {i}"
+        price_col_name = f"{price_prefix} {i}"
         if url_col_name in df.columns and price_col_name in df.columns:
             col_indices[i] = {
                 "url_col": df.columns.get_loc(url_col_name) + 1,  # 1-based для openpyxl
@@ -114,7 +135,7 @@ def update_prices(dry_run: bool = False) -> Dict[str, int]:
             }
 
     if not col_indices:
-        logger.error("Не найдены колонки 'Конкурент N' / 'Цена N' в файле.")
+        logger.error(f"Не найдены колонки '{url_prefix} N' / '{price_prefix} N' в файле.")
         return {"updated": 0, "errors": 0, "skipped": 0}
 
     stats = {"updated": 0, "errors": 0, "skipped": 0}
@@ -123,15 +144,22 @@ def update_prices(dry_run: bool = False) -> Dict[str, int]:
 
     try:
         for row_num, (_, row) in enumerate(df.iterrows(), start=2):
+            if _shutdown_requested:
+                logger.info("Shutdown requested, stopping row processing")
+                break
+                
             sku = row.get("SKU") or row.get("sku") or f"row_{row_num}"
 
             for i in range(1, settings.MAX_COMPETITORS + 1):
+                if _shutdown_requested:
+                    break
+                    
                 cols = col_indices.get(i)
                 if not cols:
                     stats["skipped"] += 1
                     continue
 
-                url = row.get(f"Конкурент {i}")
+                url = row.get(f"{url_prefix} {i}")
                 if pd.isna(url) or not str(url).strip():
                     stats["skipped"] += 1
                     continue
@@ -148,7 +176,7 @@ def update_prices(dry_run: bool = False) -> Dict[str, int]:
                     logger.info(f"SKU {sku}, конкурент {i}: {new_price} ₽")
                 else:
                     stats["errors"] += 1
-                    old_price = row.get(f"Цена {i}")
+                    old_price = row.get(f"{price_prefix} {i}")
                     old_display = f"{old_price} ₽" if pd.notna(old_price) else "нет данных"
                     logger.warning(
                         f"SKU {sku}, конкурент {i}: ошибка парсинга. "
@@ -167,6 +195,9 @@ def update_prices(dry_run: bool = False) -> Dict[str, int]:
     finally:
         parser.close()
 
+    if _shutdown_requested:
+        logger.info("Graceful shutdown: saving partial results before exit")
+    
     if not dry_run:
         if excel_updates:
             if wait_for_excel_available(excel_path):
@@ -192,6 +223,12 @@ def main() -> None:
     Определяет доступный DISPLAY (Linux), запускает миграции,
     получает блокировку на выполнение и запускает update_prices().
     """
+    global _shutdown_requested
+    
+    # Регистрируем обработчики сигналов
+    signal.signal(signal.SIGTERM, _signal_handler)
+    signal.signal(signal.SIGINT, _signal_handler)
+
     # Определяем DISPLAY только на Linux/Unix
     if not sys.platform.startswith("win"):
         if "DISPLAY" not in os.environ:

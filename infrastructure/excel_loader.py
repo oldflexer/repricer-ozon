@@ -118,10 +118,11 @@ class ExcelLoader(ILoader):
                 row, df.columns, ["цена риц", "min_price", "rip"], 0.0
             )
 
-            # Чтение цен конкурентов (макс. 5)
+            # Чтение цен конкурентов (используем настраиваемый префикс)
             competitor_prices = []
+            price_prefix = settings.COMPETITOR_PRICE_COLUMN_PREFIX
             for j in range(1, settings.MAX_COMPETITORS + 1):
-                price_col = f"Цена {j}"
+                price_col = f"{price_prefix} {j}"
                 if price_col in df.columns:
                     val = row.get(price_col)
                     if pd.notna(val):
