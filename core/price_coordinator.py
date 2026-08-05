@@ -16,44 +16,6 @@ from core.services import PriceCalculationService, calculate_old_price
 from infrastructure.logger import logger
 
 
-class MarginCalculator:
-    """Выделенная логика расчёта маржинальности на основе комиссий Ozon."""
-
-    @staticmethod
-    def calculate_marginality(result_target_price: float, pricing: PricingData) -> float:
-        """
-        Рассчитывает маржинальность с учётом всех комиссий FBS и FBO.
-
-        Args:
-            result_target_price: Целевая цена (для отправки в Ozon).
-            pricing: Объект с данными о ценах и комиссиях.
-
-        Returns:
-            Маржинальность в долях (0.0 .. 1.0). При цене <= 0 возвращает 0.
-        """
-        sales_commission = result_target_price * (pricing.sales_percent_fbs / 100)
-        fbs_first_mile_avg = (pricing.fbs_first_mile_min_amount + pricing.fbs_first_mile_max_amount) / 2
-        fbs_direct_flow_avg = (pricing.fbs_direct_flow_trans_min_amount + pricing.fbs_direct_flow_trans_max_amount) / 2
-        fbs_total = (
-            sales_commission
-            + fbs_first_mile_avg
-            + fbs_direct_flow_avg
-            + pricing.fbs_deliv_to_customer_amount
-            + pricing.net_price
-        )
-        fbo_direct_flow_avg = (pricing.fbo_direct_flow_trans_min_amount + pricing.fbo_direct_flow_trans_max_amount) / 2
-        fbo_total = (
-            sales_commission
-            + fbo_direct_flow_avg
-            + pricing.fbo_deliv_to_customer_amount
-            + pricing.net_price
-        )
-        total_costs = (fbs_total + fbo_total) / 2
-        if result_target_price > 0:
-            return (result_target_price - total_costs) / result_target_price
-        return 0.0
-
-
 class PriceUpdateCoordinator:
     """
     Управляет полным потоком репрайсинга.

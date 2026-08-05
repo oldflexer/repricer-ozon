@@ -7,6 +7,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from core.use_cases import RepricingUseCase
 from core.entities import ProductInfo, PricingData, StrategyInterval
+from core.enums import StrategyType
 
 
 @pytest.mark.asyncio
@@ -39,7 +40,7 @@ async def test_execute_dry_run():
     )
     api.get_product_prices.return_value = [pricing]
 
-    repo.get_strategies.return_value = [StrategyInterval(start="00:00", end="23:59", strategy_type=3, percent=0.0)]
+    repo.get_strategies.return_value = [StrategyInterval(start="00:00", end="23:59", strategy_type=StrategyType.EQUAL, percent=0.0)]
 
     repo.upsert_product.return_value = True
     repo.set_strategies.return_value = True

@@ -7,11 +7,13 @@
 
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+import re
 
 import pandas as pd
 
 from config.settings import settings
 from core.entities import PriceCalculationResult, ProductInfo, StrategyInterval
+from core.enums import StrategyType, parse_strategy_value
 from core.repository import ILoader
 from infrastructure.logger import logger
 
@@ -146,7 +148,7 @@ class ExcelLoader(ILoader):
                     "используется стратегия по умолчанию 'Равная'"
                 )
                 intervals = [
-                    StrategyInterval(start="00:00", end="23:59", strategy_type=3, percent=0.0)
+                    StrategyInterval(start="00:00", end="23:59", strategy_type=StrategyType.EQUAL, percent=0.0)
                 ]
 
             old_price_val = self._get_float(
@@ -272,42 +274,22 @@ class ExcelLoader(ILoader):
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _parse_strategy_value(value) -> int:
-        """
-        Преобразует значение стратегии из Excel в числовой код.
+    def _parse_strategy_value(value) -> StrategyType:
+            """
+            Преобразует значение стратегии из Excel в StrategyType enum.
 
-        Поддерживает:
-            - числа 1, 2, 3,
-            - текстовые варианты: 'ниже', 'выше', 'равная',
-            - любые регистры.
+            Поддерживает:
+                - числа 1, 2, 3,
+                - текстовые варианты: 'ниже', 'выше', 'равная',
+                - любые регистры.
 
-        Args:
-            value: Значение из ячейки (строка, число, None).
+            Args:
+                value: Значение из ячейки (строка, число, None).
 
-        Returns:
-            Код стратегии: 1 – ниже, 2 – выше, 3 – равна (по умолчанию).
-        """
-        if pd.isna(value):
-            return 3
-        try:
-            num = int(float(value))
-            if num in (1, 2, 3):
-                return num
-        except (ValueError, TypeError):
-            pass
-
-        str_val = str(value).strip().lower()
-        if str_val in ("ниже", "ниже индекса", "1"):
-            return 1
-        elif str_val in ("выше", "выше индекса", "2"):
-            return 2
-        elif str_val in ("равная", "равно", "равна", "равен", "3"):
-            return 3
-        else:
-            logger.warning(
-                f"Неизвестное значение стратегии '{value}', используется 'Равная' (3)"
-            )
-            return 3
+            Returns:
+                StrategyType: Соответствующий тип стратегии (по умолчанию EQUAL).
+            """
+            return parse_strategy_value(value)
 
     def _parse_intervals_with_validation(
         self, row: pd.Series, columns: pd.Index
@@ -361,7 +343,7 @@ class ExcelLoader(ILoader):
                 if pd.notna(percent_val):
                     try:
                         percent = float(percent_val)
-                        if strategy in (1, 2) and (percent < 0 or percent > 100):
+                        if strategy in (StrategyType.BELOW, StrategyType.ABOVE) and (percent < 0 or percent > 100):
                             warnings.append(
                                 f"Интервал {i}: процент {percent} выходит за пределы 0-100, используется 0"
                             )

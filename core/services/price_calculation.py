@@ -12,6 +12,7 @@ from typing import List, Optional
 
 from config.settings import TIMEZONE
 from core.entities import PriceCalculationResult, PricingData, StrategyInterval
+from core.enums import StrategyType
 
 logger = logging.getLogger(__name__)
 
@@ -132,22 +133,22 @@ class PriceCalculationService:
                 f"стратегия {strategy_type}, процент {percent}"
             )
         else:
-            strategy_type = 3
+            strategy_type = StrategyType.EQUAL
             percent = 0.0
             logger.info(
                 f"SKU {sku}: активный интервал не найден, "
-                "используется стратегия по умолчанию (Равная, 3)"
+                "используется стратегия по умолчанию (Равная, EQUAL)"
             )
 
         # --- 3. Применение стратегии ---
-        if strategy_type == 3:
+        if strategy_type == StrategyType.EQUAL:
             result_target_price = target_min_price
             strategy_price = None
             target_strategy_price = None
             reason = "стратегия 'Равная'"
             logger.info(f"SKU {sku}: стратегия 'Равная', результат = {result_target_price:.0f}")
         else:
-            # Стратегии 1 (Ниже) и 2 (Выше)
+            # Стратегии BELOW (Ниже) и ABOVE (Выше)
             base_price = None
             source = None
             if competitor_min_price is not None and competitor_min_price > 0:
@@ -158,9 +159,9 @@ class PriceCalculationService:
                 source = "индекс Ozon"
 
             if base_price is not None:
-                if strategy_type == 1:
+                if strategy_type == StrategyType.BELOW:
                     strategy_price = base_price * (1 - percent / 100)
-                elif strategy_type == 2:
+                elif strategy_type == StrategyType.ABOVE:
                     strategy_price = base_price * (1 + percent / 100)
                 else:
                     strategy_price = base_price
@@ -168,7 +169,7 @@ class PriceCalculationService:
                 target_strategy_price = strategy_price / discount_coef if discount_coef else strategy_price
                 result_target_price = target_strategy_price
                 reason = (
-                    f"стратегия {'Ниже' if strategy_type == 1 else 'Выше'} "
+                    f"стратегия {'Ниже' if strategy_type == StrategyType.BELOW else 'Выше'} "
                     f"(база = {source}, {base_price:.0f} ₽, процент = {percent})"
                 )
                 logger.info(
@@ -228,7 +229,8 @@ class PriceCalculationService:
             "discount_coef": discount_coef,
             "default_coef_used": approx_real_price is None,
             "target_min_price": target_min_price,
-            "strategy_type": strategy_type,
+            "strategy_type": strategy_type.value,
+            "strategy_type_name": strategy_type.name,
             "strategy_price": strategy_price,
             "target_strategy_price": target_strategy_price,
             "result_target_price": result_target_price,

@@ -6,3 +6,8 @@ secondaryBackgroundColor = "#303030"
 borderColor = "#404040"
 textColor = "#e0e0e0"
 font = "sans serif"
+
+[server]
+enableCORS = true
+enableXsrfProtection = true
+enableStaticServing = false

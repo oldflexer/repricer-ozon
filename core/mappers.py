@@ -8,6 +8,7 @@
 from typing import Optional
 
 from config.settings import settings
+from core.enums import StrategyType
 from .dto import (
     PriceUpdateRequestDTO,
     ProductDTO,
@@ -78,7 +79,7 @@ def strategy_interval_to_dto(interval: StrategyInterval) -> StrategyIntervalDTO:
     return StrategyIntervalDTO(
         start=interval.start,
         end=interval.end,
-        strategy_type=interval.strategy_type,
+        strategy_type=interval.strategy_type.value,
         percent=interval.percent,
     )
 
@@ -96,7 +97,7 @@ def dto_to_strategy_interval(dto: StrategyIntervalDTO) -> StrategyInterval:
     return StrategyInterval(
         start=dto.start,
         end=dto.end,
-        strategy_type=dto.strategy_type,
+        strategy_type=StrategyType(dto.strategy_type),
         percent=dto.percent,
     )
 

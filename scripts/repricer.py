@@ -11,7 +11,6 @@
 
 import argparse
 import asyncio
-import signal
 import sys
 from pathlib import Path
 
@@ -19,23 +18,14 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from config.settings import settings
 from core.use_cases import RepricingUseCase
-from infrastructure.db import SQLiteRepository, run_migrations_once
+from infrastructure.db import SQLiteRepository
 from infrastructure.excel_loader import ExcelLoader
 from infrastructure.logger import setup_logging
 from infrastructure.mail_notifier import MailNotifier
 from infrastructure.ozon_api import OzonApiClient
+from scripts.common import register_signal_handlers, run_migrations_once, setup_script_logging
 
-logger = setup_logging(f"repricer-{settings.INSTANCE_NAME}.log", mode="a")
-
-# Глобальный флаг для graceful shutdown
-_shutdown_requested = False
-
-
-def _signal_handler(signum: int, frame) -> None:
-    """Обработчик сигналов для graceful shutdown."""
-    global _shutdown_requested
-    logger.warning(f"Received signal {signum}, initiating graceful shutdown...")
-    _shutdown_requested = True
+logger = setup_script_logging("repricer")
 
 
 async def main() -> None:
@@ -44,11 +34,8 @@ async def main() -> None:
 
     Читает аргумент --dry-run и выполняет соответствующее действие.
     """
-    global _shutdown_requested
-    
     # Регистрируем обработчики сигналов
-    signal.signal(signal.SIGTERM, _signal_handler)
-    signal.signal(signal.SIGINT, _signal_handler)
+    register_signal_handlers()
 
     # Применяем миграции перед работой с БД
     run_migrations_once()

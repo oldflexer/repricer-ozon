@@ -4,6 +4,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from core.entities import PricingData, StrategyInterval, PriceCalculationResult
 from core.services import PriceCalculationService
+from core.enums import StrategyType
 
 def test_calculation_service():
     service = PriceCalculationService(default_coefficient=0.5)
@@ -20,7 +21,7 @@ def test_calculation_service():
     }
     pricing = PricingData.from_api_response(raw_data)
 
-    intervals = [StrategyInterval(start="00:00", end="23:59", strategy_type=3, percent=0.0)]
+    intervals = [StrategyInterval(start="00:00", end="23:59", strategy_type=StrategyType.EQUAL, percent=0.0)]
     rip = 800.0
 
     result = service.calculate(sku="test_sku", pricing=pricing, rip=rip, intervals=intervals)

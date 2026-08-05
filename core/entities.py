@@ -9,6 +9,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, time
 from typing import Optional, List
 
+from core.enums import StrategyType, parse_strategy_value
+
 
 @dataclass
 class ProductInfo:
@@ -47,21 +49,26 @@ class StrategyInterval:
     Атрибуты:
         start: Время начала интервала (HH:MM).
         end: Время окончания интервала (HH:MM).
-        strategy_type: Тип стратегии: 1 – ниже, 2 – выше, 3 – равна.
-        percent: Процент отклонения для стратегий 1 и 2.
+        strategy_type: Тип стратегии (StrategyType enum).
+        percent: Процент отклонения для стратегий BELOW и ABOVE.
         start_time, end_time: Объекты time, вычисляемые автоматически.
     """
     start: str
     end: str
-    strategy_type: int  # 1 - ниже, 2 - выше, 3 - равна
+    strategy_type: StrategyType  # Enum: BELOW=1, ABOVE=2, EQUAL=3
     percent: float = 0.0
     start_time: time = field(init=False)
     end_time: time = field(init=False)
 
     def __post_init__(self) -> None:
-        """Преобразует строки start/end в объекты time."""
+        """Преобразует строки start/end в объекты time и strategy_type в Enum."""
         self.start_time = datetime.strptime(self.start, "%H:%M").time()
         self.end_time = datetime.strptime(self.end, "%H:%M").time()
+        # Если передано число или строка, преобразуем в Enum
+        if isinstance(self.strategy_type, int):
+            self.strategy_type = StrategyType(self.strategy_type)
+        elif isinstance(self.strategy_type, str):
+            self.strategy_type = parse_strategy_value(self.strategy_type)
 
 
 @dataclass

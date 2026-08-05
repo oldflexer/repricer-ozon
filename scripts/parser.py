@@ -14,7 +14,6 @@
 import argparse
 import os
 import random
-import signal
 import sys
 import tempfile
 import time
@@ -27,25 +26,15 @@ from filelock import FileLock, Timeout
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from config.settings import settings
-from infrastructure.db import run_migrations_once
 from infrastructure.file_utils import save_safely, wait_for_excel_available
 from infrastructure.logger import setup_parser_logging
 from infrastructure.ozon_parser import OzonPriceParser
 from infrastructure.x_display import get_available_display
+from scripts.common import register_signal_handlers, run_migrations_once, setup_parser_logging, is_shutdown_requested
 
-logger = setup_parser_logging(f"parser-{settings.INSTANCE_NAME}.log", mode="a")
+logger = setup_parser_logging("parser")
 
 LOCK_FILE = os.path.join(tempfile.gettempdir(), "repricer_parser.lock")
-
-# Глобальный флаг для graceful shutdown
-_shutdown_requested = False
-
-
-def _signal_handler(signum: int, frame) -> None:
-    """Обработчик сигналов для graceful shutdown."""
-    global _shutdown_requested
-    logger.warning(f"Received signal {signum}, initiating graceful shutdown...")
-    _shutdown_requested = True
 
 
 def parse_price_with_retry(parser: OzonPriceParser, url: str) -> Optional[float]:
@@ -59,9 +48,8 @@ def parse_price_with_retry(parser: OzonPriceParser, url: str) -> Optional[float]
     Returns:
         Цена (float), -1.0 если товар закончился, None при ошибке.
     """
-    global _shutdown_requested
     for attempt in range(1, settings.PARSER_RETRIES + 1):
-        if _shutdown_requested:
+        if is_shutdown_requested():
             logger.info("Shutdown requested, stopping price parsing")
             return None
             
@@ -102,8 +90,6 @@ def update_prices(dry_run: bool = False) -> Dict[str, int]:
     Returns:
         Словарь со статистикой: updated, errors, skipped.
     """
-    global _shutdown_requested
-    
     excel_path = settings.DATA_FILE_PATH
 
     if not excel_path.exists():
@@ -144,14 +130,14 @@ def update_prices(dry_run: bool = False) -> Dict[str, int]:
 
     try:
         for row_num, (_, row) in enumerate(df.iterrows(), start=2):
-            if _shutdown_requested:
+            if is_shutdown_requested():
                 logger.info("Shutdown requested, stopping row processing")
                 break
                 
             sku = row.get("SKU") or row.get("sku") or f"row_{row_num}"
 
             for i in range(1, settings.MAX_COMPETITORS + 1):
-                if _shutdown_requested:
+                if is_shutdown_requested():
                     break
                     
                 cols = col_indices.get(i)
@@ -195,7 +181,7 @@ def update_prices(dry_run: bool = False) -> Dict[str, int]:
     finally:
         parser.close()
 
-    if _shutdown_requested:
+    if is_shutdown_requested():
         logger.info("Graceful shutdown: saving partial results before exit")
     
     if not dry_run:
@@ -223,11 +209,8 @@ def main() -> None:
     Определяет доступный DISPLAY (Linux), запускает миграции,
     получает блокировку на выполнение и запускает update_prices().
     """
-    global _shutdown_requested
-    
     # Регистрируем обработчики сигналов
-    signal.signal(signal.SIGTERM, _signal_handler)
-    signal.signal(signal.SIGINT, _signal_handler)
+    register_signal_handlers()
 
     # Определяем DISPLAY только на Linux/Unix
     if not sys.platform.startswith("win"):

@@ -1,24 +1,24 @@
 """
 Use‑case для запуска полного цикла репрайсинга.
 
-Делегирует выполнение PricingOrchestrator (устаревшая обёртка,
-которая в свою очередь вызывает PriceUpdateCoordinator).
+Делегирует выполнение PriceUpdateCoordinator.
 """
 
 from typing import Any, Dict
 
-from core.orchestrator import PricingOrchestrator
+from core.price_coordinator import PriceUpdateCoordinator
+from core.repository import IProductRepository
 
 
 class RepricingUseCase:
     """
     Use‑case для репрайсинга товаров.
 
-    Инкапсулирует вызов оркестратора, предоставляя единый интерфейс
+    Инкапсулирует вызов координатора, предоставляя единый интерфейс
     для запуска процесса обновления цен.
     """
 
-    def __init__(self, repository, api_client, mail_notifier, loader) -> None:
+    def __init__(self, repository: IProductRepository, api_client, mail_notifier, loader) -> None:
         """
         Инициализирует use‑case.
 
@@ -28,8 +28,8 @@ class RepricingUseCase:
             mail_notifier: Сервис для отправки email‑уведомлений.
             loader: Загрузчик данных из Excel.
         """
-        self.orchestrator = PricingOrchestrator(
-            repository, api_client, mail_notifier, loader
+        self.coordinator = PriceUpdateCoordinator(
+            repository, api_client, loader, mail_notifier
         )
 
     async def execute(self, dry_run: bool = False) -> Dict[str, Any]:
@@ -47,4 +47,4 @@ class RepricingUseCase:
                 - errors: список ошибок.
                 - warnings: список предупреждений.
         """
-        return await self.orchestrator.run(dry_run=dry_run)
+        return await self.coordinator.run(dry_run=dry_run)
