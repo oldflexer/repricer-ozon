@@ -9,7 +9,7 @@ import asyncio
 from typing import Any, Callable, Dict, List, Optional
 
 from config.settings import settings
-from core.entities import PriceCalculationResult, PricingData, ProductInfo, StrategyInterval
+from core.entities import ProductInfo
 from core.mappers import build_price_update_request
 from core.repository import IProductRepository
 from core.services import PriceCalculationService, calculate_old_price

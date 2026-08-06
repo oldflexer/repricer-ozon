@@ -12,6 +12,7 @@
 from pathlib import Path
 from typing import Optional
 
+from pydantic import model_validator
 import pytz
 from dotenv import load_dotenv
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -41,6 +42,12 @@ class Settings(BaseSettings):
     Все поля имеют значения по умолчанию, которые могут быть
     переопределены через .env-файл.
     """
+
+    @model_validator(mode="after")
+    def validate_required(self):
+        if not self.OZON_CLIENT_ID or not self.OZON_API_KEY:
+            raise ValueError("OZON_CLIENT_ID и OZON_API_KEY обязательны")
+        return self
 
     # ---------- Экземпляр (мультитенантность) ----------
     INSTANCE_NAME: str = "Ozon"

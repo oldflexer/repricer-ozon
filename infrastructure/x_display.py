@@ -6,13 +6,11 @@
 """
 
 import glob
-import logging
 import os
 import subprocess
 import sys
 from typing import List, Optional
-
-logger = logging.getLogger(__name__)
+from infrastructure.logger import logger
 
 
 def get_available_display() -> Optional[str]:

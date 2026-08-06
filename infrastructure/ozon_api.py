@@ -12,6 +12,7 @@ import httpx
 
 from config.settings import settings
 from core.entities import PricingData
+from infrastructure.http_retry import retry_on_error
 from infrastructure.logger import logger
 
 
@@ -40,9 +41,8 @@ class OzonApiClient:
     # Базовые HTTP-методы с повторными попытками
     # ------------------------------------------------------------------
 
-    async def _get(
-        self, url: str, max_retries: int = settings.API_MAX_RETRIES
-    ) -> Optional[dict]:
+    @retry_on_error(max_retries=settings.API_MAX_RETRIES)
+    async def _get(self, url: str) -> Optional[dict]:
         """
         Выполняет GET-запрос с повторными попытками.
 
@@ -53,24 +53,14 @@ class OzonApiClient:
         Returns:
             Ответ в виде словаря или None при ошибке.
         """
-        for attempt in range(max_retries):
-            try:
-                resp = await self.client.get(url, headers=self.headers)
-                if resp.status_code == 200:
-                    return resp.json()
-                logger.warning(
-                    f"GET {url} returned {resp.status_code}, "
-                    f"body: {resp.text[:500]}, attempt {attempt + 1}"
-                )
-                await asyncio.sleep(2 ** attempt)
-            except Exception as e:
-                logger.error(f"GET error: {e}, attempt {attempt + 1}")
-                await asyncio.sleep(2 ** attempt)
+        resp = await self.client.get(url, headers=self.headers)
+        if resp.status_code == 200:
+            return resp.json()
+        logger.warning(f"GET {url} returned {resp.status_code}, body: {resp.text[:500]}")
         return None
 
-    async def _post(
-        self, url: str, payload: Any, max_retries: int = settings.API_MAX_RETRIES
-    ) -> Optional[dict]:
+    @retry_on_error(max_retries=settings.API_MAX_RETRIES)
+    async def _post(self, url: str, payload: Any) -> Optional[dict]:
         """
         Выполняет POST-запрос с повторными попытками.
 
@@ -82,21 +72,10 @@ class OzonApiClient:
         Returns:
             Ответ в виде словаря или None при ошибке.
         """
-        for attempt in range(max_retries):
-            try:
-                resp = await self.client.post(
-                    url, headers=self.headers, json=payload
-                )
-                if resp.status_code == 200:
-                    return resp.json()
-                logger.warning(
-                    f"POST {url} returned {resp.status_code}, "
-                    f"body: {resp.text[:500]}, attempt {attempt + 1}"
-                )
-                await asyncio.sleep(2 ** attempt)
-            except Exception as e:
-                logger.error(f"POST error: {e}, attempt {attempt + 1}")
-                await asyncio.sleep(2 ** attempt)
+        resp = await self.client.post(url, headers=self.headers, json=payload)
+        if resp.status_code == 200:
+            return resp.json()
+        logger.warning(f"POST {url} returned {resp.status_code}, body: {resp.text[:500]}")
         return None
 
     # ------------------------------------------------------------------
@@ -313,7 +292,6 @@ class OzonApiClient:
                 resp = await self.client.post(url, headers=self.headers, json=payload)
                 if resp.status_code == 200:
                     data = resp.json()
-                    # Ответ может содержать массив results или быть пустым
                     if "result" in data:
                         for item in data["result"]:
                             pid = item.get("product_id")
@@ -323,7 +301,7 @@ class OzonApiClient:
                                 "error": error
                             }
                     else:
-                        # Если ответ без деталей – считаем все успешными
+                        logger.warning(f"Unexpected response structure: {data}")
                         for pid in batch:
                             result_map[pid] = {"success": True, "error": None}
                 else:

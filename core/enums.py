@@ -6,6 +6,8 @@
 
 from enum import IntEnum
 
+from infrastructure.logger import logger
+
 
 class StrategyType(IntEnum):
     """
@@ -64,8 +66,6 @@ def parse_strategy_value(value) -> StrategyType:
     elif str_val in ("равная", "равно", "равна", "равен", "3", "equal"):
         return StrategyType.EQUAL
     else:
-        import logging
-        logger = logging.getLogger(__name__)
         logger.warning(
             f"Неизвестное значение стратегии '{value}', используется 'Равная' (EQUAL)"
         )

@@ -15,6 +15,8 @@ import asyncio
 import sys
 from pathlib import Path
 
+from scripts.common import register_signal_handlers
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from config.settings import settings
@@ -32,6 +34,7 @@ async def main() -> None:
     Читает аргумент --dry-run и выполняет соответствующее действие.
     """
 
+    register_signal_handlers()
     parser = argparse.ArgumentParser(description="Отключение автодобавления в акции Ozon")
     parser.add_argument("--dry-run", action="store_true", help="Тестовый режим: только показать, что будет удалено")
     args = parser.parse_args()

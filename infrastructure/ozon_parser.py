@@ -42,7 +42,6 @@ if 'distutils' not in sys.modules:
 
 # --- Остальные импорты ---
 
-import logging
 import random
 import re
 import time
@@ -57,10 +56,9 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 from undetected_chromedriver.patcher import Patcher
 from webdriver_manager.chrome import ChromeDriverManager
+from infrastructure.logger import logger
 
 from config.settings import settings
-
-logger = logging.getLogger(__name__)
 
 # Мажорная версия Chrome, установленного на машине.
 CHROME_VERSION_MAIN = 150

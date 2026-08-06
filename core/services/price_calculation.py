@@ -6,15 +6,13 @@
 с учётом всех комиссий Ozon (FBS и FBO).
 """
 
-import logging
 from datetime import datetime, time
 from typing import List, Optional
 
 from config.settings import TIMEZONE
 from core.entities import PriceCalculationResult, PricingData, StrategyInterval
 from core.enums import StrategyType
-
-logger = logging.getLogger(__name__)
+from infrastructure.logger import logger
 
 
 class PriceCalculationService:
