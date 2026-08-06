@@ -110,18 +110,20 @@ class PricingData:
     self_marketplaces_index_data_price: Optional[float] = None
     self_marketplaces_index_data_index: Optional[float] = None
 
-    sales_percent_fbs: float = 0.0
     acquiring: float = 0.0
-
-    fbs_first_mile_min_amount: float = 0.0
-    fbs_first_mile_max_amount: float = 0.0
-    fbs_direct_flow_trans_min_amount: float = 0.0
-    fbs_direct_flow_trans_max_amount: float = 0.0
-    fbs_deliv_to_customer_amount: float = 0.0
-
-    fbo_direct_flow_trans_min_amount: float = 0.0
-    fbo_direct_flow_trans_max_amount: float = 0.0
     fbo_deliv_to_customer_amount: float = 0.0
+    fbo_direct_flow_trans_max_amount: float = 0.0
+    fbo_direct_flow_trans_min_amount: float = 0.0
+    fbo_return_flow_amount: float = 0.0
+    fbs_deliv_to_customer_amount: float = 0.0
+    fbs_direct_flow_trans_max_amount: float = 0.0
+    fbs_direct_flow_trans_min_amount: float = 0.0
+    fbs_first_mile_max_amount: float = 0.0
+    fbs_first_mile_min_amount: float = 0.0
+    fbs_return_flow_amount: float = 0.0
+    sales_percent_fbo: float = 0.0
+    sales_percent_fbs: float = 0.0
+
 
     @classmethod
     def from_api_response(cls, data: dict) -> "PricingData":
@@ -179,16 +181,19 @@ class PricingData:
             ozon_index_data_index=ozon_index,
             self_marketplaces_index_data_price=self_price,
             self_marketplaces_index_data_index=self_index,
-            sales_percent_fbs=float(commissions.get("sales_percent_fbs", 0)),
             acquiring=float(data.get("acquiring", 0)),
-            fbs_first_mile_min_amount=float(commissions.get("fbs_first_mile_min_amount", 0)),
-            fbs_first_mile_max_amount=float(commissions.get("fbs_first_mile_max_amount", 0)),
-            fbs_direct_flow_trans_min_amount=float(commissions.get("fbs_direct_flow_trans_min_amount", 0)),
-            fbs_direct_flow_trans_max_amount=float(commissions.get("fbs_direct_flow_trans_max_amount", 0)),
-            fbs_deliv_to_customer_amount=float(commissions.get("fbs_deliv_to_customer_amount", 0)),
-            fbo_direct_flow_trans_min_amount=float(commissions.get("fbo_direct_flow_trans_min_amount", 0)),
-            fbo_direct_flow_trans_max_amount=float(commissions.get("fbo_direct_flow_trans_max_amount", 0)),
             fbo_deliv_to_customer_amount=float(commissions.get("fbo_deliv_to_customer_amount", 0)),
+            fbo_direct_flow_trans_max_amount=float(commissions.get("fbo_direct_flow_trans_max_amount", 0)),
+            fbo_direct_flow_trans_min_amount=float(commissions.get("fbo_direct_flow_trans_min_amount", 0)),
+            fbo_return_flow_amount=float(commissions.get("fbo_return_flow_amount", 0)),
+            fbs_deliv_to_customer_amount=float(commissions.get("fbs_deliv_to_customer_amount", 0)),
+            fbs_direct_flow_trans_max_amount=float(commissions.get("fbs_direct_flow_trans_max_amount", 0)),
+            fbs_direct_flow_trans_min_amount=float(commissions.get("fbs_direct_flow_trans_min_amount", 0)),
+            fbs_first_mile_max_amount=float(commissions.get("fbs_first_mile_max_amount", 0)),
+            fbs_first_mile_min_amount=float(commissions.get("fbs_first_mile_min_amount", 0)),
+            fbs_return_flow_amount=float(commissions.get("fbs_return_flow_amount", 0)),
+            sales_percent_fbo=float(commissions.get("sales_percent_fbo", 0)),
+            sales_percent_fbs=float(commissions.get("sales_percent_fbs", 0)),
         )
 
 
