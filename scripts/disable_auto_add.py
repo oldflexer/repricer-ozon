@@ -21,7 +21,6 @@ from config.settings import settings
 from core.use_cases.disable_auto_add import DisableAutoAddUseCase
 from infrastructure.logger import setup_logging
 from infrastructure.ozon_api import OzonApiClient
-from scripts.common import run_migrations_once
 
 logger = setup_logging(f"disable_auto_add-{settings.INSTANCE_NAME}.log", mode="a")
 
@@ -32,8 +31,6 @@ async def main() -> None:
 
     Читает аргумент --dry-run и выполняет соответствующее действие.
     """
-    # Применяем миграции (если БД ещё не создана)
-    run_migrations_once()
 
     parser = argparse.ArgumentParser(description="Отключение автодобавления в акции Ozon")
     parser.add_argument("--dry-run", action="store_true", help="Тестовый режим: только показать, что будет удалено")

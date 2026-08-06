@@ -22,7 +22,6 @@ from filelock import FileLock, Timeout
 from config.settings import settings
 from core.use_cases import RepricingUseCase
 from infrastructure.logger import setup_logging, setup_parser_logging
-from scripts.common import run_migrations_once
 from scripts.parser import update_prices
 from ui.cache import get_api_client, get_excel_loader, get_mail_notifier, get_repo
 
@@ -53,8 +52,6 @@ def run_repricing(dry_run: bool = False) -> Dict[str, Any]:
     Returns:
         Словарь со статистикой выполнения.
     """
-    # Применяем миграции (на случай, если БД ещё не создана)
-    run_migrations_once()
 
     logger = setup_logging("repricer.log", mode="w")
     logger.info("=== Запуск репрайсинга из дашборда ===")
@@ -130,9 +127,6 @@ async def run_parsing(dry_run: bool = False) -> Dict[str, Any]:
     """
     logger = setup_parser_logging("parser.log", mode="w")
     logger.info("=== Запуск парсинга из дашборда ===")
-
-    # Применяем миграции (на случай, если БД ещё не создана)
-    run_migrations_once()
 
     # Настройка окружения только для Linux
     if not sys.platform.startswith("win"):

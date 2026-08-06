@@ -29,7 +29,7 @@ from config.settings import settings
 from infrastructure.file_utils import save_safely, wait_for_excel_available
 from infrastructure.ozon_parser import OzonPriceParser
 from infrastructure.x_display import get_available_display
-from scripts.common import register_signal_handlers, run_migrations_once, is_shutdown_requested, setup_parser_logging
+from scripts.common import register_signal_handlers, is_shutdown_requested, setup_parser_logging
 
 logger = setup_parser_logging("parser")
 
@@ -221,9 +221,6 @@ def main() -> None:
             else:
                 logger.error("Не найден доступный X-сервер. Парсинг невозможен.")
                 return
-
-    # Применяем миграции (для согласованности)
-    run_migrations_once()
 
     parser = argparse.ArgumentParser(description="Парсер цен конкурентов для Ozon.")
     parser.add_argument(

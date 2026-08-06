@@ -45,31 +45,6 @@ def is_shutdown_requested() -> bool:
     return _shutdown_requested
 
 
-def run_migrations_once() -> None:
-    """
-    Запускает миграции Alembic один раз при старте приложения.
-
-    Вызывается явно в точках входа: scripts/repricer.py, app.py, scripts/parser.py.
-    При ошибке логирует и выбрасывает RuntimeError.
-    """
-    root_dir = Path(__file__).resolve().parent.parent
-    try:
-        result = subprocess.run(
-            [sys.executable, "-m", "alembic", "upgrade", "head"],
-            cwd=root_dir,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if result.returncode != 0:
-            logger.error(f"Ошибка выполнения миграций: {result.stderr}")
-            raise RuntimeError(f"Не удалось применить миграции: {result.stderr}")
-        logger.info("Миграции успешно применены.")
-    except Exception as e:
-        logger.error(f"Не удалось запустить alembic: {e}")
-        raise
-
-
 def setup_script_logging(script_name: str, mode: str = "a"):
     """
     Настраивает логирование для скрипта с учётом INSTANCE_NAME.

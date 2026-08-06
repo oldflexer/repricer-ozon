@@ -23,7 +23,7 @@ from infrastructure.excel_loader import ExcelLoader
 from infrastructure.logger import setup_logging
 from infrastructure.mail_notifier import MailNotifier
 from infrastructure.ozon_api import OzonApiClient
-from scripts.common import register_signal_handlers, run_migrations_once, setup_script_logging
+from scripts.common import register_signal_handlers, setup_script_logging
 
 logger = setup_script_logging("repricer")
 
@@ -36,9 +36,6 @@ async def main() -> None:
     """
     # Регистрируем обработчики сигналов
     register_signal_handlers()
-
-    # Применяем миграции перед работой с БД
-    run_migrations_once()
 
     parser = argparse.ArgumentParser(description="Запуск репрайсинга товаров")
     parser.add_argument("--dry-run", action="store_true", help="Тестовый режим: расчёт без отправки цен")
