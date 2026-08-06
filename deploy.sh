@@ -1,18 +1,29 @@
 #!/bin/bash
 set -e
 
+# --- Проверка версии Python ---
+if ! python3 -c "import sys; assert sys.version_info >= (3, 10)" 2>/dev/null; then
+    echo "❌ Ошибка: требуется Python 3.10 или выше."
+    echo "Текущая версия: $(python3 --version 2>&1)"
+    exit 1
+fi
+echo "✅ Версия Python подходит: $(python3 --version)"
+
 cd "$(dirname "$0")"
 
-# --- Чтение параметров из .env (если есть) ---
+# --- Безопасная загрузка .env ---
 if [ -f .env ]; then
-    source .env
+    set -a
+    # shellcheck source=/dev/null
+    . ./.env
+    set +a
 fi
 
 # --- Значения по умолчанию ---
 INSTANCE_NAME="${INSTANCE_NAME:-$(basename "$(pwd)")}"
 PORT="${PORT:-8501}"
-CRON_SCHEDULE="${CRON_SCHEDULE:-0 * * * *}"          # каждый час
-PARSER_CRON_SCHEDULE="${PARSER_CRON_SCHEDULE:-30 2,10,18 * * *}"  # 02:30, 10:30, 18:30
+CRON_SCHEDULE="${CRON_SCHEDULE:-0 * * * *}"
+PARSER_CRON_SCHEDULE="${PARSER_CRON_SCHEDULE:-30 2,10,18 * * *}"
 
 SERVICE_NAME="repricer-${INSTANCE_NAME}.service"
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}"
@@ -41,25 +52,28 @@ if [ ! -d ".venv" ]; then
     python3 -m venv .venv
 fi
 
+# --- Установка зависимостей ---
 echo "=== Установка зависимостей ==="
 .venv/bin/pip install --upgrade pip
 .venv/bin/pip install -r requirements.txt
 
-# --- Установка Chrome для парсера (если не установлен) ---
-if ! command -v google-chrome &> /dev/null && ! command -v chromium-browser &> /dev/null; then
-    echo "=== Установка Chrome для парсера ==="
-    if [ -f /etc/debian_version ]; then
-        # Debian/Ubuntu
-        sudo apt-get update
-        sudo apt-get install -y chromium-browser
-    elif [ -f /etc/redhat-release ]; then
-        # RHEL/CentOS/Fedora
-        sudo yum install -y chromium
-    else
-        echo "⚠️ Не удалось определить дистрибутив для установки Chrome. Установите вручную."
-    fi
+# --- Применение миграций БД ---
+echo "=== Применение миграций БД ==="
+if [ -f "scripts/upgrade_db.py" ]; then
+    .venv/bin/python scripts/upgrade_db.py
 else
-    echo "✅ Chrome уже установлен"
+    echo "⚠️ Скрипт scripts/upgrade_db.py не найден, миграции пропущены"
+fi
+
+# --- Установка Google Chrome ---
+if ! command -v google-chrome &> /dev/null; then
+    echo "=== Установка Google Chrome из официального репозитория ==="
+    wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
+    sudo sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list'
+    sudo apt-get update
+    sudo apt-get install -y google-chrome-stable
+else
+    echo "✅ Google Chrome уже установлен"
 fi
 
 # --- Cron для основного репрайсера ---
@@ -133,8 +147,20 @@ sed -e "s|{{USER}}|$CURRENT_USER|g" \
 
 sudo systemctl daemon-reload
 sudo systemctl enable "$SERVICE_NAME"
-sudo systemctl restart "$SERVICE_NAME"
-echo "✅ Сервис $SERVICE_NAME перезапущен"
+
+if sudo systemctl is-active --quiet "$SERVICE_NAME"; then
+    sudo systemctl restart "$SERVICE_NAME"
+else
+    sudo systemctl start "$SERVICE_NAME"
+fi
+
+echo "=== Проверка статуса сервиса ==="
+if sudo systemctl is-active --quiet "$SERVICE_NAME"; then
+    echo "✅ Сервис $SERVICE_NAME успешно запущен"
+else
+    echo "❌ Сервис $SERVICE_NAME не запустился!"
+    sudo systemctl status "$SERVICE_NAME" --no-pager
+fi
 
 echo "=== Установка прав на выполнение ==="
 chmod +x deploy.sh

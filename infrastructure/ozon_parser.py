@@ -1,3 +1,9 @@
+"""
+Парсер цен конкурентов с Ozon с использованием Selenium.
+
+Использует undetected-chromedriver для обхода блокировок,
+с fallback на обычный Selenium при ошибках.
+"""
 import sys
 from types import ModuleType
 
@@ -35,12 +41,6 @@ if 'distutils' not in sys.modules:
     sys.modules['distutils'] = ModuleType('distutils')
 
 # --- Остальные импорты ---
-"""
-Парсер цен конкурентов с Ozon с использованием Selenium.
-
-Использует undetected-chromedriver для обхода блокировок,
-с fallback на обычный Selenium при ошибках.
-"""
 
 import logging
 import random
@@ -80,14 +80,11 @@ def _patch_fetch_release_number() -> None:
         if version:
             logger.debug(f"Версия драйвера прочитана из бинарника: {version}")
             return version
-        # Фоллбэк: мажорная версия из настроек
         from undetected_chromedriver.patcher import LooseVersion  # type: ignore[attr-defined]
         return LooseVersion(str(self.version_main or settings.CHROME_VERSION_MAIN))
 
     Patcher.fetch_release_number = _patched
 
-
-# Применяем патч один раз при импорте
 _patch_fetch_release_number()
 
 
