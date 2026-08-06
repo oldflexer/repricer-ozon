@@ -51,38 +51,44 @@ def wait_for_excel_available(file_path: Path, timeout: int = LOCK_WAIT_TIMEOUT) 
     return False
 
 
-def save_safely(updates: dict, file_path: Path) -> None:
+def save_safely(updates: dict, file_path: Path, max_retries: int = 3) -> None:
     """
-    Сохраняет точечные обновления ячеек в Excel-файл с сохранением форматирования.
-
-    Использует openpyxl: копирует исходный файл во временный, вносит изменения,
-    затем заменяет оригинал.
+    Сохраняет точечные обновления ячеек в Excel-файл с повторными попытками.
 
     Args:
         updates: Словарь {(row, col): value} для обновления.
         file_path: Путь к Excel-файлу.
+        max_retries: Количество попыток при ошибках.
 
     Raises:
-        ValueError: Если в книге нет активного листа.
-        Exception: Любая ошибка при сохранении.
+        Exception: Если после всех попыток сохранение не удалось.
     """
     tmp_path = file_path.with_suffix(".tmp.xlsx")
-    try:
-        shutil.copy2(file_path, tmp_path)
-        wb = load_workbook(tmp_path)
-        ws = wb.active
-        if ws is None:
-            raise ValueError("Нет активного листа в книге")
+    last_error = None
 
-        for (row, col), value in updates.items():
-            ws.cell(row=row, column=col, value=value)
+    for attempt in range(1, max_retries + 1):
+        try:
+            shutil.copy2(file_path, tmp_path)
+            wb = load_workbook(tmp_path)
+            ws = wb.active
+            if ws is None:
+                raise ValueError("Нет активного листа в книге")
 
-        wb.save(tmp_path)
-        wb.close()
-        os.replace(tmp_path, file_path)
-        logger.info(f"Файл {file_path} успешно сохранён (форматирование сохранено).")
-    except Exception as e:
-        logger.error(f"Ошибка при сохранении файла {file_path}: {e}")
-        if tmp_path.exists():
-            os.remove(tmp_path)
-        raise
+            for (row, col), value in updates.items():
+                ws.cell(row=row, column=col, value=value)
+
+            wb.save(tmp_path)
+            wb.close()
+            os.replace(tmp_path, file_path)
+            logger.info(f"Файл {file_path} успешно сохранён (попытка {attempt})")
+            return
+        except Exception as e:
+            last_error = e
+            logger.warning(f"Ошибка сохранения (попытка {attempt}/{max_retries}): {e}")
+            if tmp_path.exists():
+                os.remove(tmp_path)
+            if attempt < max_retries:
+                time.sleep(1)
+
+    logger.error(f"Не удалось сохранить файл {file_path} после {max_retries} попыток: {last_error}")
+    raise last_error or RuntimeError("Ошибка сохранения файла")
