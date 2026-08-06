@@ -137,6 +137,25 @@ else
     echo "⚠️ Шаблон disable_auto_add.cron.template не найден, пропускаем"
 fi
 
+# --- Cron для обновления таймера минимальной цены ---
+if [ -f "deploy/update_price_timer.cron.template" ]; then
+    echo "=== Установка cron задач для обновления таймера минимальной цены (${INSTANCE_NAME}) ==="
+    TIMER_CRON_TMP="/tmp/update_price_timer_cron_${INSTANCE_NAME}_$$"
+    
+    sed -e "s|{{WORKING_DIR}}|$WORKING_DIR|g" \
+        -e "s|{{INSTANCE_NAME}}|$INSTANCE_NAME|g" \
+        "deploy/update_price_timer.cron.template" > "$TIMER_CRON_TMP"
+    
+    crontab -l 2>/dev/null | sed -e "/# BEGIN_UPDATE_PRICE_TIMER_${INSTANCE_NAME}/,/# END_UPDATE_PRICE_TIMER_${INSTANCE_NAME}/d" > "$TIMER_CRON_TMP.old" || true
+    cat "$TIMER_CRON_TMP" >> "$TIMER_CRON_TMP.old"
+    echo "" >> "$TIMER_CRON_TMP.old"
+    crontab "$TIMER_CRON_TMP.old"
+    rm -f "$TIMER_CRON_TMP" "$TIMER_CRON_TMP.old"
+    echo "✅ Cron задачи для обновления таймера минимальной цены обновлены"
+else
+    echo "⚠️ Шаблон update_price_timer.cron.template не найден, пропускаем"
+fi
+
 # --- systemd сервис ---
 echo "=== Установка systemd сервиса ${SERVICE_NAME} ==="
 sed -e "s|{{USER}}|$CURRENT_USER|g" \
