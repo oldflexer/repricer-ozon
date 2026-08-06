@@ -1,10 +1,33 @@
+"""
+Мапперы для преобразования между доменными сущностями и DTO.
+
+Содержит функции для конвертации объектов между слоями, а также
+вспомогательные функции для построения запросов к API и ViewModel.
+"""
+
 from typing import Optional
-from .entities import ProductInfo, StrategyInterval
-from .dto import ProductDTO, StrategyIntervalDTO, PriceUpdateRequestDTO, ProductViewModel
+
 from config.settings import settings
+from core.enums import StrategyType
+from .dto import (
+    PriceUpdateRequestDTO,
+    ProductDTO,
+    ProductViewModel,
+    StrategyIntervalDTO,
+)
+from .entities import ProductInfo, StrategyInterval
 
 
 def product_to_dto(product: ProductInfo) -> ProductDTO:
+    """
+    Преобразует доменную сущность ProductInfo в ProductDTO.
+
+    Args:
+        product: Объект ProductInfo.
+
+    Returns:
+        ProductDTO: DTO с теми же данными.
+    """
     return ProductDTO(
         sku=product.sku,
         product_name=product.product_name,
@@ -20,6 +43,15 @@ def product_to_dto(product: ProductInfo) -> ProductDTO:
 
 
 def dto_to_product(dto: ProductDTO) -> ProductInfo:
+    """
+    Преобразует ProductDTO обратно в доменную сущность ProductInfo.
+
+    Args:
+        dto: Объект ProductDTO.
+
+    Returns:
+        ProductInfo: Доменная сущность.
+    """
     return ProductInfo(
         sku=dto.sku,
         product_name=dto.product_name,
@@ -35,27 +67,63 @@ def dto_to_product(dto: ProductDTO) -> ProductInfo:
 
 
 def strategy_interval_to_dto(interval: StrategyInterval) -> StrategyIntervalDTO:
+    """
+    Преобразует StrategyInterval в StrategyIntervalDTO.
+
+    Args:
+        interval: Доменный объект интервала стратегии.
+
+    Returns:
+        StrategyIntervalDTO: DTO с теми же данными.
+    """
     return StrategyIntervalDTO(
         start=interval.start,
         end=interval.end,
-        strategy_type=interval.strategy_type,
+        strategy_type=interval.strategy_type.value,
         percent=interval.percent,
     )
 
 
 def dto_to_strategy_interval(dto: StrategyIntervalDTO) -> StrategyInterval:
+    """
+    Преобразует StrategyIntervalDTO в StrategyInterval.
+
+    Args:
+        dto: DTO интервала стратегии.
+
+    Returns:
+        StrategyInterval: Доменный объект.
+    """
     return StrategyInterval(
         start=dto.start,
         end=dto.end,
-        strategy_type=dto.strategy_type,
+        strategy_type=StrategyType(dto.strategy_type),
         percent=dto.percent,
     )
 
 
-def build_price_update_request(product_id: int, price: int, min_price: int,
-                               net_price: Optional[int] = None,
-                               old_price: Optional[int] = None,
-                               manage_elastic_boosting: bool = settings.MANAGE_ELASTIC_BOOSTING) -> PriceUpdateRequestDTO:
+def build_price_update_request(
+    product_id: int,
+    price: int,
+    min_price: int,
+    net_price: Optional[int] = None,
+    old_price: Optional[int] = None,
+    manage_elastic_boosting: bool = settings.MANAGE_ELASTIC_BOOSTING,
+) -> PriceUpdateRequestDTO:
+    """
+    Создаёт DTO для запроса обновления цены в Ozon API.
+
+    Args:
+        product_id: Идентификатор товара в Ozon.
+        price: Цена для отправки.
+        min_price: Минимальная цена.
+        net_price: Чистая цена (себестоимость) – опционально.
+        old_price: Старая цена – опционально.
+        manage_elastic_boosting: Флаг управления эластичностью (берётся из настроек).
+
+    Returns:
+        PriceUpdateRequestDTO: Готовый DTO для отправки.
+    """
     return PriceUpdateRequestDTO(
         product_id=product_id,
         price=price,
@@ -66,8 +134,26 @@ def build_price_update_request(product_id: int, price: int, min_price: int,
     )
 
 
-def to_view_model(product: ProductInfo, last_price: Optional[float], last_margin: Optional[float],
-                  avg_week: Optional[float], avg_month: Optional[float]) -> ProductViewModel:
+def to_view_model(
+    product: ProductInfo,
+    last_price: Optional[float],
+    last_margin: Optional[float],
+    avg_week: Optional[float],
+    avg_month: Optional[float],
+) -> ProductViewModel:
+    """
+    Преобразует данные товара и исторические метрики в ViewModel для дашборда.
+
+    Args:
+        product: Доменная сущность товара.
+        last_price: Последняя цена покупателя.
+        last_margin: Последняя маржинальность (в долях).
+        avg_week: Средняя маржинальность за неделю (в долях).
+        avg_month: Средняя маржинальность за месяц (в долях).
+
+    Returns:
+        ProductViewModel: Готовая модель для отображения.
+    """
     return ProductViewModel(
         sku=product.sku,
         name=product.product_name or "",

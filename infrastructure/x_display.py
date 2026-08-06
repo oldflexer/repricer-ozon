@@ -1,76 +1,99 @@
-import os
-import sys
+"""
+Утилита для определения доступного X-сервера (Linux/macOS).
+
+Находит свободный DISPLAY для запуска браузера в headful-режиме.
+На Windows всегда возвращает None.
+"""
+
 import glob
-import subprocess
 import logging
-from typing import Optional
+import os
+import subprocess
+import sys
+from typing import List, Optional
 
 logger = logging.getLogger(__name__)
+
 
 def get_available_display() -> Optional[str]:
     """
     Определяет доступный X-сервер и возвращает строку DISPLAY (например, ':10.0').
-    На Windows всегда возвращает None, так как X11 не используется.
+
+    На Windows всегда возвращает None.
+
+    Алгоритм:
+        1. Если DISPLAY уже задан в окружении, проверяет его доступность.
+        2. Ищет сокеты в /tmp/.X11-unix/ и проверяет каждый.
+        3. Возвращает первый доступный дисплей или None.
+
+    Returns:
+        Строка DISPLAY или None.
     """
-    if sys.platform.startswith('win'):
+    if sys.platform.startswith("win"):
         logger.info("Windows: X-сервер не используется, возвращаем None")
         return None
 
-    # 1. Если DISPLAY уже задан, проверяем, работает ли он
-    if 'DISPLAY' in os.environ:
-        display = os.environ['DISPLAY']
+    # 1. Проверяем текущий DISPLAY
+    if "DISPLAY" in os.environ:
+        display: str = os.environ["DISPLAY"]
         if _is_display_available(display):
             return display
 
-    # 2. Ищем все сокеты X11
-    sockets = glob.glob('/tmp/.X11-unix/X*')
-    displays = []
+    # 2. Ищем сокеты X11
+    sockets: List[str] = glob.glob("/tmp/.X11-unix/X*")
+    displays: List[str] = []
     for sock in sockets:
-        num = sock.split('/')[-1][1:]  # извлекаем номер после 'X'
+        num: str = sock.split("/")[-1][1:]  # номер после 'X'
         if num.isdigit():
-            display = f':{num}.0'
-            if _is_display_available(display):
-                displays.append(display)
+            display_candidate: str = f":{num}.0"
+            if _is_display_available(display_candidate):
+                displays.append(display_candidate)
 
-    # 3. Если ничего не найдено, возвращаем None
     if not displays:
         logger.warning("Не найден доступный X-сервер. Браузер не сможет открыться.")
         return None
 
-    # 4. Возвращаем первый найденный
     return displays[0]
 
 
 def _is_display_available(display: str) -> bool:
-    """Проверка доступности X-сервера (только для Linux/macOS)."""
-    if sys.platform.startswith('win'):
+    """
+    Проверяет доступность X-сервера (только для Linux/macOS).
+
+    Args:
+        display: Строка DISPLAY (например, ':10.0').
+
+    Returns:
+        True, если X-сервер доступен.
+    """
+    if sys.platform.startswith("win"):
         return False
 
-    # Проверяем, что сокет существует
-    socket_path = f'/tmp/.X11-unix/X{display[1:].split(".")[0]}'
+    # Проверка существования сокета
+    socket_path: str = f'/tmp/.X11-unix/X{display[1:].split(".")[0]}'
     if not os.path.exists(socket_path):
         return False
 
-    # Проверяем через xdpyinfo (если установлен)
+    # Проверка через xdpyinfo (если установлен)
     try:
         subprocess.run(
-            ['xdpyinfo', '-display', display],
+            ["xdpyinfo", "-display", display],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             timeout=1,
-            check=True
+            check=True,
         )
         return True
     except (subprocess.TimeoutExpired, FileNotFoundError, subprocess.CalledProcessError):
-        # Если xdpyinfo нет, проверяем наличие записи в .Xauthority
-        xauth_file = os.environ.get('XAUTHORITY', os.path.expanduser('~/.Xauthority'))
+        # Если xdpyinfo нет, проверяем .Xauthority
+        xauth_file: str = os.environ.get("XAUTHORITY", os.path.expanduser("~/.Xauthority"))
         if os.path.exists(xauth_file):
             try:
-                result = subprocess.run(
-                    ['xauth', 'list', display],
+                result: subprocess.CompletedProcess[str] = subprocess.run(
+                    ["xauth", "list", display],
                     capture_output=True,
                     text=True,
-                    timeout=1
+                    timeout=1,
                 )
                 if result.returncode == 0 and result.stdout.strip():
                     return True

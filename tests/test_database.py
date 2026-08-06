@@ -9,6 +9,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from infrastructure.db import SQLiteRepository
 from core.entities import ProductInfo, StrategyInterval, PricingData, PriceCalculationResult
+from core.enums import StrategyType
 
 def test_database_operations():
     tmp_dir = tempfile.mkdtemp()
@@ -49,8 +50,8 @@ def test_database_operations():
         print(" ✅ update_real_customer_price работает")
 
         # Сохранение стратегий
-        intervals = [StrategyInterval(start="00:00", end="12:00", strategy_type=1, percent=5.0),
-                     StrategyInterval(start="12:00", end="23:59", strategy_type=3, percent=0.0)]
+        intervals = [StrategyInterval(start="00:00", end="12:00", strategy_type=StrategyType.BELOW, percent=5.0),
+                     StrategyInterval(start="12:00", end="23:59", strategy_type=StrategyType.EQUAL, percent=0.0)]
         repo.set_strategies("001", intervals)
         strats = repo.get_strategies("001")
         assert len(strats) == 2

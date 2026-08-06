@@ -1,27 +1,54 @@
-import streamlit as st
-import plotly.express as px
+"""
+Страница «Сервис» дашборда.
+
+Содержит сервисные инструменты:
+    - тепловая карта обновлений,
+    - информация о последнем запуске,
+    - работа с БД (скачивание, очистка),
+    - информация о файлах,
+    - смена пароля,
+    - диагностика БД.
+"""
+
 from pathlib import Path
-from config.settings import settings, TIMEZONE
+
+import plotly.express as px
+import streamlit as st
+
+from config.settings import TIMEZONE, settings
 from ui.cache import get_repo
 
 
-def render_service():
-    st.markdown('<h2><i class="fa-solid fa-screwdriver-wrench"></i> Сервисные инструменты</h2>', unsafe_allow_html=True)
+def render_service() -> None:
+    """
+    Рендерит страницу «Сервис» с сервисными инструментами.
+    """
+    st.markdown(
+        '<h2><i class="fa-solid fa-screwdriver-wrench"></i> Сервисные инструменты</h2>',
+        unsafe_allow_html=True,
+    )
     repo = get_repo()
 
     # Тепловая карта
     st.subheader("Тепловая карта обновлений")
     heatmap_data = repo.get_update_heatmap(days=90)
     if not heatmap_data.empty:
-        weekday_map = {0: 'Вс', 1: 'Пн', 2: 'Вт', 3: 'Ср', 4: 'Чт', 5: 'Пт', 6: 'Сб'}
-        heatmap_data['weekday_label'] = heatmap_data['weekday'].astype(int).map(weekday_map)
-        pivot = heatmap_data.pivot(index='hour', columns='weekday_label', values='updates').fillna(0)
-        correct_order = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
+        weekday_map = {0: "Вс", 1: "Пн", 2: "Вт", 3: "Ср", 4: "Чт", 5: "Пт", 6: "Сб"}
+        heatmap_data["weekday_label"] = heatmap_data["weekday"].astype(int).map(weekday_map)
+        pivot = heatmap_data.pivot(
+            index="hour",
+            columns="weekday_label",
+            values="updates",
+        ).fillna(0)
+        correct_order = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
         pivot = pivot.reindex(columns=correct_order, fill_value=0)
-        fig_heatmap = px.imshow(pivot,
-                                labels=dict(x="День недели", y="Час (МСК)", color="Количество обновлений"),
-                                title="Тепловая карта обновлений цен (90 дней)",
-                                aspect="auto", color_continuous_scale="Viridis")
+        fig_heatmap = px.imshow(
+            pivot,
+            labels=dict(x="День недели", y="Час (МСК)", color="Количество обновлений"),
+            title="Тепловая карта обновлений цен (90 дней)",
+            aspect="auto",
+            color_continuous_scale="Viridis",
+        )
         st.plotly_chart(fig_heatmap, width="stretch")
     else:
         st.info("Недостаточно данных для тепловой карты", icon=":material/info:")
@@ -33,9 +60,16 @@ def render_service():
     last_run_utc = repo.get_last_run_time()
     if last_run_utc:
         last_run_msk = last_run_utc.astimezone(TIMEZONE)
-        st.markdown(f'<i class="fa-regular fa-clock"></i> Последний запуск (МСК): {last_run_msk.strftime("%Y-%m-%d %H:%M")}', unsafe_allow_html=True)
+        st.markdown(
+            f'<i class="fa-regular fa-clock"></i> Последний запуск (МСК): '
+            f'{last_run_msk.strftime("%Y-%m-%d %H:%M")}',
+            unsafe_allow_html=True,
+        )
     else:
-        st.markdown('<i class="fa-regular fa-clock"></i> Последний запуск: —', unsafe_allow_html=True)
+        st.markdown(
+            '<i class="fa-regular fa-clock"></i> Последний запуск: —',
+            unsafe_allow_html=True,
+        )
 
     # Работа с БД
     st.divider()
@@ -43,7 +77,11 @@ def render_service():
     col1, col2 = st.columns(2)
     with col1:
         if st.button("Скачать БД", icon=":material/save:"):
-            db_data = open(settings.DATABASE_PATH_PATH, "rb").read() if settings.DATABASE_PATH_PATH.exists() else b""
+            db_data = (
+                open(settings.DATABASE_PATH_PATH, "rb").read()
+                if settings.DATABASE_PATH_PATH.exists()
+                else b""
+            )
             st.download_button(
                 "Скачать",
                 data=db_data,
@@ -87,7 +125,10 @@ def render_service():
                                 f.write(f"WEB_PASS={new_password}\n")
                             else:
                                 f.write(line)
-                    st.success("Пароль изменён. При следующем входе используйте новый пароль.", icon=":material/check_circle:")
+                    st.success(
+                        "Пароль изменён. При следующем входе используйте новый пароль.",
+                        icon=":material/check_circle:",
+                    )
                 else:
                     st.error("Файл .env не найден", icon=":material/cancel:")
             else:

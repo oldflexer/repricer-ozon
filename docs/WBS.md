@@ -196,26 +196,25 @@ graph TD
     ROOT["🎯 Репрайсер для Ozon"]
 
     subgraph W1["1. Управление проектом"]
-        W1a["1.1 Инициализация"]
+        W1a["1.1 Инициализация (pyproject.toml, .env)"]
         W1b["1.2 Alembic setup"]
-        W1c["1.3 CI/CD"]
+        W1c["1.3 CI/CD (ruff, mypy)"]
     end
 
     subgraph W2["2. Миграции БД"]
         W2a["2.1 Migration 001"]
         W2b["2.2 Migration 002"]
-        W2c["2.3 run_migrations_once"]
+        W2c["2.3 run_migrations_once()"]
     end
 
     subgraph W3["3. Доменный слой"]
-        W3a["3.1 Entities"]
+        W3a["3.1 Entities & Enums"]
         W3b["3.2 DTO"]
         W3c["3.3 Mappers"]
         W3d["3.4 Contracts"]
-        W3e["3.5 PriceCalcService"]
-        W3f["3.6 ActionService"]
-        W3g["3.7 Coordinator"]
-        W3h["3.8 Use Cases"]
+        W3e["3.5 Services"]
+        W3f["3.6 Coordinator"]
+        W3g["3.7 Use Cases"]
     end
 
     subgraph W4["4. Инфраструктура"]
@@ -227,12 +226,14 @@ graph TD
         W4f["4.6 Logger"]
         W4g["4.7 FileUtils"]
         W4h["4.8 XDisplay"]
+        W4i["4.9 Migrations (Alembic)"]
     end
 
     subgraph W5["5. CLI-скрипты"]
-        W5a["5.1 repricer.py"]
-        W5b["5.2 parser.py"]
-        W5c["5.3 disable_auto_add.py"]
+        W5a["5.0 common.py"]
+        W5b["5.1 repricer.py"]
+        W5c["5.2 parser.py"]
+        W5d["5.3 disable_auto_add.py"]
     end
 
     subgraph W6["6. Веб-дашборд"]
@@ -242,10 +243,16 @@ graph TD
         W6d["6.4 Cache"]
         W6e["6.5–6.11 Pages (7)"]
         W6f["6.12 Static"]
+        W6g["6.13 Styles"]
     end
 
     subgraph W7["7. Тесты"]
         W7a["7.1–7.9 Test suites"]
+    end
+
+    subgraph W8["8. Документация"]
+        W8a["8.1 README"]
+        W8b["8.2 PBS.md, WBS.md, FILE_STRUCTURE.md"]
     end
 
     ROOT --> W1
@@ -255,13 +262,17 @@ graph TD
     ROOT --> W5
     ROOT --> W6
     ROOT --> W7
+    ROOT --> W8
 
     W1 --> W2
+    W2 --> W3
     W3 --> W4
     W4 --> W5
     W4 --> W6
     W3 --> W5
     W3 --> W6
+    W7 -.-> W3
+    W7 -.-> W4
 ```
 
 ## Связь между разделами (потоки зависимостей)

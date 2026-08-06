@@ -96,16 +96,17 @@ graph TD
     ROOT["📊 Репрайсер для Ozon"]
 
     subgraph C1["1. Конфигурация"]
-        C1a["1.1 Settings.py"]
+        C1a["1.1 settings.py"]
         C1b["1.2 .env"]
+        C1c["1.3 pyproject.toml"]
     end
 
     subgraph C2["2. Доменный слой (core)"]
-        C2a["2.1 Entities"]
+        C2a["2.1 Entities & Enums"]
         C2b["2.2 DTO"]
         C2c["2.3 Mappers"]
         C2d["2.4 Repository Contracts"]
-        C2e["2.5 Services"]
+        C2e["2.5 Services (PriceCalc, Action)"]
         C2f["2.6 Orchestrators"]
         C2g["2.7 Use Cases"]
     end
@@ -119,13 +120,14 @@ graph TD
         C3f["3.6 Logger"]
         C3g["3.7 FileUtils"]
         C3h["3.8 XDisplay"]
-        C3i["3.9 Migrations"]
+        C3i["3.9 Migrations (Alembic)"]
     end
 
     subgraph C4["4. CLI-скрипты"]
-        C4a["4.1 repricer.py"]
-        C4b["4.2 parser.py"]
-        C4c["4.3 disable_auto_add.py"]
+        C4a["4.0 common.py"]
+        C4b["4.1 repricer.py"]
+        C4c["4.2 parser.py"]
+        C4d["4.3 disable_auto_add.py"]
     end
 
     subgraph C5["5. Веб-дашборд"]
@@ -153,6 +155,11 @@ graph TD
         C8a["8.1–8.9 Test suites (9)"]
     end
 
+    subgraph C9["9. Документация"]
+        C9a["9.1 README.md"]
+        C9b["9.2 docs/ (PBS, WBS, file structure)"]
+    end
+
     ROOT --> C1
     ROOT --> C2
     ROOT --> C3
@@ -161,4 +168,5 @@ graph TD
     ROOT --> C6
     ROOT --> C7
     ROOT --> C8
+    ROOT --> C9
 ```
