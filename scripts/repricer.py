@@ -16,13 +16,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from config.settings import settings
-from core.use_cases import RepricingUseCase
-from infrastructure.db import SQLiteRepository
-from infrastructure.excel_loader import ExcelLoader
-from infrastructure.logger import setup_logging
-from infrastructure.mail_notifier import MailNotifier
-from infrastructure.ozon_api import OzonApiClient
+from core.container import container
 from scripts.common import register_signal_handlers, setup_script_logging
 
 logger = setup_script_logging("repricer")
@@ -41,15 +35,14 @@ async def main() -> None:
     parser.add_argument("--dry-run", action="store_true", help="Тестовый режим: расчёт без отправки цен")
     args = parser.parse_args()
 
-    repo = SQLiteRepository(settings.DATABASE_PATH_PATH)
-    api = OzonApiClient()
-    notifier = MailNotifier()
-    loader = ExcelLoader(settings.DATA_FILE_PATH)
-
-    use_case = RepricingUseCase(repo, api, notifier, loader)
+    # Get use case from DI container
+    use_case = container.repricing_use_case()
     stats = await use_case.execute(dry_run=args.dry_run)
 
     logger.info("main_finished", result=stats)
+    
+    # Close API client
+    api = container.api_client
     await api.close()
 
 

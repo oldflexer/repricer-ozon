@@ -130,21 +130,23 @@ class MailNotifier:
         lines.append("Детализация по товарам:")
         lines.append("")
         for u in updates:
-            sku = u.get("sku", "N/A")
-            name = u.get("product_name", "")
-            status = u.get("status", "unknown")
-            old_price = u.get("old_price")
-            new_price = u.get("new_price")
-            reason = u.get("reason")
-            if status == "updated":
-                if old_price is not None:
-                    lines.append(f"✅ {sku} – {name}: {old_price:.0f} → {new_price:.0f}")
-                else:
-                    lines.append(f"✅ {sku} – {name}: установлена цена {new_price:.0f}")
-            elif status == "error":
-                lines.append(f"❌ {sku} – {name}: ошибка – {reason}")
-            else:
-                lines.append(f"❓ {sku} – {name}: неизвестный статус {status}")
+                    sku = u.get("sku", "N/A")
+                    name = u.get("product_name", "")
+                    status = u.get("status", "unknown")
+                    old_price = u.get("old_price")
+                    new_price = u.get("new_price")
+                    reason = u.get("reason")
+                    if status == "updated":
+                        if old_price is not None and new_price is not None:
+                            lines.append(f"✅ {sku} – {name}: {old_price:.0f} → {new_price:.0f}")
+                        elif new_price is not None:
+                            lines.append(f"✅ {sku} – {name}: установлена цена {new_price:.0f}")
+                        else:
+                            lines.append(f"✅ {sku} – {name}: обновлено")
+                    elif status == "error":
+                        lines.append(f"❌ {sku} – {name}: ошибка – {reason}")
+                    else:
+                        lines.append(f"❓ {sku} – {name}: неизвестный статус {status}")
 
         if errors:
             lines.append("\n❌ Общие ошибки:")
