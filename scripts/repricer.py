@@ -42,7 +42,7 @@ async def main() -> None:
     logger.info("main_finished", result=stats)
     
     # Close API client
-    api = container.api_client()
+    api = container.api_client
     await api.close()
 
 

@@ -18,7 +18,8 @@ async def test_execute_dry_run():
     loader = MagicMock()
 
     product = ProductInfo(sku="123", min_price=200.0, cost_price=150.0)
-    loader.load.return_value = [product]
+    # load() returns tuple (products, warnings)
+    loader.load.return_value = ([product], [])
 
     api.get_product_ids_by_skus.return_value = {
         "123": {"product_id": 1, "offer_id": "off1", "product_name": "Test Product"}
@@ -52,9 +53,9 @@ async def test_execute_dry_run():
     use_case = RepricingUseCase(repo, api, notifier, loader)
     stats = await use_case.execute(dry_run=True)
 
-    assert stats['products_loaded'] == 1
-    assert stats['prices_updated'] == 1
-    assert stats['errors'] == []
+    assert stats["products_loaded"] == 1
+    assert stats["prices_updated"] == 1
+    assert stats["errors"] == []
     api.update_prices.assert_not_called()
     loader.update_product_in_file.assert_called()
     notifier.send_detailed_report.assert_called_once()
@@ -66,13 +67,14 @@ async def test_execute_without_products():
     api = AsyncMock()
     notifier = MagicMock()
     loader = MagicMock()
-    loader.load.return_value = []
+    # load() returns tuple (products, warnings)
+    loader.load.return_value = ([], [])
 
     use_case = RepricingUseCase(repo, api, notifier, loader)
     stats = await use_case.execute(dry_run=False)
 
-    assert stats['products_loaded'] == 0
-    assert stats['prices_updated'] == 0
-    assert stats['errors'] == []
+    assert stats["products_loaded"] == 0
+    assert stats["prices_updated"] == 0
+    assert stats["errors"] == []
     api.update_prices.assert_not_called()
     notifier.send_detailed_report.assert_called_once_with([], [], dry_run=False)

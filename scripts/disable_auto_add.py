@@ -17,10 +17,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from config.settings import settings
 from core.container import container
 from infrastructure.logger import setup_logging
 
-logger = setup_logging(f"disable_auto_add-{container.config.INSTANCE_NAME()}.log", mode="a")
+logger = setup_logging(f"disable_auto_add-{settings.INSTANCE_NAME}.log", mode="a")
 
 
 async def main() -> None:
@@ -40,7 +41,7 @@ async def main() -> None:
         stats = await use_case.execute(dry_run=args.dry_run)
         logger.info(f"Статистика: {stats}")
     finally:
-        api = container.api_client()
+        api = container.api_client
         await api.close()
 
 
