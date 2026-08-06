@@ -26,9 +26,8 @@ from filelock import FileLock, Timeout
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from config.settings import settings
+from core.container import container
 from infrastructure.file_utils import save_safely, wait_for_excel_available
-from infrastructure.ozon_parser import OzonPriceParser
-from infrastructure.x_display import get_available_display
 from scripts.common import register_signal_handlers, is_shutdown_requested, setup_parser_logging
 
 logger = setup_parser_logging("parser")
@@ -124,8 +123,10 @@ def update_prices(dry_run: bool = False) -> Dict[str, int]:
         return {"updated": 0, "errors": 0, "skipped": 0}
 
     stats = {"updated": 0, "errors": 0, "skipped": 0}
-    parser = OzonPriceParser(headless=False)
-    excel_updates = {}
+
+        # Get parser from DI container
+        parser = container.parser()
+        excel_updates = {}
 
     try:
         for row_num, (_, row) in enumerate(df.iterrows(), start=2):
@@ -214,6 +215,7 @@ def main() -> None:
     # Определяем DISPLAY только на Linux/Unix
     if not sys.platform.startswith("win"):
         if "DISPLAY" not in os.environ:
+            from infrastructure.x_display import get_available_display
             display = get_available_display()
             if display:
                 os.environ["DISPLAY"] = display
