@@ -287,3 +287,64 @@ class OzonApiClient:
             "product_ids": [str(pid) for pid in product_ids],
         }
         return await self._post(url, payload) or {}
+
+    async def update_price_timer(self, product_ids: List[int]) -> Dict[int, Dict]:
+        """
+        Обновляет таймер актуальности минимальной цены для указанных товаров.
+
+        Эндпоинт: POST /v1/product/action/timer/update
+
+        Args:
+            product_ids: Список product_id (макс. 1000 элементов).
+
+        Returns:
+            Словарь {product_id: {"success": bool, "error": Optional[str]}}.
+        """
+        url = f"{self.base_url}/v1/product/action/timer/update"
+        result_map = {}
+
+        # API принимает не более 1000 ID за раз
+        batch_size = 1000
+        for i in range(0, len(product_ids), batch_size):
+            batch = product_ids[i:i + batch_size]
+            payload = {"product_ids": batch}
+
+            try:
+                resp = await self.client.post(url, headers=self.headers, json=payload)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    # Ответ может содержать массив results или быть пустым
+                    if "result" in data:
+                        for item in data["result"]:
+                            pid = item.get("product_id")
+                            error = item.get("error")
+                            result_map[pid] = {
+                                "success": error is None,
+                                "error": error
+                            }
+                    else:
+                        # Если ответ без деталей – считаем все успешными
+                        for pid in batch:
+                            result_map[pid] = {"success": True, "error": None}
+                else:
+                    logger.warning(
+                        f"Update price timer failed: {resp.status_code} {resp.text[:200]}"
+                    )
+                    for pid in batch:
+                        result_map[pid] = {
+                            "success": False,
+                            "error": f"HTTP {resp.status_code}"
+                        }
+            except Exception as e:
+                logger.error(f"Update price timer error: {e}")
+                for pid in batch:
+                    result_map[pid] = {
+                        "success": False,
+                        "error": str(e)
+                    }
+
+            # Пауза между батчами, чтобы не перегружать API
+            if i + batch_size < len(product_ids):
+                await asyncio.sleep(settings.API_BATCH_DELAY)
+
+        return result_map

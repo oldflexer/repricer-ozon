@@ -4,6 +4,43 @@
 Использует undetected-chromedriver для обхода блокировок,
 с fallback на обычный Selenium при ошибках.
 """
+import sys
+from types import ModuleType
+
+# --- HACK: эмуляция distutils.version для Python 3.12+ ---
+# undetected-chromedriver импортирует distutils.version.LooseVersion,
+# но distutils удалён в Python 3.12. Подменяем модуль до импорта uc.
+
+class _LooseVersion:
+    def __init__(self, vstring):
+        self.vstring = str(vstring)
+    def __repr__(self):
+        return f"LooseVersion('{self.vstring}')"
+    def __eq__(self, other):
+        return self.vstring == str(other)
+    def __lt__(self, other):
+        return self.vstring < str(other)
+    def __le__(self, other):
+        return self.vstring <= str(other)
+    def __gt__(self, other):
+        return self.vstring > str(other)
+    def __ge__(self, other):
+        return self.vstring >= str(other)
+
+class _DistutilsVersionModule(ModuleType):
+    def __getattr__(self, name):
+        if name == 'LooseVersion':
+            return _LooseVersion
+        raise AttributeError(name)
+
+# Создаём и регистрируем модуль distutils.version
+if 'distutils.version' not in sys.modules:
+    sys.modules['distutils.version'] = _DistutilsVersionModule('distutils.version')
+# Также создаём родительский модуль distutils, если его нет
+if 'distutils' not in sys.modules:
+    sys.modules['distutils'] = ModuleType('distutils')
+
+# --- Остальные импорты ---
 
 import logging
 import random
@@ -25,6 +62,8 @@ from config.settings import settings
 
 logger = logging.getLogger(__name__)
 
+# Мажорная версия Chrome, установленного на машине.
+CHROME_VERSION_MAIN = 150
 
 def _patch_fetch_release_number() -> None:
     """
@@ -41,14 +80,11 @@ def _patch_fetch_release_number() -> None:
         if version:
             logger.debug(f"Версия драйвера прочитана из бинарника: {version}")
             return version
-        # Фоллбэк: мажорная версия из настроек
         from undetected_chromedriver.patcher import LooseVersion  # type: ignore[attr-defined]
         return LooseVersion(str(self.version_main or settings.CHROME_VERSION_MAIN))
 
     Patcher.fetch_release_number = _patched
 
-
-# Применяем патч один раз при импорте
 _patch_fetch_release_number()
 
 
