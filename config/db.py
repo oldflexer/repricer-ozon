@@ -5,6 +5,7 @@ Database settings.
 from pathlib import Path
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from instance import InstanceSettings
 
 
 class DatabaseSettings(BaseSettings):
@@ -22,5 +23,5 @@ class DatabaseSettings(BaseSettings):
         # INSTANCE_NAME is inherited from InstanceSettings via multiple inheritance in main Settings
         path = self.DATABASE_PATH
         if "{{INSTANCE_NAME}}" in path:
-            path = path.replace("{{INSTANCE_NAME}}", self.INSTANCE_NAME)
+            path = path.replace("{{INSTANCE_NAME}}", InstanceSettings.INSTANCE_NAME)
         return Path(path)

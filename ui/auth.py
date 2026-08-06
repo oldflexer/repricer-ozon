@@ -27,7 +27,7 @@ def check_auth() -> None:
             username = st.text_input("Логин")
             password = st.text_input("Пароль", type="password")
             if st.button("Войти", use_container_width=True, icon=":material/login:"):
-                if username == settings.WEB_USER and password == settings.WEB_PASS:
+                if username == settings.USER and password == settings.PASS:
                     st.session_state.authenticated = True
                     st.rerun()
                 else:
