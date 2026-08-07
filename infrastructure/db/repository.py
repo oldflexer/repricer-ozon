@@ -38,6 +38,134 @@ class SQLiteRepository(
         """
         self.db_path = db_path
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self._initialize_schema()
+
+    def _initialize_schema(self) -> None:
+        """Создаёт таблицы, если они не существуют (для тестов и простого запуска без миграций)."""
+        with self._get_connection() as conn:
+            # Таблица товаров
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS product (
+                    product_id INTEGER PRIMARY KEY,
+                    offer_id TEXT,
+                    sku TEXT UNIQUE,
+                    product_name TEXT,
+                    rip REAL,
+                    net_price REAL,
+                    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    real_customer_price REAL
+                )
+            """)
+            # Таблица стратегий (справочник)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS strategy (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    strategy_name TEXT UNIQUE
+                )
+            """)
+            # Начальные данные стратегий
+            conn.execute("INSERT OR IGNORE INTO strategy(id, strategy_name) VALUES (1, 'Ниже')")
+            conn.execute("INSERT OR IGNORE INTO strategy(id, strategy_name) VALUES (2, 'Выше')")
+            conn.execute("INSERT OR IGNORE INTO strategy(id, strategy_name) VALUES (3, 'Равная')")
+            # Связь товаров со стратегиями (интервалы)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS product_strategy (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    product_id INTEGER,
+                    interval_start TEXT,
+                    interval_stop TEXT,
+                    strategy_id INTEGER,
+                    strategy_percent REAL,
+                    FOREIGN KEY(product_id) REFERENCES product(product_id),
+                    FOREIGN KEY(strategy_id) REFERENCES strategy(id)
+                )
+            """)
+            # История цен
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS product_price_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    product_id INTEGER,
+                    min_price REAL,
+                    price REAL,
+                    old_price REAL,
+                    marketing_seller_price REAL,
+                    net_price REAL,
+                    external_index_data_price REAL,
+                    external_index_data_index REAL,
+                    ozon_index_data_price REAL,
+                    ozon_index_data_index REAL,
+                    self_marketplaces_index_data_price REAL,
+                    self_marketplaces_index_data_index REAL,
+                    result_target_price REAL,
+                    discount_coef REAL,
+                    marginality REAL,
+                    sales_percent_fbs REAL,
+                    acquiring REAL,
+                    fbs_first_mile_min_amount REAL,
+                    fbs_first_mile_max_amount REAL,
+                    fbs_direct_flow_trans_min_amount REAL,
+                    fbs_direct_flow_trans_max_amount REAL,
+                    fbs_deliv_to_customer_amount REAL,
+                    log_details TEXT,
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    real_price REAL,
+                    fbo_deliv_to_customer_amount REAL,
+                    fbo_direct_flow_trans_min_amount REAL,
+                    fbo_direct_flow_trans_max_amount REAL,
+                    fbo_return_flow_amount REAL,
+                    fbs_return_flow_amount REAL,
+                    FOREIGN KEY(product_id) REFERENCES product(product_id)
+                )
+            """)
+            # История маржинальности
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS product_marginality_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    product_id INTEGER,
+                    marginality REAL,
+                    marginality_week REAL,
+                    marginality_month REAL,
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY(product_id) REFERENCES product(product_id)
+                )
+            """)
+            # Служебная таблица
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS maintenance (
+                    key TEXT PRIMARY KEY,
+                    value TEXT,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            conn.execute("INSERT OR IGNORE INTO maintenance (key, value) VALUES ('last_cleanup', '1970-01-01 00:00:00')")
+            # Индексы
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_product_sku ON product(sku)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_history_product_timestamp ON product_price_history(product_id, timestamp)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_marginality_product_timestamp ON product_marginality_history(product_id, timestamp)")
+            # Таблица дневных агрегатов (миграция 002)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS product_price_daily (
+                    product_id INTEGER NOT NULL,
+                    date DATE NOT NULL,
+                    avg_price REAL,
+                    avg_marginality REAL,
+                    min_price REAL,
+                    max_price REAL,
+                    updates_count INTEGER,
+                    PRIMARY KEY (product_id, date),
+                    FOREIGN KEY(product_id) REFERENCES product(product_id)
+                )
+            """)
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_daily_product_date ON product_price_daily(product_id, date)")
+            # Таблица логов расчётов (миграция 002)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS price_calculation_logs (
+                    history_id INTEGER PRIMARY KEY,
+                    log_details TEXT,
+                    FOREIGN KEY(history_id) REFERENCES product_price_history(id)
+                )
+            """)
+            conn.commit()
 
     # ------------------------------------------------------------------
     # Вспомогательные методы

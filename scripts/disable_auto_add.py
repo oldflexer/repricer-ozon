@@ -15,10 +15,9 @@ import asyncio
 import sys
 from pathlib import Path
 
-from scripts.common import register_signal_handlers
-
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from scripts.common import register_signal_handlers
 from config.settings import settings
 from core.container import container
 from infrastructure.logger import setup_logging

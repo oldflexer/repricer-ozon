@@ -5,7 +5,7 @@ Database settings.
 from pathlib import Path
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from instance import InstanceSettings
+from config.instance import InstanceSettings
 
 
 class DatabaseSettings(BaseSettings):

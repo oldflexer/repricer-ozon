@@ -15,7 +15,7 @@ def test_load_products():
         return
 
     loader = ExcelLoader(data_file)
-    products = loader.load()
+    products, warnings = loader.load()
     print(f"\n📦 Загружено товаров: {len(products)}\n")
 
     for idx, product in enumerate(products, 1):

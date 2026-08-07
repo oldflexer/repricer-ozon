@@ -2,7 +2,7 @@ import sys
 from pathlib import Path
 import pytest
 import pandas as pd
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, PropertyMock
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -36,8 +36,11 @@ def test_update_prices_dry_run(tmp_path):
     excel_path = tmp_path / 'test.xlsx'
     df.to_excel(excel_path, index=False)
 
-    with patch('update_competitor_prices.settings.DATA_FILE_PATH', excel_path):
-        with patch('update_competitor_prices.parse_price_with_retry') as mock_parse:
+    # Patch the DATA_FILE property on the settings instance
+    from config.settings import settings
+    with patch.object(type(settings), 'DATA_FILE_PATH', new_callable=PropertyMock) as mock_path:
+        mock_path.return_value = excel_path
+        with patch('scripts.parser.parse_price_with_retry') as mock_parse:
             mock_parse.return_value = 999.0
             stats = update_prices(dry_run=True)
             assert stats['updated'] == 1
