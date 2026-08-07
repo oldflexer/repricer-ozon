@@ -83,8 +83,8 @@ repricer-ozon/
 │       ├── 001_initial_schema.py           # 6 таблиц + seed
 │       └── 002_add_daily_aggregates_and_logs.py  # daily aggregates + logs
 ├── data/                        # Runtime (создаётся автоматически)
-│   ├── products.xlsx            # Входной Excel
-│   └── repricer.db              # SQLite
+│   ├── products_{{INSTANCE_NAME}}.xlsx            # Входной Excel
+│   └── repricer_{{INSTANCE_NAME}}.db              # SQLite
 ├── logs/                        # Логи (ротация по дням, 7 бэкапов)
 │   ├── repricer-{INSTANCE}.log
 │   └── parser-{INSTANCE}.log
@@ -109,15 +109,15 @@ repricer-ozon/
 | `OLD_PRICE_MULTIPLIER` | Множитель для old_price | `1.5` |
 | `PRICE_ROUND_UP_TO` | Округление old_price | `100` |
 | `MANAGE_ELASTIC_BOOSTING` | Управление эластичным бустингом | `false` |
-| `DATA_FILE` | Путь к Excel (поддерживает `{{INSTANCE_NAME}}`) | `./data/products.xlsx` |
-| `DATABASE_PATH` | Путь к SQLite (поддерживает `{{INSTANCE_NAME}}`) | `./data/repricer.db` |
+| `DATA_FILE` | Путь к Excel (поддерживает `{{INSTANCE_NAME}}`) | `./data/products_{{INSTANCE_NAME}}.xlsx` |
+| `DATABASE_PATH` | Путь к SQLite (поддерживает `{{INSTANCE_NAME}}`) | `./data/repricer_{{INSTANCE_NAME}}.db` |
 | `NOTIFICATION_MAX_DETAILS` | Лимит детализации в email | `20` |
 | `WEB_USER` / `WEB_PASS` | Логин/пароль дашборда | `admin` / `changeme` |
-| `CHROME_PROFILE_PATH` | Путь к профилю Chrome для парсера | `/home/server/chrome_profile` |
+| `CHROME_PROFILE_PATH` | Путь к профилю Chrome для парсера | автоопределение по ОС |
 
 ## 📥 Входные данные (Excel)
 
-Файл `products.xlsx` (колонки **обязательны**):
+Файл `products_{{INSTANCE_NAME}}.xlsx` (колонки **обязательны**):
 
 | Колонка | Описание |
 |---------|----------|

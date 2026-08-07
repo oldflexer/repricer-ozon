@@ -55,7 +55,7 @@ class Settings(
     sub-classes based on their env_prefix configuration.
     """
 
-    model_config = SettingsConfigDict(extra="ignore", env_nested_delimiter="__")
+    model_config = SettingsConfigDict(extra="ignore", env_nested_delimiter="__", env_prefix="")
 
 
 # ------------------------------------------------------------------

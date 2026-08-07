@@ -97,14 +97,8 @@ class OzonPriceParser:
     driver: Optional[WebDriver]
     wait: Optional[WebDriverWait]
 
-    def __init__(self, headless: bool = False) -> None:
-        """
-        Инициализирует парсер.
-
-        Args:
-            headless: Запускать ли браузер в headless-режиме (по умолчанию False).
-        """
-        self.headless = headless
+    def __init__(self) -> None:
+        """Инициализирует парсер. Браузер всегда запускается в видимом режиме."""
         self.driver = None
         self.wait = None
 
@@ -113,10 +107,9 @@ class OzonPriceParser:
     # ------------------------------------------------------------------
 
     def _build_options(self) -> uc.ChromeOptions:
-        """Создаёт опции для undetected-chromedriver."""
+        """Создаёт опции для undetected-chromedriver. Браузер всегда запускается в видимом режиме."""
         options = uc.ChromeOptions()
-        if self.headless:
-            options.add_argument("--headless=new")
+        # headless режим отключен — браузер должен быть видимым
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--disable-gpu")
@@ -133,12 +126,11 @@ class OzonPriceParser:
         return options
 
     def _build_selenium_options(self):
-        """Создаёт стандартные опции Selenium для fallback-режима."""
+        """Создаёт стандартные опции Selenium для fallback-режима. Браузер всегда в видимом режиме."""
         from selenium.webdriver.chrome.options import Options as ChromeOptions
 
         options = ChromeOptions()
-        if self.headless:
-            options.add_argument("--headless=new")
+        # headless режим отключен — браузер должен быть видимым
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--disable-gpu")

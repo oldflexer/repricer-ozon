@@ -66,7 +66,7 @@ class Container:
 
     def parser(self) -> OzonPriceParser:
         """Create a new parser instance (factory)."""
-        return OzonPriceParser(headless=True)
+        return OzonPriceParser()
 
     # ------------------------------------------------------------------
     # Core Services (Singletons)

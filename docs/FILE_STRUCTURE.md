@@ -70,8 +70,8 @@ repricer-ozon/
 │       └── 002_add_daily_aggregates_and_logs.py  # Таблицы product_price_daily, price_calculation_logs
 │
 ├── data/                           # runtime-данные (создаётся автоматически)
-│   ├── products.xlsx               # Входной Excel-файл с товарами
-│   └── repricer.db                 # SQLite база данных
+│   ├── products_{{INSTANCE_NAME}}.xlsx               # Входной Excel-файл с товарами
+│   └── repricer_{{INSTANCE_NAME}}.db                 # SQLite база данных
 │
 ├── logs/                           # Лог-файлы (создаётся автоматически)
 │   ├── repricer-{INSTANCE}.log     # Логи репрайсера (ротация по дням, 7 бэкапов)

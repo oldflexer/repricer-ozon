@@ -2,8 +2,21 @@
 Competitor parser settings.
 """
 
+import os
+from pathlib import Path
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _default_chrome_profile_path() -> str:
+    """Returns platform-appropriate default Chrome profile path."""
+    if os.name == "nt":  # Windows
+        # Use LOCALAPPDATA for Windows
+        local_app_data = os.environ.get("LOCALAPPDATA", str(Path.home() / "AppData" / "Local"))
+        return str(Path(local_app_data) / "Google" / "Chrome" / "User Data" / "Default")
+    else:  # Linux/macOS
+        # Default Linux path (can be overridden by CHROME_PROFILE_PATH env var)
+        return "/home/server/chrome_profile"
 
 
 class ParserSettings(BaseSettings):
@@ -11,7 +24,7 @@ class ParserSettings(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="", extra="ignore")
 
-    CHROME_PROFILE_PATH: str = Field(default="/home/server/chrome_profile", description="Path to Chrome profile for undetected-chromedriver")
+    CHROME_PROFILE_PATH: str = Field(default_factory=_default_chrome_profile_path, description="Path to Chrome profile for undetected-chromedriver (auto-detected by OS)")
     MAX_COMPETITORS: int = Field(default=5, description="Maximum number of competitors in Excel (columns Конкурент 1..N)")
     PARSER_RETRIES: int = Field(default=2, description="Number of retry attempts for parsing a single page")
     PARSER_REQUEST_DELAY_MIN: float = Field(default=5.0, description="Minimum delay between parser HTTP requests (seconds)")

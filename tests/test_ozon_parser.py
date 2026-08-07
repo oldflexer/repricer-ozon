@@ -13,7 +13,7 @@ def parser():
     with patch('undetected_chromedriver.Chrome') as mock_driver_class:
         mock_driver = MagicMock()
         mock_driver_class.return_value = mock_driver
-        p = OzonPriceParser(headless=True)
+        p = OzonPriceParser()
         p.driver = mock_driver
         p.wait = MagicMock()
         # Mock find_element to raise NoSuchElementException (no "out of stock" element)
