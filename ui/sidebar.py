@@ -22,7 +22,7 @@ from filelock import FileLock, Timeout
 from config.settings import settings
 from core.use_cases import RepricingUseCase
 from infrastructure.logger import setup_logging, setup_parser_logging
-from scripts.parser import update_prices
+from core.use_cases import ParseCompetitorPricesUseCase
 from ui.cache import get_api_client, get_excel_loader, get_mail_notifier, get_repo
 
 LOCK_FILE = os.path.join(tempfile.gettempdir(), "repricer_parser.lock")
@@ -142,8 +142,9 @@ async def run_parsing(dry_run: bool = False) -> Dict[str, Any]:
             logger.warning("X-сервер не найден. Возможно, парсинг не сможет открыть браузер.")
     # На Windows ничего не делаем – DISPLAY не требуется
 
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, update_prices, dry_run)
+    use_case = ParseCompetitorPricesUseCase()
+    stats = await use_case.execute(dry_run=dry_run)
+    return stats
 
 
 def execute_parsing(dry_run: bool) -> Tuple[str, str]:
