@@ -32,7 +32,7 @@ from ui.sidebar import render_sidebar
 # ------------------------------------------------------------------
 # 1. Настройка страницы Streamlit
 # ------------------------------------------------------------------
-page_title = f"Репрайсер {settings.INSTANCE_NAME}"
+page_title = f"Менеджер {settings.INSTANCE_NAME}"
 st.set_page_config(
     page_title=page_title,
     layout="wide",

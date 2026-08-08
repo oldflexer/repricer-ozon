@@ -252,7 +252,7 @@ def render_sidebar() -> None:
             <img src="data:image/png;base64,{get_base64_encoded_image(icon_path)}"
                  width="40" style="margin-right: 12px;">
             <h1 style="display: inline; margin: 0; font-size: 1.5rem;">
-                Репрайсер {settings.INSTANCE_NAME}
+                Менеджер {settings.INSTANCE_NAME}
             </h1>
         </div>
         """,

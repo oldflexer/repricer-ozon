@@ -106,10 +106,10 @@ class MailNotifier:
             dry_run: Флаг тестового запуска (добавляет пометку в тему).
         """
         if dry_run:
-            subject = "[DRY-RUN] Репрайсер – результаты расчёта (цены не отправлялись)"
+            subject = f"[DRY-RUN] Репрайсер {settings.INSTANCE_NAME} – результаты расчёта (цены не отправлялись)"
         else:
             updated_count = sum(1 for u in updates if u.get("status") == "updated")
-            subject = f"Репрайсер – цикл завершён. Обновлено товаров: {updated_count}"
+            subject = f"Репрайсер {settings.INSTANCE_NAME} – цикл завершён. Обновлено товаров: {updated_count}"
 
         lines = []
         if dry_run:

@@ -6,7 +6,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from core.use_cases.update_price_timer import UpdatePriceTimerUseCase
-from scripts.update_price_timer import parse_product_ids
+from scripts.actions_update_price_timer import parse_product_ids
 
 
 @pytest.mark.asyncio
