@@ -98,14 +98,14 @@ class ParseCompetitorPricesUseCase(BaseParserUseCase):
 
         try:
             df = pd.read_excel(excel_path, engine="openpyxl")
-            df.columns = df.columns.str.strip()
+            df.columns = df.columns.str.strip().str.lower()
         except Exception as e:
             logger.error(f"Не удалось прочитать Excel: {e}")
             return {"updated": 0, "errors": 0, "skipped": 0}
 
         # Определяем индексы колонок для каждого конкурента
-        url_prefix = settings.COMPETITOR_URL_COLUMN_PREFIX
-        price_prefix = settings.COMPETITOR_PRICE_COLUMN_PREFIX
+        url_prefix = settings.COMPETITOR_URL_COLUMN_PREFIX.lower()
+        price_prefix = settings.COMPETITOR_PRICE_COLUMN_PREFIX.lower()
 
         col_indices = {}
         for i in range(1, settings.MAX_COMPETITORS + 1):

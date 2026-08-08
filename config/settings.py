@@ -59,11 +59,19 @@ class Settings(
 
     @property
     def DATABASE_PATH_PATH(self) -> Path:
-        """Returns Path to database file with INSTANCE_NAME substitution."""
-        path = self.DATABASE_PATH
-        if "{{INSTANCE_NAME}}" in path:
-            path = path.replace("{{INSTANCE_NAME}}", self.INSTANCE_NAME)
-        return Path(path)
+            """Returns Path to database file with INSTANCE_NAME substitution."""
+            path = self.DATABASE_PATH
+            if "{{INSTANCE_NAME}}" in path:
+                path = path.replace("{{INSTANCE_NAME}}", self.INSTANCE_NAME)
+            return Path(path)
+
+    @property
+    def DATA_FILE_PATH(self) -> Path:
+            """Returns Path to Excel data file with INSTANCE_NAME substitution."""
+            path = self.DATA_FILE
+            if "{{INSTANCE_NAME}}" in path:
+                path = path.replace("{{INSTANCE_NAME}}", self.INSTANCE_NAME)
+            return Path(path)
     
 
 # ------------------------------------------------------------------
