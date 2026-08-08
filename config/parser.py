@@ -35,4 +35,5 @@ class ParserSettings(BaseSettings):
 
     # Column name prefixes (for localization)
     COMPETITOR_URL_COLUMN_PREFIX: str = Field(default="Конкурент", description="Prefix for competitor URL column names (e.g., 'Конкурент 1')")
-    COMPETITOR_PRICE_COLUMN_PREFIX: str = Field(default="Цена", description="Prefix for competitor price column names (e.g., 'Цена 1')")
+
+    COMPETITOR_PRICE_COLUMN_PREFIX: str = Field(default="цена", description="Prefix for competitor price column names (e.g., 'Цена 1')")

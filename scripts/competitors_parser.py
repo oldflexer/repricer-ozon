@@ -14,11 +14,10 @@ from pathlib import Path
 
 from filelock import FileLock, Timeout
 
-from core.container import container
-
 # Добавляем корень проекта в sys.path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from core.container import container
 from config.settings import settings
 from core.use_cases.parse_competitor_prices import ParseCompetitorPricesUseCase
 from infrastructure.x_display import get_available_display

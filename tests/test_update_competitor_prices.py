@@ -88,18 +88,15 @@ async def test_update_prices_real_run(tmp_path):
     with patch.object(type(settings), 'DATA_FILE_PATH', new_callable=PropertyMock) as mock_path:
         mock_path.return_value = excel_path
 
-        # Мокаем wait_for_excel_available, save_safely и парсинг
+        # Мокаем только wait_for_excel_available, но НЕ save_safely (чтобы проверить реальную запись)
         with patch('core.use_cases.parse_competitor_prices.wait_for_excel_available', return_value=True):
-            with patch('core.use_cases.parse_competitor_prices.save_safely') as mock_save:
-                use_case = ParseCompetitorPricesUseCase()
-                with patch.object(use_case, '_parse_price_with_retry', return_value=999.0):
-                    stats = await use_case.execute(dry_run=False)
-                    assert stats['updated'] == 1
-                    # Проверяем, что save_safely был вызван
-                    mock_save.assert_called_once()
-                    # Проверяем, что в Excel записалась цена
-                    df_after = pd.read_excel(excel_path)
-                    assert df_after.loc[0, 'Цена 1'] == 999.0
+            use_case = ParseCompetitorPricesUseCase()
+            with patch.object(use_case, '_parse_price_with_retry', return_value=999.0):
+                stats = await use_case.execute(dry_run=False)
+                assert stats['updated'] == 1
+                # Проверяем, что в Excel записалась цена
+                df_after = pd.read_excel(excel_path)
+                assert df_after.loc[0, 'Цена 1'] == 999.0
 
 
 @pytest.mark.asyncio
