@@ -5,6 +5,7 @@
 data/*
 logs/*
 requests/
+.VSCodeCounter
 *.log
 get_info.py
 PLAN.md

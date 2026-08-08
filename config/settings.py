@@ -57,6 +57,14 @@ class Settings(
 
     model_config = SettingsConfigDict(extra="ignore", env_nested_delimiter="__", env_prefix="")
 
+    @property
+    def DATABASE_PATH_PATH(self) -> Path:
+        """Returns Path to database file with INSTANCE_NAME substitution."""
+        path = self.DATABASE_PATH
+        if "{{INSTANCE_NAME}}" in path:
+            path = path.replace("{{INSTANCE_NAME}}", self.INSTANCE_NAME)
+        return Path(path)
+    
 
 # ------------------------------------------------------------------
 # 3. Global settings instance
