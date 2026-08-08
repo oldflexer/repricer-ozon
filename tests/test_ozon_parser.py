@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from infrastructure.ozon_parser import OzonPriceParser
+from infrastructure.ozon_competitor import OzonPriceParser
 
 
 @pytest.fixture

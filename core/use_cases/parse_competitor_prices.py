@@ -17,7 +17,7 @@ from config.settings import settings
 from core.use_cases.base_parser import BaseParserUseCase
 from infrastructure.file_utils import save_safely, wait_for_excel_available
 from infrastructure.logger import logger
-from infrastructure.ozon_parser import OzonPriceParser
+from infrastructure.ozon_competitor import OzonPriceParser
 from scripts.common import is_shutdown_requested
 
 

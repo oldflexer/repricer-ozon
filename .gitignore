@@ -5,7 +5,9 @@
 data/*
 logs/*
 requests/
-.VSCodeCounter
+.VSCodeCounter/
+chrome_profile/*
+download/*
 *.log
 get_info.py
 PLAN.md
