@@ -223,12 +223,13 @@ class PriceCalculationService:
         )
         
         total_costs = (fbs_total + fbo_total) / 2 + pricing.net_price
-        if result_target_price > 0:
-            marginality = (result_target_price - total_costs) / result_target_price
-        else:
-            marginality = 0.0
 
         real_price = result_target_price * discount_coef
+
+        if real_price > 0:
+            marginality = (real_price - total_costs) / real_price
+        else:
+            marginality = 0.0
 
         log_details = {
             "approx_real_price": approx_real_price,
