@@ -6,7 +6,6 @@
 import random
 import re
 import time
-from typing import Optional
 
 from selenium.common.exceptions import NoSuchElementException, TimeoutException
 from selenium.webdriver.common.by import By
@@ -14,7 +13,6 @@ from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
-from config.settings import settings
 from infrastructure.chrome_driver import ChromeDriverManager
 from infrastructure.logger import logger
 
@@ -33,8 +31,8 @@ class OzonPriceParser:
             headless: Запускать браузер в headless-режиме (по умолчанию False).
         """
         self.driver_manager = ChromeDriverManager(headless=headless, use_profile=True)
-        self.driver: Optional[WebDriver] = None
-        self.wait: Optional[WebDriverWait] = None
+        self.driver: WebDriver | None = None
+        self.wait: WebDriverWait | None = None
 
     def _ensure_driver(self) -> bool:
         """Гарантирует, что драйвер инициализирован."""
@@ -53,7 +51,7 @@ class OzonPriceParser:
         self.driver = self.driver_manager.driver
         self.wait = self.driver_manager.wait
 
-    def get_price(self, product_url: str) -> Optional[float]:
+    def get_price(self, product_url: str) -> float | None:
         """
         Получает цену товара по его URL.
 
@@ -87,9 +85,9 @@ class OzonPriceParser:
             # Поиск элемента с ценой по нескольким селекторам
             price_selectors = [
                 'span[data-testid="price-price"]',
-                'span.tsHeadline600Large',
-                'span.pdp_b0h.tsHeadline600Large',
-                'span.pdp_b0h.tsHeadline500Medium',
+                "span.tsHeadline600Large",
+                "span.pdp_b0h.tsHeadline600Large",
+                "span.pdp_b0h.tsHeadline500Medium",
                 'div[data-testid="price"] span',
                 'span[class*="tsHeadline"]',
             ]

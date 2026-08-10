@@ -7,14 +7,9 @@
 """
 
 import signal
-import subprocess
-import sys
-from pathlib import Path
-from typing import Optional
 
 from config.settings import settings
 from infrastructure.logger import logger
-
 
 # Глобальный флаг для graceful shutdown (используется в скриптах)
 _shutdown_requested = False
@@ -56,6 +51,7 @@ def setup_script_logging(script_name: str, mode: str = "a"):
         Настроенный логгер.
     """
     from infrastructure.logger import setup_logging
+
     return setup_logging(f"{script_name}-{settings.INSTANCE_NAME}.log", mode=mode)
 
 
@@ -71,4 +67,5 @@ def setup_parser_logging(script_name: str, mode: str = "a"):
         Настроенный логгер.
     """
     from infrastructure.logger import setup_parser_logging
+
     return setup_parser_logging(f"{script_name}-{settings.INSTANCE_NAME}.log", mode=mode)

@@ -13,7 +13,9 @@ class ApiSettings(BaseSettings):
 
     CLIENT_ID: str | None = Field(default=None, description="Client ID for Ozon Seller API")
     API_KEY: str | None = Field(default=None, description="API Key for Ozon Seller API")
-    API_URL: str = Field(default="https://api-seller.ozon.ru", description="Base URL for Ozon Seller API")
+    API_URL: str = Field(
+        default="https://api-seller.ozon.ru", description="Base URL for Ozon Seller API"
+    )
 
     # Request settings
     BATCH_SIZE: int = Field(default=100, description="Batch size for API requests")

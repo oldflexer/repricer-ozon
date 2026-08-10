@@ -14,15 +14,14 @@ import os
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any, Dict, Tuple
+from typing import Any
 
 import streamlit as st
 from filelock import FileLock, Timeout
 
 from config.settings import settings
-from core.use_cases import RepricingUseCase
+from core.use_cases import ParseCompetitorPricesUseCase, RepricingUseCase
 from infrastructure.logger import setup_logging, setup_parser_logging
-from core.use_cases import ParseCompetitorPricesUseCase
 from ui.cache import get_api_client, get_excel_loader, get_mail_notifier, get_repo
 
 LOCK_FILE = os.path.join(tempfile.gettempdir(), "repricer_parser.lock")
@@ -42,7 +41,7 @@ def get_base64_encoded_image(image_path: Path) -> str:
         return base64.b64encode(f.read()).decode()
 
 
-def run_repricing(dry_run: bool = False) -> Dict[str, Any]:
+def run_repricing(dry_run: bool = False) -> dict[str, Any]:
     """
     Запускает репрайсинг в синхронном контексте (из Streamlit).
 
@@ -56,7 +55,7 @@ def run_repricing(dry_run: bool = False) -> Dict[str, Any]:
     logger = setup_logging("repricer.log", mode="w")
     logger.info("=== Запуск репрайсинга из дашборда ===")
 
-    async def _run() -> Dict[str, Any]:
+    async def _run() -> dict[str, Any]:
         loader = get_excel_loader()
         api = get_api_client()
         notifier = get_mail_notifier()
@@ -71,7 +70,7 @@ def run_repricing(dry_run: bool = False) -> Dict[str, Any]:
     return asyncio.run(_run())
 
 
-def execute_repricing(dry_run: bool) -> Tuple[str, str]:
+def execute_repricing(dry_run: bool) -> tuple[str, str]:
     """
     Выполняет репрайсинг с отображением прогресса в Streamlit.
 
@@ -115,7 +114,7 @@ def execute_repricing(dry_run: bool) -> Tuple[str, str]:
             st.session_state.running = False
 
 
-async def run_parsing(dry_run: bool = False) -> Dict[str, Any]:
+async def run_parsing(dry_run: bool = False) -> dict[str, Any]:
     """
     Запускает парсинг конкурентов в асинхронном контексте (из Streamlit).
 
@@ -147,7 +146,7 @@ async def run_parsing(dry_run: bool = False) -> Dict[str, Any]:
     return stats
 
 
-def execute_parsing(dry_run: bool) -> Tuple[str, str]:
+def execute_parsing(dry_run: bool) -> tuple[str, str]:
     """
     Выполняет парсинг конкурентов с отображением прогресса в Streamlit.
 
@@ -160,9 +159,7 @@ def execute_parsing(dry_run: bool) -> Tuple[str, str]:
     lock = FileLock(LOCK_FILE, timeout=settings.PARSER_LOCK_TIMEOUT)
     try:
         with lock.acquire(timeout=settings.PARSER_LOCK_TIMEOUT):
-            with st.status(
-                "Выполняется парсинг конкурентов...", expanded=True
-            ) as status:
+            with st.status("Выполняется парсинг конкурентов...", expanded=True) as status:
                 st.write("Инициализация браузера и загрузка страниц Ozon...")
                 try:
                     stats = asyncio.run(run_parsing(dry_run=dry_run))
@@ -301,7 +298,9 @@ def render_sidebar() -> None:
     is_busy = st.session_state.get("running") or st.session_state.get("parsing_running")
 
     # Кнопки репрайсинга
-    st.markdown('<h3><i class="fa-solid fa-arrows-up-down"></i> Репрайсинг</h3>', unsafe_allow_html=True)
+    st.markdown(
+        '<h3><i class="fa-solid fa-arrows-up-down"></i> Репрайсинг</h3>', unsafe_allow_html=True
+    )
     if is_busy:
         st.warning("Выполняется задача. Пожалуйста, подождите...", icon=":material/warning:")
 
@@ -339,7 +338,9 @@ def render_sidebar() -> None:
             st.rerun()
 
     # Кнопки парсинга
-    st.markdown('<h3><i class="fa-solid fa-spider"></i> Парсинг конкурентов</h3>', unsafe_allow_html=True)
+    st.markdown(
+        '<h3><i class="fa-solid fa-spider"></i> Парсинг конкурентов</h3>', unsafe_allow_html=True
+    )
     if st.session_state.get("parsing_running"):
         st.button(
             "Парсинг цен",
@@ -374,5 +375,7 @@ def render_sidebar() -> None:
             st.rerun()
 
     # Работа с Excel
-    st.markdown('<h3><i class="fa-solid fa-table-cells"></i> Работа с Excel</h3>', unsafe_allow_html=True)
+    st.markdown(
+        '<h3><i class="fa-solid fa-table-cells"></i> Работа с Excel</h3>', unsafe_allow_html=True
+    )
     render_sidebar_section_excel(disabled=bool(is_busy))

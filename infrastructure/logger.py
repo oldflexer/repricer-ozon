@@ -9,7 +9,6 @@ import logging
 import sys
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
-from typing import Optional
 
 import structlog
 
@@ -54,7 +53,7 @@ logger = structlog.get_logger()
 
 
 def setup_logging(
-    log_file: Optional[str] = None, mode: str = "a", console: bool = True
+    log_file: str | None = None, mode: str = "a", console: bool = True
 ) -> structlog.BoundLogger:
     """
     Настраивает логирование репрайсера.
@@ -77,6 +76,7 @@ def setup_logging(
         log_file = "repricer.log"
     file_path = _LOG_DIR / log_file
 
+    file_handler: TimedRotatingFileHandler | logging.FileHandler
     if mode == "a":
         file_handler = TimedRotatingFileHandler(
             file_path,
@@ -102,9 +102,7 @@ def setup_logging(
     return logger
 
 
-def setup_parser_logging(
-    log_file: Optional[str] = None, mode: str = "a"
-) -> logging.Logger:
+def setup_parser_logging(log_file: str | None = None, mode: str = "a") -> logging.Logger:
     """
     Настраивает логирование для парсера конкурентов.
 
@@ -122,6 +120,7 @@ def setup_parser_logging(
         log_file = "parser.log"
     file_path = _LOG_DIR / log_file
 
+    file_handler: TimedRotatingFileHandler | logging.FileHandler
     if mode == "a":
         file_handler = TimedRotatingFileHandler(
             file_path,

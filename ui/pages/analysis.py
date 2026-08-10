@@ -6,12 +6,12 @@
     2. ABC-анализ – распределение товаров по вкладу в прибыль (диаграмма Парето).
 """
 
-import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import streamlit as st
 
-from ui.cache import get_repo, get_cached_ozon_price_df
+from ui.cache import get_cached_ozon_price_df, get_repo
 
 
 def render_analysis_page() -> None:
@@ -71,8 +71,8 @@ def render_commissions_analysis() -> None:
         analysis_df["fbs_direct_flow_trans_min_amount"]
         + analysis_df["fbs_direct_flow_trans_max_amount"]
     ) / 2
-    analysis_df["sales_commission"] = (
-        analysis_df["result_target_price"] * (analysis_df["sales_percent_fbs"] / 100)
+    analysis_df["sales_commission"] = analysis_df["result_target_price"] * (
+        analysis_df["sales_percent_fbs"] / 100
     )
     analysis_df["total_extra_costs"] = (
         analysis_df["sales_commission"]
@@ -215,7 +215,7 @@ def render_abc_analysis() -> None:
         """Определяет категорию A/B/C по накопленному проценту."""
         if percent <= 80:
             return "A"
-        elif percent <= 95:
+        if percent <= 95:
             return "B"
         return "C"
 
@@ -289,7 +289,9 @@ def render_abc_analysis() -> None:
 
     st.subheader("Таблица ABC-категорий")
     st.dataframe(
-        df_sorted[["sku", "product_name", "profit_positive", "cumulative_percent", "category"]].rename(
+        df_sorted[
+            ["sku", "product_name", "profit_positive", "cumulative_percent", "category"]
+        ].rename(
             columns={
                 "profit_positive": "Прибыль (₽)",
                 "cumulative_percent": "Накопленный %",

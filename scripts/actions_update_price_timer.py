@@ -17,7 +17,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from config.settings import settings
 from core.use_cases.update_price_timer import UpdatePriceTimerUseCase
 from infrastructure.db import SQLiteRepository
-from infrastructure.logger import setup_logging
 from infrastructure.ozon_api import OzonApiClient
 from scripts.common import register_signal_handlers, setup_script_logging
 
@@ -32,20 +31,12 @@ def parse_product_ids(arg: str) -> list[int]:
 async def main() -> None:
     register_signal_handlers()
 
-    parser = argparse.ArgumentParser(
-        description="Обновление таймера актуальности минимальной цены"
-    )
+    parser = argparse.ArgumentParser(description="Обновление таймера актуальности минимальной цены")
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument(
-        "--product-ids",
-        type=str,
-        help="Список product_id через запятую (например, 123456,789012)"
+        "--product-ids", type=str, help="Список product_id через запятую (например, 123456,789012)"
     )
-    group.add_argument(
-        "--all",
-        action="store_true",
-        help="Обновить для всех товаров в базе данных"
-    )
+    group.add_argument("--all", action="store_true", help="Обновить для всех товаров в базе данных")
     args = parser.parse_args()
 
     if args.all:

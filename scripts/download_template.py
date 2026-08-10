@@ -16,8 +16,8 @@ from filelock import FileLock, Timeout
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from config.settings import settings
-from infrastructure.ozon_seller import OzonSellerClient
 from infrastructure.logger import setup_logging
+from infrastructure.ozon_seller import OzonSellerClient
 from scripts.common import register_signal_handlers
 
 logger = setup_logging("download_template.log", mode="a")
@@ -32,12 +32,10 @@ def main():
     parser.add_argument(
         "--output-dir",
         default="download",
-        help="Папка для сохранения файла (по умолчанию: download)"
+        help="Папка для сохранения файла (по умолчанию: download)",
     )
     parser.add_argument(
-        "--headless",
-        action="store_true",
-        help="Запустить браузер в headless-режиме (без GUI)"
+        "--headless", action="store_true", help="Запустить браузер в headless-режиме (без GUI)"
     )
     args = parser.parse_args()
 

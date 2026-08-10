@@ -3,9 +3,8 @@
 """
 
 import asyncio
-from typing import List, Dict, Any, Optional
+from typing import Any
 
-from core.entities import ProductInfo, PricingData, PriceCalculationResult
 from core.repository import IProductRepository
 from infrastructure.logger import logger
 
@@ -19,11 +18,11 @@ class HistoryService:
 
     async def save_history(
         self,
-        results_data: List[tuple],
-        updates: List[Dict[str, Any]],
-        valid_ids: List[int],
+        results_data: list[tuple],
+        updates: list[dict[str, Any]],
+        valid_ids: list[int],
         dry_run: bool,
-        update_results: Dict[int, Dict],
+        update_results: dict[int, dict],
         wait_seconds: int = 10,
     ) -> None:
         """
@@ -84,8 +83,12 @@ class HistoryService:
 
             if real_price_value is not None:
                 self.repo.update_real_customer_price(product.sku, real_price_value)
-                self.repo.save_price_history(product.sku, pricing, result, real_price=real_price_value)
-                self.repo.save_daily_aggregates(product.sku, pricing, result, real_price=real_price_value)
+                self.repo.save_price_history(
+                    product.sku, pricing, result, real_price=real_price_value
+                )
+                self.repo.save_daily_aggregates(
+                    product.sku, pricing, result, real_price=real_price_value
+                )
                 for u in updates:
                     if u["sku"] == product.sku:
                         u["new_price"] = real_price_value

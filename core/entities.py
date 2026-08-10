@@ -7,7 +7,6 @@
 
 from dataclasses import dataclass, field
 from datetime import datetime, time
-from typing import Optional, List
 
 from core.enums import StrategyType, parse_strategy_value
 
@@ -29,16 +28,17 @@ class ProductInfo:
         real_customer_price: Реальная цена покупателя (из индексов).
         competitor_min_price: Минимальная цена конкурента.
     """
+
     sku: str
-    product_name: Optional[str] = None
+    product_name: str | None = None
     cost_price: float = 0.0
     min_price: float = 0.0
     current_price: float = 0.0
-    old_price: Optional[float] = None
-    product_id: Optional[int] = None
-    offer_id: Optional[str] = None
-    real_customer_price: Optional[float] = None
-    competitor_min_price: Optional[float] = None
+    old_price: float | None = None
+    product_id: int | None = None
+    offer_id: str | None = None
+    real_customer_price: float | None = None
+    competitor_min_price: float | None = None
 
 
 @dataclass
@@ -53,6 +53,7 @@ class StrategyInterval:
         percent: Процент отклонения для стратегий BELOW и ABOVE.
         start_time, end_time: Объекты time, вычисляемые автоматически.
     """
+
     start: str
     end: str
     strategy_type: StrategyType  # Enum: BELOW=1, ABOVE=2, EQUAL=3
@@ -96,6 +97,7 @@ class PricingData:
             Комиссия за прямую доставку (FBO).
         fbo_deliv_to_customer_amount: Доставка до покупателя (FBO).
     """
+
     product_id: int
     price: float = 0.0
     old_price: float = 0.0
@@ -103,12 +105,12 @@ class PricingData:
     net_price: float = 0.0
     marketing_seller_price: float = 0.0
 
-    external_index_data_price: Optional[float] = None
-    external_index_data_index: Optional[float] = None
-    ozon_index_data_price: Optional[float] = None
-    ozon_index_data_index: Optional[float] = None
-    self_marketplaces_index_data_price: Optional[float] = None
-    self_marketplaces_index_data_index: Optional[float] = None
+    external_index_data_price: float | None = None
+    external_index_data_index: float | None = None
+    ozon_index_data_price: float | None = None
+    ozon_index_data_index: float | None = None
+    self_marketplaces_index_data_price: float | None = None
+    self_marketplaces_index_data_index: float | None = None
 
     acquiring: float = 0.0
     fbo_deliv_to_customer_amount: float = 0.0
@@ -123,7 +125,6 @@ class PricingData:
     fbs_return_flow_amount: float = 0.0
     sales_percent_fbo: float = 0.0
     sales_percent_fbs: float = 0.0
-
 
     @classmethod
     def from_api_response(cls, data: dict) -> "PricingData":
@@ -140,7 +141,7 @@ class PricingData:
         indexes = data.get("price_indexes", {})
         commissions = data.get("commissions", {})
 
-        def _get_index(index_name: str) -> tuple[Optional[float], Optional[float]]:
+        def _get_index(index_name: str) -> tuple[float | None, float | None]:
             """Извлекает цену и значение индекса из блока price_indexes."""
             idx = indexes.get(index_name)
             if isinstance(idx, dict):
@@ -183,12 +184,20 @@ class PricingData:
             self_marketplaces_index_data_index=self_index,
             acquiring=float(data.get("acquiring", 0)),
             fbo_deliv_to_customer_amount=float(commissions.get("fbo_deliv_to_customer_amount", 0)),
-            fbo_direct_flow_trans_max_amount=float(commissions.get("fbo_direct_flow_trans_max_amount", 0)),
-            fbo_direct_flow_trans_min_amount=float(commissions.get("fbo_direct_flow_trans_min_amount", 0)),
+            fbo_direct_flow_trans_max_amount=float(
+                commissions.get("fbo_direct_flow_trans_max_amount", 0)
+            ),
+            fbo_direct_flow_trans_min_amount=float(
+                commissions.get("fbo_direct_flow_trans_min_amount", 0)
+            ),
             fbo_return_flow_amount=float(commissions.get("fbo_return_flow_amount", 0)),
             fbs_deliv_to_customer_amount=float(commissions.get("fbs_deliv_to_customer_amount", 0)),
-            fbs_direct_flow_trans_max_amount=float(commissions.get("fbs_direct_flow_trans_max_amount", 0)),
-            fbs_direct_flow_trans_min_amount=float(commissions.get("fbs_direct_flow_trans_min_amount", 0)),
+            fbs_direct_flow_trans_max_amount=float(
+                commissions.get("fbs_direct_flow_trans_max_amount", 0)
+            ),
+            fbs_direct_flow_trans_min_amount=float(
+                commissions.get("fbs_direct_flow_trans_min_amount", 0)
+            ),
             fbs_first_mile_max_amount=float(commissions.get("fbs_first_mile_max_amount", 0)),
             fbs_first_mile_min_amount=float(commissions.get("fbs_first_mile_min_amount", 0)),
             fbs_return_flow_amount=float(commissions.get("fbs_return_flow_amount", 0)),
@@ -211,10 +220,11 @@ class PriceCalculationResult:
         marginality: Рассчитанная маржинальность (в долях).
         log_details: Дополнительная информация для логирования (словарь).
     """
+
     sku: str
     target_min_price: float
-    strategy_price: Optional[float]
-    target_strategy_price: Optional[float]
+    strategy_price: float | None
+    target_strategy_price: float | None
     result_target_price: float
     marginality: float
     log_details: dict = field(default_factory=dict)
@@ -227,8 +237,9 @@ class UpdateRequest:
 
     Этот класс оставлен для обратной совместимости и будет удалён в будущих версиях.
     """
+
     product_id: int
     price: float
     min_price: float
-    net_price: Optional[float] = None
-    old_price: Optional[float] = None
+    net_price: float | None = None
+    old_price: float | None = None

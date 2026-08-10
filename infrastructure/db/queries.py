@@ -217,29 +217,51 @@ SQL_DELETE_MARGINALITY_HISTORY_BY_PID = """
 # Type-safe query parameter helpers
 # =========================================================================
 
-from typing import Tuple, Any
 
 # These type aliases document the expected parameter tuple structure for each query
 # They don't enforce at runtime but help IDEs and type checkers
 
-ProductIdBySkuParams = Tuple[str]
-InsertProductParams = Tuple[int, str, str, float, float, float]
-UpdateProductParams = Tuple[str, float, float, float, int]
-InsertProductStrategyParams = Tuple[int, int, str, str, float]
-InsertPriceHistoryParams = Tuple[
-    int, float, float, float, float, float, float, float, float,
-    float, float, float, float, float, float, float, float, float,
-    float, float, float, float, float, float, float, str
+ProductIdBySkuParams = tuple[str]
+InsertProductParams = tuple[int, str, str, float, float, float]
+UpdateProductParams = tuple[str, float, float, float, int]
+InsertProductStrategyParams = tuple[int, int, str, str, float]
+InsertPriceHistoryParams = tuple[
+    int,
+    float,
+    float,
+    float,
+    float,
+    float,
+    float,
+    float,
+    float,
+    float,
+    float,
+    float,
+    float,
+    float,
+    float,
+    float,
+    float,
+    float,
+    float,
+    float,
+    float,
+    float,
+    float,
+    float,
+    float,
+    str,
 ]
-InsertPriceCalcLogParams = Tuple[int, str]
-PriceHistoryBySkuParams = Tuple[str]
-InsertMarginalityParams = Tuple[int, float, float, float]
-AvgMarginalityParams = Tuple[int, str]
-DailyAggregateSelectParams = Tuple[str, str]
-DailyAggregateUpdateParams = Tuple[float, float, float, float, int, str, str]
-DailyAggregateInsertParams = Tuple[str, str, float, float, float, float, int]
-DailyTrendsParams = Tuple[int]
-DailyDeviationParams = Tuple[int]
-CleanupParams = Tuple[str]
-LastCleanupParams = Tuple[str]
-ProductDeleteByPidParams = Tuple[int]
+InsertPriceCalcLogParams = tuple[int, str]
+PriceHistoryBySkuParams = tuple[str]
+InsertMarginalityParams = tuple[int, float, float, float]
+AvgMarginalityParams = tuple[int, str]
+DailyAggregateSelectParams = tuple[str, str]
+DailyAggregateUpdateParams = tuple[float, float, float, float, int, str, str]
+DailyAggregateInsertParams = tuple[str, str, float, float, float, float, int]
+DailyTrendsParams = tuple[int]
+DailyDeviationParams = tuple[int]
+CleanupParams = tuple[str]
+LastCleanupParams = tuple[str]
+ProductDeleteByPidParams = tuple[int]

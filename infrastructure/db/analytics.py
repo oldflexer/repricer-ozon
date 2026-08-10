@@ -2,7 +2,7 @@
 Миксин для аналитических методов (KPI, ROI, heatmap, ABC и т.д.).
 """
 
-from typing import Any, Dict
+from typing import Any
 
 import pandas as pd
 
@@ -57,7 +57,7 @@ class AnalyticsMixin(DBConnectionMixin):
             """
             return pd.read_sql_query(query, conn)
 
-    def get_kpi_metrics(self) -> Dict[str, Any]:
+    def get_kpi_metrics(self) -> dict[str, Any]:
         """Возвращает ключевые метрики для дашборда."""
         with self._get_connection() as conn:
             today_margin = conn.execute(
@@ -122,7 +122,7 @@ class AnalyticsMixin(DBConnectionMixin):
                 params=(limit,),
             )
 
-    def get_strategy_counts(self) -> Dict[str, int]:
+    def get_strategy_counts(self) -> dict[str, int]:
         """Подсчитывает количество товаров по типам стратегий."""
         with self._get_connection() as conn:
             rows = conn.execute(
@@ -133,7 +133,7 @@ class AnalyticsMixin(DBConnectionMixin):
                 """
             ).fetchall()
             counts = {"Ниже": 0, "Выше": 0, "Равная": 0, "Смешанная": 0}
-            per_sku = {}
+            per_sku: dict[str, set[int]] = {}
             for r in rows:
                 sku = r["sku"]
                 sid = r["strategy_id"]

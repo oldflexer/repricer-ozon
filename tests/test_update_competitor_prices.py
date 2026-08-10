@@ -9,9 +9,10 @@
 
 import sys
 from pathlib import Path
-import pytest
+from unittest.mock import MagicMock, PropertyMock, patch
+
 import pandas as pd
-from unittest.mock import MagicMock, patch, PropertyMock
+import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -37,7 +38,7 @@ async def test_parse_price_with_retry_fails():
     mock_parser.get_price.return_value = None
 
     use_case = ParseCompetitorPricesUseCase(parser=mock_parser)
-    with patch('time.sleep'):
+    with patch("time.sleep"):
         price = use_case._parse_price_with_retry("http://test.com")
         assert price is None
         assert mock_parser.get_price.call_count == 2
@@ -48,63 +49,60 @@ async def test_parse_price_with_retry_fails():
 async def test_update_prices_dry_run(tmp_path):
     """Тест dry-run режима (не записывает в Excel)."""
     # Создаём тестовый Excel-файл
-    df = pd.DataFrame({
-        'SKU': ['123'],
-        'Конкурент 1': ['https://ozon.ru/1'],
-        'Цена 1': [None]
-    })
-    excel_path = tmp_path / 'test.xlsx'
+    df = pd.DataFrame({"SKU": ["123"], "Конкурент 1": ["https://ozon.ru/1"], "Цена 1": [None]})
+    excel_path = tmp_path / "test.xlsx"
     df.to_excel(excel_path, index=False)
 
     # Мокаем путь к Excel
     from config.settings import settings
-    with patch.object(type(settings), 'DATA_FILE_PATH', new_callable=PropertyMock) as mock_path:
+
+    with patch.object(type(settings), "DATA_FILE_PATH", new_callable=PropertyMock) as mock_path:
         mock_path.return_value = excel_path
 
         # Создаём UseCase и мокаем парсинг
         use_case = ParseCompetitorPricesUseCase()
-        with patch.object(use_case, '_parse_price_with_retry', return_value=999.0):
+        with patch.object(use_case, "_parse_price_with_retry", return_value=999.0):
             stats = await use_case.execute(dry_run=True)
-            assert stats['updated'] == 1
+            assert stats["updated"] == 1
             # Проверяем, что Excel не был изменён (dry-run)
             df_after = pd.read_excel(excel_path)
-            assert pd.isna(df_after.loc[0, 'Цена 1'])
+            assert pd.isna(df_after.loc[0, "Цена 1"])
 
 
 @pytest.mark.asyncio
 async def test_update_prices_real_run(tmp_path):
     """Тест реального запуска (с записью в Excel)."""
     # Создаём тестовый Excel-файл
-    df = pd.DataFrame({
-        'SKU': ['123'],
-        'Конкурент 1': ['https://ozon.ru/1'],
-        'Цена 1': [None]
-    })
-    excel_path = tmp_path / 'test.xlsx'
+    df = pd.DataFrame({"SKU": ["123"], "Конкурент 1": ["https://ozon.ru/1"], "Цена 1": [None]})
+    excel_path = tmp_path / "test.xlsx"
     df.to_excel(excel_path, index=False)
 
     # Мокаем путь к Excel
     from config.settings import settings
-    with patch.object(type(settings), 'DATA_FILE_PATH', new_callable=PropertyMock) as mock_path:
+
+    with patch.object(type(settings), "DATA_FILE_PATH", new_callable=PropertyMock) as mock_path:
         mock_path.return_value = excel_path
 
         # Мокаем только wait_for_excel_available, но НЕ save_safely (чтобы проверить реальную запись)
-        with patch('core.use_cases.parse_competitor_prices.wait_for_excel_available', return_value=True):
+        with patch(
+            "core.use_cases.parse_competitor_prices.wait_for_excel_available", return_value=True
+        ):
             use_case = ParseCompetitorPricesUseCase()
-            with patch.object(use_case, '_parse_price_with_retry', return_value=999.0):
+            with patch.object(use_case, "_parse_price_with_retry", return_value=999.0):
                 stats = await use_case.execute(dry_run=False)
-                assert stats['updated'] == 1
+                assert stats["updated"] == 1
                 # Проверяем, что в Excel записалась цена
                 df_after = pd.read_excel(excel_path)
-                assert df_after.loc[0, 'Цена 1'] == 999.0
+                assert df_after.loc[0, "Цена 1"] == 999.0
 
 
 @pytest.mark.asyncio
 async def test_update_prices_file_not_found(tmp_path):
     """Тест, когда файл не найден."""
     from config.settings import settings
-    with patch.object(type(settings), 'DATA_FILE_PATH', new_callable=PropertyMock) as mock_path:
-        mock_path.return_value = tmp_path / 'nonexistent.xlsx'
+
+    with patch.object(type(settings), "DATA_FILE_PATH", new_callable=PropertyMock) as mock_path:
+        mock_path.return_value = tmp_path / "nonexistent.xlsx"
 
         use_case = ParseCompetitorPricesUseCase()
         stats = await use_case.execute(dry_run=False)

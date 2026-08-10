@@ -33,11 +33,7 @@ from ui.sidebar import render_sidebar
 # 1. Настройка страницы Streamlit
 # ------------------------------------------------------------------
 page_title = f"Менеджер {settings.INSTANCE_NAME}"
-st.set_page_config(
-    page_title=page_title,
-    layout="wide",
-    page_icon="static/favicon.ico"
-)
+st.set_page_config(page_title=page_title, layout="wide", page_icon="static/favicon.ico")
 
 # Подключение Font Awesome 6.7.2
 st.markdown(

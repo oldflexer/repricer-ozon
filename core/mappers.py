@@ -5,10 +5,9 @@
 вспомогательные функции для построения запросов к API и ViewModel.
 """
 
-from typing import Optional
-
 from config.settings import settings
 from core.enums import StrategyType
+
 from .dto import (
     PriceUpdateRequestDTO,
     ProductDTO,
@@ -106,8 +105,8 @@ def build_price_update_request(
     product_id: int,
     price: int,
     min_price: int,
-    net_price: Optional[int] = None,
-    old_price: Optional[int] = None,
+    net_price: int | None = None,
+    old_price: int | None = None,
     manage_elastic_boosting: bool = settings.MANAGE_ELASTIC_BOOSTING,
 ) -> PriceUpdateRequestDTO:
     """
@@ -136,10 +135,10 @@ def build_price_update_request(
 
 def to_view_model(
     product: ProductInfo,
-    last_price: Optional[float],
-    last_margin: Optional[float],
-    avg_week: Optional[float],
-    avg_month: Optional[float],
+    last_price: float | None,
+    last_margin: float | None,
+    avg_week: float | None,
+    avg_month: float | None,
 ) -> ProductViewModel:
     """
     Преобразует данные товара и исторические метрики в ViewModel для дашборда.

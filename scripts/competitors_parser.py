@@ -17,8 +17,8 @@ from filelock import FileLock, Timeout
 # Добавляем корень проекта в sys.path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from core.container import container
 from config.settings import settings
+from core.container import container
 from core.use_cases.parse_competitor_prices import ParseCompetitorPricesUseCase
 from infrastructure.x_display import get_available_display
 from scripts.common import register_signal_handlers, setup_parser_logging

@@ -5,40 +5,39 @@ Defines Protocol classes for API client, Data Loader, Notifier, and Parser
 to enable dependency injection and improve testability.
 """
 
-from abc import abstractmethod
-from typing import Any, Dict, List, Optional, Protocol, Tuple
+from typing import Any, Protocol
 
-from core.entities import PricingData, PriceCalculationResult, ProductInfo, StrategyInterval
+from core.entities import PriceCalculationResult, PricingData, ProductInfo, StrategyInterval
 
 
 class IApiClient(Protocol):
     """Protocol for Ozon API client."""
 
-    async def get_product_ids_by_skus(self, skus: List[str]) -> Dict[str, dict]:
+    async def get_product_ids_by_skus(self, skus: list[str]) -> dict[str, dict]:
         """Get product_id, offer_id, and product_name for a list of SKUs."""
         ...
 
-    async def get_product_prices(self, product_ids: List[int]) -> List[PricingData]:
+    async def get_product_prices(self, product_ids: list[int]) -> list[PricingData]:
         """Get prices, indexes, and commissions for a list of product IDs."""
         ...
 
-    async def update_prices(self, prices_data: List[Dict]) -> Dict[int, Dict]:
+    async def update_prices(self, prices_data: list[dict]) -> dict[int, dict]:
         """Send price updates to Ozon API."""
         ...
 
-    async def get_actions(self) -> List[Dict]:
+    async def get_actions(self) -> list[dict]:
         """Get list of all available promotions/actions."""
         ...
 
     async def get_auto_add_products(
         self, action_id: int, auto_add_date: str, limit: int = 100, offset: int = 0
-    ) -> Dict:
+    ) -> dict:
         """Get products with auto-add for a specific action."""
         ...
 
     async def delete_auto_add_products(
-        self, action_id: int, auto_add_date: str, product_ids: List[int]
-    ) -> Dict:
+        self, action_id: int, auto_add_date: str, product_ids: list[int]
+    ) -> dict:
         """Delete products from auto-add in a promotion."""
         ...
 
@@ -50,15 +49,15 @@ class IApiClient(Protocol):
 class IDataLoader(Protocol):
     """Protocol for Excel data loader."""
 
-    def load(self) -> Tuple[List[ProductInfo], List[str]]:
+    def load(self) -> tuple[list[ProductInfo], list[str]]:
         """Load products from Excel file. Returns (products, warnings)."""
         ...
 
-    def get_strategy_intervals(self, product: ProductInfo) -> List[StrategyInterval]:
+    def get_strategy_intervals(self, product: ProductInfo) -> list[StrategyInterval]:
         """Get strategy intervals for a product."""
         ...
 
-    def update_product_in_file(self, sku: str, updates: Dict[str, Any]) -> bool:
+    def update_product_in_file(self, sku: str, updates: dict[str, Any]) -> bool:
         """Update product data in Excel file."""
         ...
 
@@ -68,8 +67,8 @@ class IDataLoader(Protocol):
         result: PriceCalculationResult,
         marginality_week: float,
         marginality_month: float,
-        old_price_update: Optional[int],
-    ) -> Dict[str, Any]:
+        old_price_update: int | None,
+    ) -> dict[str, Any]:
         """Build updates dictionary for Excel from calculation results."""
         ...
 
@@ -79,8 +78,8 @@ class INotifier(Protocol):
 
     def send_detailed_report(
         self,
-        updates: List[Dict[str, Any]],
-        errors: List[str],
+        updates: list[dict[str, Any]],
+        errors: list[str],
         dry_run: bool = False,
     ) -> None:
         """Send detailed email report with CSV attachment if needed."""
@@ -90,7 +89,7 @@ class INotifier(Protocol):
 class IParser(Protocol):
     """Protocol for competitor price parser."""
 
-    def get_price(self, product_url: str) -> Optional[float]:
+    def get_price(self, product_url: str) -> float | None:
         """Get price from competitor product URL. Returns -1.0 if out of stock, None on error."""
         ...
 

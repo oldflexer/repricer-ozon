@@ -1,6 +1,7 @@
 import sys
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock
+
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))

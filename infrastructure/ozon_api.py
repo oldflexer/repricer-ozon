@@ -2,16 +2,21 @@
 Клиент для Ozon Seller API.
 
 Реализует методы для работы с товарами, ценами, индексами и акциями.
-Поддерживает повторные попытки при ошибках и батчирование запросов.
+Поддерживает повторные попытки при ошибках, батчирование запросов
+и защиту Circuit Breaker.
 """
 
 import asyncio
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import httpx
 
 from config.settings import settings
 from core.entities import PricingData
+from infrastructure.circuit_breaker import (
+    CircuitOpenError,
+    ozon_api_circuit_breaker,
+)
 from infrastructure.http_retry import retry_on_error
 from infrastructure.logger import logger
 
@@ -42,7 +47,7 @@ class OzonApiClient:
     # ------------------------------------------------------------------
 
     @retry_on_error(max_retries=settings.API_MAX_RETRIES)
-    async def _get(self, url: str) -> Optional[dict]:
+    async def _get(self, url: str) -> dict | None:
         """
         Выполняет GET-запрос с повторными попытками.
 
@@ -60,7 +65,7 @@ class OzonApiClient:
         return None
 
     @retry_on_error(max_retries=settings.API_MAX_RETRIES)
-    async def _post(self, url: str, payload: Any) -> Optional[dict]:
+    async def _post(self, url: str, payload: Any) -> dict | None:
         """
         Выполняет POST-запрос с повторными попытками.
 
@@ -79,10 +84,22 @@ class OzonApiClient:
         return None
 
     # ------------------------------------------------------------------
+    # Внутренние методы с Circuit Breaker
+    # ------------------------------------------------------------------
+
+    async def _get_with_cb(self, url: str) -> dict | None:
+        """GET запрос с защитой Circuit Breaker."""
+        return await ozon_api_circuit_breaker.call(self._get, url)
+
+    async def _post_with_cb(self, url: str, payload: Any) -> dict | None:
+        """POST запрос с защитой Circuit Breaker."""
+        return await ozon_api_circuit_breaker.call(self._post, url, payload)
+
+    # ------------------------------------------------------------------
     # Методы для работы с товарами и ценами
     # ------------------------------------------------------------------
 
-    async def get_product_ids_by_skus(self, skus: List[str]) -> Dict[str, dict]:
+    async def get_product_ids_by_skus(self, skus: list[str]) -> dict[str, dict]:
         """
         Получает product_id, offer_id и название для списка SKU.
 
@@ -100,9 +117,9 @@ class OzonApiClient:
         unique_skus = list({str(sku).strip() for sku in skus if sku})
 
         for i in range(0, len(unique_skus), batch_size):
-            batch = unique_skus[i:i + batch_size]
+            batch = unique_skus[i : i + batch_size]
             payload = {"sku": batch}
-            resp_data = await self._post(url, payload)
+            resp_data = await self._post_with_cb(url, payload)
             if resp_data and "items" in resp_data:
                 for item in resp_data["items"]:
                     sku = str(item.get("sku", ""))
@@ -118,7 +135,7 @@ class OzonApiClient:
         logger.info(f"Получены product_id для {len(result)}/{len(unique_skus)} SKU")
         return result
 
-    async def get_product_prices(self, product_ids: List[int]) -> List[PricingData]:
+    async def get_product_prices(self, product_ids: list[int]) -> list[PricingData]:
         """
         Получает цены, индексы и комиссии для списка товаров.
 
@@ -135,9 +152,9 @@ class OzonApiClient:
         batch_size = settings.API_BATCH_SIZE
 
         for i in range(0, len(product_ids), batch_size):
-            batch = product_ids[i:i + batch_size]
+            batch = product_ids[i : i + batch_size]
             payload = {"filter": {"product_id": batch}, "limit": batch_size}
-            resp_data = await self._post(url, payload)
+            resp_data = await self._post_with_cb(url, payload)
             if resp_data and "items" in resp_data:
                 for item in resp_data["items"]:
                     all_prices.append(PricingData.from_api_response(item))
@@ -145,7 +162,7 @@ class OzonApiClient:
 
         return all_prices
 
-    async def update_prices(self, prices_data: List[Dict]) -> Dict[int, Dict]:
+    async def update_prices(self, prices_data: list[dict]) -> dict[int, dict]:
         """
         Отправляет новые цены в Ozon.
 
@@ -164,32 +181,28 @@ class OzonApiClient:
         result_map = {}
 
         try:
-            resp = await self.client.post(url, headers=self.headers, json=payload)
-            if resp.status_code == 200:
-                data = resp.json()
-                if "result" in data:
-                    for item in data["result"]:
-                        pid = item.get("product_id")
-                        result_map[pid] = {
-                            "updated": item.get("updated", False),
-                            "errors": item.get("errors", []),
-                        }
-                else:
-                    logger.warning(f"Неожиданный ответ: {data}")
-                    for item in prices_data:
-                        result_map[item["product_id"]] = {
-                            "updated": False,
-                            "errors": [{"code": "UNKNOWN", "message": "Неожиданный ответ API"}],
-                        }
+            resp_data = await self._post_with_cb(url, payload)
+            if resp_data and "result" in resp_data:
+                for item in resp_data["result"]:
+                    pid = item.get("product_id")
+                    result_map[pid] = {
+                        "updated": item.get("updated", False),
+                        "errors": item.get("errors", []),
+                    }
             else:
-                logger.warning(
-                    f"Update prices failed: {resp.status_code} {resp.text[:200]}"
-                )
+                logger.warning(f"Неожиданный ответ: {resp_data}")
                 for item in prices_data:
                     result_map[item["product_id"]] = {
                         "updated": False,
-                        "errors": [{"code": "HTTP_ERROR", "message": f"HTTP {resp.status_code}"}],
+                        "errors": [{"code": "UNKNOWN", "message": "Неожиданный ответ API"}],
                     }
+        except CircuitOpenError:
+            logger.error("Circuit breaker OPEN - skipping price update")
+            for item in prices_data:
+                result_map[item["product_id"]] = {
+                    "updated": False,
+                    "errors": [{"code": "CIRCUIT_OPEN", "message": "Circuit breaker is open"}],
+                }
         except Exception as e:
             logger.error(f"Update error: {e}")
             for item in prices_data:
@@ -204,7 +217,7 @@ class OzonApiClient:
     # Методы для работы с акциями (автодобавление)
     # ------------------------------------------------------------------
 
-    async def get_actions(self) -> List[Dict]:
+    async def get_actions(self) -> list[dict]:
         """
         Получает список всех доступных акций.
 
@@ -214,12 +227,12 @@ class OzonApiClient:
             Список акций (словарей).
         """
         url = f"{self.base_url}/v1/actions"
-        resp = await self._get(url)
+        resp = await self._get_with_cb(url)
         return resp.get("result", []) if resp else []
 
     async def get_auto_add_products(
         self, action_id: int, auto_add_date: str, limit: int = 100, offset: int = 0
-    ) -> Dict:
+    ) -> dict:
         """
         Получает список товаров с автодобавлением для конкретной акции.
 
@@ -241,11 +254,11 @@ class OzonApiClient:
             "limit": limit,
             "offset": offset,
         }
-        return await self._post(url, payload) or {}
+        return await self._post_with_cb(url, payload) or {}
 
     async def delete_auto_add_products(
-        self, action_id: int, auto_add_date: str, product_ids: List[int]
-    ) -> Dict:
+        self, action_id: int, auto_add_date: str, product_ids: list[int]
+    ) -> dict:
         """
         Удаляет товары из автодобавления в акцию.
 
@@ -265,9 +278,9 @@ class OzonApiClient:
             "auto_add_date": auto_add_date,
             "product_ids": [str(pid) for pid in product_ids],
         }
-        return await self._post(url, payload) or {}
+        return await self._post_with_cb(url, payload) or {}
 
-    async def update_price_timer(self, product_ids: List[int]) -> Dict[int, Dict]:
+    async def update_price_timer(self, product_ids: list[int]) -> dict[int, dict]:
         """
         Обновляет таймер актуальности минимальной цены для указанных товаров.
 
@@ -285,41 +298,28 @@ class OzonApiClient:
         # API принимает не более 1000 ID за раз
         batch_size = 1000
         for i in range(0, len(product_ids), batch_size):
-            batch = product_ids[i:i + batch_size]
+            batch = product_ids[i : i + batch_size]
             payload = {"product_ids": batch}
 
             try:
-                resp = await self.client.post(url, headers=self.headers, json=payload)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    if "result" in data:
-                        for item in data["result"]:
-                            pid = item.get("product_id")
-                            error = item.get("error")
-                            result_map[pid] = {
-                                "success": error is None,
-                                "error": error
-                            }
-                    else:
-                        logger.warning(f"Unexpected response structure: {data}")
-                        for pid in batch:
-                            result_map[pid] = {"success": True, "error": None}
+                resp_data = await self._post_with_cb(url, payload)
+                if resp_data and "result" in resp_data:
+                    for item in resp_data["result"]:
+                        pid = item.get("product_id")
+                        error = item.get("error")
+                        result_map[pid] = {"success": error is None, "error": error}
                 else:
-                    logger.warning(
-                        f"Update price timer failed: {resp.status_code} {resp.text[:200]}"
-                    )
+                    logger.warning(f"Unexpected response structure: {resp_data}")
                     for pid in batch:
-                        result_map[pid] = {
-                            "success": False,
-                            "error": f"HTTP {resp.status_code}"
-                        }
+                        result_map[pid] = {"success": True, "error": None}
+            except CircuitOpenError:
+                logger.error("Circuit breaker OPEN - skipping timer update")
+                for pid in batch:
+                    result_map[pid] = {"success": False, "error": "Circuit breaker is open"}
             except Exception as e:
                 logger.error(f"Update price timer error: {e}")
                 for pid in batch:
-                    result_map[pid] = {
-                        "success": False,
-                        "error": str(e)
-                    }
+                    result_map[pid] = {"success": False, "error": str(e)}
 
             # Пауза между батчами, чтобы не перегружать API
             if i + batch_size < len(product_ids):

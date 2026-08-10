@@ -3,8 +3,9 @@
 """
 
 import asyncio
+from collections.abc import Callable
 from functools import wraps
-from typing import Any, Callable, Optional
+from typing import Any
 
 from infrastructure.logger import logger
 
@@ -20,22 +21,23 @@ def retry_on_error(max_retries: int = 3, backoff_base: float = 2.0):
     Returns:
         Декорированная асинхронная функция.
     """
+
     def decorator(func: Callable) -> Callable:
         @wraps(func)
-        async def wrapper(*args, **kwargs) -> Optional[Any]:
+        async def wrapper(*args, **kwargs) -> Any | None:
             last_exception = None
             for attempt in range(1, max_retries + 1):
                 try:
                     return await func(*args, **kwargs)
                 except Exception as e:
                     last_exception = e
-                    logger.warning(
-                        f"HTTP request failed (attempt {attempt}/{max_retries}): {e}"
-                    )
+                    logger.warning(f"HTTP request failed (attempt {attempt}/{max_retries}): {e}")
                     if attempt < max_retries:
                         delay = backoff_base ** (attempt - 1)
                         await asyncio.sleep(delay)
             logger.error(f"All {max_retries} attempts failed: {last_exception}")
             return None
+
         return wrapper
+
     return decorator

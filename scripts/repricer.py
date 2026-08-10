@@ -32,7 +32,9 @@ async def main() -> None:
     register_signal_handlers()
 
     parser = argparse.ArgumentParser(description="Запуск репрайсинга товаров")
-    parser.add_argument("--dry-run", action="store_true", help="Тестовый режим: расчёт без отправки цен")
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Тестовый режим: расчёт без отправки цен"
+    )
     args = parser.parse_args()
 
     # Get use case from DI container
@@ -40,7 +42,7 @@ async def main() -> None:
     stats = await use_case.execute(dry_run=args.dry_run)
 
     logger.info("main_finished", result=stats)
-    
+
     # Close API client
     api = container.api_client
     await api.close()

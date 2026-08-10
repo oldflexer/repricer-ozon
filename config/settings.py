@@ -5,12 +5,10 @@ This is the single entry point for accessing all configuration.
 """
 
 from pathlib import Path
-from typing import Optional
 
-from pydantic import model_validator
 import pytz
 from dotenv import load_dotenv
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import SettingsConfigDict
 
 from config.api import ApiSettings
 from config.db import DatabaseSettings
@@ -38,6 +36,7 @@ load_dotenv(BASE_DIR / ".env")
 # 2. Composed Settings class
 # ------------------------------------------------------------------
 
+
 class Settings(
     InstanceSettings,
     ApiSettings,
@@ -59,20 +58,20 @@ class Settings(
 
     @property
     def DATABASE_PATH_PATH(self) -> Path:
-            """Returns Path to database file with INSTANCE_NAME substitution."""
-            path = self.DATABASE_PATH
-            if "{{INSTANCE_NAME}}" in path:
-                path = path.replace("{{INSTANCE_NAME}}", self.INSTANCE_NAME)
-            return Path(path)
+        """Returns Path to database file with INSTANCE_NAME substitution."""
+        path = self.DATABASE_PATH
+        if "{{INSTANCE_NAME}}" in path:
+            path = path.replace("{{INSTANCE_NAME}}", self.INSTANCE_NAME)
+        return Path(path)
 
     @property
     def DATA_FILE_PATH(self) -> Path:
-            """Returns Path to Excel data file with INSTANCE_NAME substitution."""
-            path = self.DATA_FILE
-            if "{{INSTANCE_NAME}}" in path:
-                path = path.replace("{{INSTANCE_NAME}}", self.INSTANCE_NAME)
-            return Path(path)
-    
+        """Returns Path to Excel data file with INSTANCE_NAME substitution."""
+        path = self.DATA_FILE
+        if "{{INSTANCE_NAME}}" in path:
+            path = path.replace("{{INSTANCE_NAME}}", self.INSTANCE_NAME)
+        return Path(path)
+
 
 # ------------------------------------------------------------------
 # 3. Global settings instance
