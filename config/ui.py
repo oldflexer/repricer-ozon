@@ -9,7 +9,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class UiSettings(BaseSettings):
     """Web dashboard authentication and settings."""
 
-    model_config = SettingsConfigDict(env_prefix="WEB_", extra="ignore")
+    model_config = SettingsConfigDict(extra="ignore")
 
-    USER: str = Field(default="admin", description="Login for Streamlit dashboard")
-    PASS: str = Field(default="changeme", description="Password for Streamlit dashboard")
+    WEB_USER: str = Field(default="admin", description="Login for Streamlit dashboard")
+    WEB_PASS: str = Field(default="changeme", description="Password for Streamlit dashboard")

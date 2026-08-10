@@ -143,6 +143,7 @@ class PriceUpdateCoordinator:
                 product.min_price,
                 intervals,
                 competitor_min_price=product.competitor_min_price,
+                real_customer_price=product.real_customer_price,
             )
             results_data.append((product, pricing, result))
 

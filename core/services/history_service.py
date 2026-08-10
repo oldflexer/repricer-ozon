@@ -83,7 +83,6 @@ class HistoryService:
                     logger.info(f"Товар {product.sku}: real_price={real_price_value}")
 
             if real_price_value is not None:
-                self.repo.update_real_customer_price(product.sku, real_price_value)
                 self.repo.save_price_history(product.sku, pricing, result, real_price=real_price_value)
                 self.repo.save_daily_aggregates(product.sku, pricing, result, real_price=real_price_value)
                 for u in updates:

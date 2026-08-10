@@ -15,7 +15,7 @@ import sys
 import tempfile
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict, Any
 
 from filelock import FileLock, Timeout
 
@@ -140,6 +140,135 @@ def process_template(file_path: Path, repo: SQLiteRepository, dry_run: bool = Fa
     return stats
 
 
+async def sync_real_prices_async(
+    output_dir: str = "download",
+    headless: bool = False,
+    dry_run: bool = False,
+    keep_file: bool = False,
+    force_delete: bool = False,
+    use_lock: bool = True,
+) -> Dict[str, Any]:
+    """
+    Асинхронная синхронизация реальных цен из шаблона Ozon.
+    Возвращает статистику.
+    """
+    if use_lock:
+        lock = FileLock(LOCK_FILE, timeout=settings.PARSER_LOCK_TIMEOUT)
+        try:
+            with lock.acquire(timeout=settings.PARSER_LOCK_TIMEOUT):
+                return await _sync_real_prices_impl(
+                    output_dir, headless, dry_run, keep_file, force_delete
+                )
+        except Timeout:
+            logger.error(
+                f"Не удалось получить блокировку за {settings.PARSER_LOCK_TIMEOUT} секунд. "
+                "Синхронизация пропущена."
+            )
+            return {}
+    else:
+        return await _sync_real_prices_impl(
+            output_dir, headless, dry_run, keep_file, force_delete
+        )
+
+
+async def _sync_real_prices_impl(
+    output_dir: str,
+    headless: bool,
+    dry_run: bool,
+    keep_file: bool,
+    force_delete: bool,
+) -> Dict[str, Any]:
+    """Реализация синхронизации (без блокировки)."""
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    logger.info("=== Запуск синхронизации цен из шаблона ===")
+
+    # 1. Скачивание
+    downloaded_file = await download_template(str(output_path), headless=headless)
+    if not downloaded_file:
+        logger.error("Скачивание не удалось")
+        return {}
+
+    # 2. Обработка
+    repo = SQLiteRepository(settings.DATABASE_PATH_PATH)
+    stats = process_template(downloaded_file, repo, dry_run=dry_run)
+
+    if not stats:
+        logger.warning("Статистика пуста, возможно, файл не содержит данных")
+        if force_delete and not keep_file:
+            if delete_file_with_retry(downloaded_file):
+                logger.info("Файл удалён принудительно (нет данных)")
+        return stats
+
+    # 3. Вывод статистики в лог
+    logger.info(
+        f"Статистика: всего={stats['total']}, "
+        f"обновлено={stats['updated']}, "
+        f"не найдено={stats['not_found']}, "
+        f"пропущено={stats['skipped']}, "
+        f"ошибок={stats['errors']}"
+    )
+
+    # 4. Освобождение ресурсов перед удалением
+    repo = None
+    gc.collect()
+    time.sleep(0.5)
+
+    # 5. Удаление файла
+    if dry_run:
+        logger.info("Dry-run: файл не удалён")
+        return stats
+
+    should_delete = False
+    delete_reason = ""
+
+    if force_delete:
+        should_delete = True
+        delete_reason = "принудительное удаление (--force-delete)"
+    elif keep_file:
+        should_delete = False
+        delete_reason = "файл сохранён (--keep-file)"
+    elif stats['errors'] == 0:
+        should_delete = True
+        delete_reason = "успешная обработка без ошибок"
+    else:
+        should_delete = False
+        delete_reason = f"обнаружены ошибки ({stats['errors']})"
+
+    if should_delete:
+        if delete_file_with_retry(downloaded_file):
+            logger.info(f"Файл {downloaded_file} удалён: {delete_reason}")
+        else:
+            logger.error("Не удалось удалить файл после нескольких попыток")
+    else:
+        logger.info(f"Файл не удалён: {delete_reason}")
+
+    logger.info("=== Синхронизация завершена ===")
+    return stats
+
+
+def sync_real_prices(
+    output_dir: str = "download",
+    headless: bool = False,
+    dry_run: bool = False,
+    keep_file: bool = False,
+    force_delete: bool = False,
+    use_lock: bool = True,
+) -> Dict[str, Any]:
+    """Синхронная обёртка для sync_real_prices_async."""
+    return asyncio.run(
+        sync_real_prices_async(
+            output_dir=output_dir,
+            headless=headless,
+            dry_run=dry_run,
+            keep_file=keep_file,
+            force_delete=force_delete,
+            use_lock=use_lock,
+        )
+    )
+
+
 def main():
     register_signal_handlers()
 
@@ -173,87 +302,19 @@ def main():
     )
     args = parser.parse_args()
 
-    output_dir = Path(args.output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
+    stats = sync_real_prices(
+        output_dir=args.output_dir,
+        headless=args.headless,
+        dry_run=args.dry_run,
+        keep_file=args.keep_file,
+        force_delete=args.force_delete,
+        use_lock=True,
+    )
 
-    lock = FileLock(LOCK_FILE, timeout=settings.PARSER_LOCK_TIMEOUT)
-    try:
-        with lock.acquire(timeout=settings.PARSER_LOCK_TIMEOUT):
-            logger.info("=== Запуск полной синхронизации цен из шаблона ===")
-
-            # 1. Скачивание
-            downloaded_file = asyncio.run(
-                download_template(str(output_dir), headless=args.headless)
-            )
-            if not downloaded_file:
-                logger.error("Скачивание не удалось, выход")
-                return
-
-            # 2. Обработка
-            repo = SQLiteRepository(settings.DATABASE_PATH_PATH)
-            stats = process_template(downloaded_file, repo, dry_run=args.dry_run)
-
-            if not stats:
-                logger.warning("Статистика пуста, возможно, файл не содержит данных")
-                # файл удалим, если принудительно
-                if args.force_delete and not args.keep_file:
-                    if delete_file_with_retry(downloaded_file):
-                        logger.info("Файл удалён принудительно (нет данных)")
-                return
-
-            # 3. Вывод статистики в лог
-            logger.info(
-                f"Статистика: всего={stats['total']}, "
-                f"обновлено={stats['updated']}, "
-                f"не найдено={stats['not_found']}, "
-                f"пропущено={stats['skipped']}, "
-                f"ошибок={stats['errors']}"
-            )
-
-            # 4. Освобождение ресурсов перед удалением
-            parser = None
-            repo = None
-            gc.collect()
-            time.sleep(0.5)
-
-            # 5. Удаление файла
-            if args.dry_run:
-                logger.info("Dry-run: файл не удалён")
-                return
-
-            should_delete = False
-            delete_reason = ""
-
-            if args.force_delete:
-                should_delete = True
-                delete_reason = "принудительное удаление (--force-delete)"
-            elif args.keep_file:
-                should_delete = False
-                delete_reason = "файл сохранён (--keep-file)"
-            elif stats['errors'] == 0:
-                should_delete = True
-                delete_reason = "успешная обработка без ошибок"
-            else:
-                should_delete = False
-                delete_reason = f"обнаружены ошибки ({stats['errors']})"
-
-            if should_delete:
-                if delete_file_with_retry(downloaded_file):
-                    logger.info(f"Файл {downloaded_file} удалён: {delete_reason}")
-                else:
-                    logger.error("Не удалось удалить файл после нескольких попыток")
-            else:
-                logger.info(f"Файл не удалён: {delete_reason}")
-
-            logger.info("=== Синхронизация завершена ===")
-
-    except Timeout:
-        logger.error(
-            f"Не удалось получить блокировку за {settings.PARSER_LOCK_TIMEOUT} секунд. "
-            "Скрипт уже выполняется."
-        )
-    except Exception as e:
-        logger.exception(f"Критическая ошибка: {e}")
+    if stats:
+        logger.info(f"Итоговая статистика: {stats}")
+    else:
+        logger.warning("Синхронизация не выполнена или не дала результатов")
 
 
 if __name__ == "__main__":

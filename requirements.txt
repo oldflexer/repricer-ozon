@@ -1,6 +1,6 @@
 # .env
 python-dotenv==1.2.2
-pydantic-settings==2.14.1
+pydantic-settings==2.14.2
 # db
 alembic==1.18.5
 # excel

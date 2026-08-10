@@ -1,9 +1,5 @@
 """
 Сервис расчёта целевой цены и маржинальности товара.
-
-Содержит логику выбора стратегии по времени, расчёта коэффициента дисконта,
-применения стратегии (ниже/выше/равна индексу) и вычисления маржинальности
-с учётом всех комиссий Ozon (FBS и FBO).
 """
 
 from datetime import datetime, time
@@ -16,28 +12,7 @@ from infrastructure.logger import logger
 
 
 class PriceCalculationService:
-    """
-    Сервис расчёта целевой цены для отправки в Ozon.
-
-    Алгоритм:
-        1. Расчёт discount_coef на основе индексов (external, ozon, self_marketplaces)
-           или использование значения по умолчанию.
-        2. Определение активного временного интервала стратегии.
-        3. Расчёт целевой цены:
-            - Если стратегия "Равная" – используется target_min_price (РИЦ / discount_coef).
-            - Если стратегия "Ниже" или "Выше" – цена привязывается к цене конкурента
-              или индексу Ozon с учётом процента.
-        4. Расчёт маржинальности с учётом комиссий FBS и FBO.
-    """
-
     def __init__(self, default_coefficient: float = 0.5) -> None:
-        """
-        Инициализирует сервис.
-
-        Args:
-            default_coefficient: Коэффициент дисконта по умолчанию,
-                используемый, если не удалось вычислить его по индексам.
-        """
         self.default_coefficient = default_coefficient
 
     def calculate(
@@ -47,56 +22,63 @@ class PriceCalculationService:
         rip: float,
         intervals: List[StrategyInterval],
         competitor_min_price: Optional[float] = None,
+        real_customer_price: Optional[float] = None,
     ) -> PriceCalculationResult:
-        """
-        Вычисляет целевую цену и маржинальность для товара.
-
-        Args:
-            sku: Артикул товара.
-            pricing: Данные о ценах, индексах и комиссиях из Ozon API.
-            rip: Минимальная цена (РИЦ) из Excel.
-            intervals: Список интервалов стратегий, загруженных для товара.
-            competitor_min_price: Минимальная цена конкурента (из парсинга).
-
-        Returns:
-            PriceCalculationResult с результатами расчёта и деталями для логирования.
-        """
         # --- 1. Расчёт коэффициента дисконта ---
-        index_prices = []
-        index_data = []
-        approx_index_price = None
-        approx_index_data = None
+        index_prices: List[float] = []
+        approx_real_price: Optional[float] = None
+        discount_coef = self.default_coefficient
 
-        if pricing.external_index_data_index and pricing.external_index_data_index != 0:
-            index_prices.append(pricing.external_index_data_price)
-            index_data.append(pricing.external_index_data_index)
-        if pricing.ozon_index_data_index and pricing.ozon_index_data_index != 0:
-            index_prices.append(pricing.ozon_index_data_price)
-            index_data.append(pricing.ozon_index_data_index)
+        # Приоритет: реальная цена покупателя из БД (актуальная из шаблона)
         if (
-            pricing.self_marketplaces_index_data_index
-            and pricing.self_marketplaces_index_data_index != 0
-        ):
-            index_prices.append(pricing.self_marketplaces_index_data_price)
-            index_data.append(pricing.self_marketplaces_index_data_index)
-
-        if index_prices and index_data:
-            approx_index_price = sum(index_prices) / len(index_prices)
-            approx_index_data = sum(index_data) / len(index_data)
-
-        if approx_index_price and approx_index_data:
-            approx_real_price = approx_index_price * approx_index_data
-        else:
-            approx_real_price = None
-
-        if (
-            approx_real_price is not None
+            real_customer_price is not None
+            and real_customer_price > 0
             and pricing.marketing_seller_price
             and pricing.marketing_seller_price > 0
         ):
-            discount_coef = approx_real_price / pricing.marketing_seller_price
+            discount_coef = real_customer_price / pricing.marketing_seller_price
+            discount_coef_source = "real_customer_price"
+            logger.info(f"SKU {sku}: discount_coef из real_customer_price = {discount_coef:.4f}")
         else:
-            discount_coef = self.default_coefficient
+            # Расчёт через индексы (старая логика)
+            index_data: List[float] = []
+            approx_index_price: Optional[float] = None
+            approx_index_data: Optional[float] = None
+
+            if pricing.external_index_data_index and pricing.external_index_data_index != 0 and pricing.external_index_data_price is not None:
+                index_prices.append(pricing.external_index_data_price)
+                index_data.append(pricing.external_index_data_index)
+            if pricing.ozon_index_data_index and pricing.ozon_index_data_index != 0 and pricing.ozon_index_data_price is not None:
+                index_prices.append(pricing.ozon_index_data_price)
+                index_data.append(pricing.ozon_index_data_index)
+            if (
+                pricing.self_marketplaces_index_data_index
+                and pricing.self_marketplaces_index_data_index != 0
+                and pricing.self_marketplaces_index_data_price is not None
+            ):
+                index_prices.append(pricing.self_marketplaces_index_data_price)
+                index_data.append(pricing.self_marketplaces_index_data_index)
+
+            if index_prices and index_data:
+                approx_index_price = sum(index_prices) / len(index_prices)
+                approx_index_data = sum(index_data) / len(index_data)
+
+            if approx_index_price and approx_index_data:
+                approx_real_price = approx_index_price * approx_index_data
+            else:
+                approx_real_price = None
+
+            if (
+                approx_real_price is not None
+                and pricing.marketing_seller_price
+                and pricing.marketing_seller_price > 0
+            ):
+                discount_coef = approx_real_price / pricing.marketing_seller_price
+                discount_coef_source = "indexes"
+            else:
+                discount_coef = self.default_coefficient
+                discount_coef_source = "default"
+            logger.info(f"SKU {sku}: discount_coef из индексов = {discount_coef:.4f}")
 
         target_min_price = rip / discount_coef if discount_coef else rip
 
@@ -108,10 +90,8 @@ class PriceCalculationService:
         )
 
         def time_in_interval(t: time, start: time, end: time) -> bool:
-            """Проверяет, входит ли время t в интервал [start, end] (с учётом пересечения полуночи)."""
             if start <= end:
                 return start <= t <= end
-            # интервал пересекает полночь
             return t >= start or t <= end
 
         active = next(
@@ -146,7 +126,6 @@ class PriceCalculationService:
             reason = "стратегия 'Равная'"
             logger.info(f"SKU {sku}: стратегия 'Равная', результат = {result_target_price:.0f}")
         else:
-            # Стратегии BELOW (Ниже) и ABOVE (Выше)
             base_price = None
             source = None
             if competitor_min_price is not None and competitor_min_price > 0:
@@ -234,7 +213,8 @@ class PriceCalculationService:
         log_details = {
             "approx_real_price": approx_real_price,
             "discount_coef": discount_coef,
-            "default_coef_used": approx_real_price is None,
+            "discount_coef_source": discount_coef_source,
+            "default_coef_used": discount_coef == self.default_coefficient,
             "target_min_price": target_min_price,
             "strategy_type": strategy_type.value,
             "strategy_type_name": strategy_type.name,
@@ -286,21 +266,6 @@ def calculate_old_price(
     multiplier: float = 1.5,
     round_to: int = 100,
 ) -> int:
-    """
-    Рассчитывает old_price (цену до скидки) для отправки в Ozon.
-
-    Если задана manual_old_price и она больше price * multiplier, используется она.
-    Иначе old_price = price * multiplier, округлённое вверх до round_to.
-
-    Args:
-        price: Текущая цена.
-        manual_old_price: Ручное значение old_price (опционально).
-        multiplier: Множитель (по умолчанию 1.5).
-        round_to: Шаг округления (по умолчанию 100).
-
-    Returns:
-        Целое значение old_price.
-    """
     if manual_old_price is not None and manual_old_price > price * multiplier:
         return int(round(manual_old_price))
     old = price * multiplier

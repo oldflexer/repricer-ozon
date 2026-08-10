@@ -1,13 +1,11 @@
 """
 Main application settings - composes all sub-settings modules.
-
-This is the single entry point for accessing all configuration.
 """
 
+import os
 from pathlib import Path
 from typing import Optional
 
-from pydantic import model_validator
 import pytz
 from dotenv import load_dotenv
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -25,14 +23,10 @@ from config.ui import UiSettings
 # ------------------------------------------------------------------
 
 TIMEZONE = pytz.timezone("Europe/Moscow")
-"""Application timezone (Moscow)."""
-
 BASE_DIR = Path(__file__).resolve().parent.parent
-"""Project root directory."""
 
-load_dotenv(BASE_DIR / ".env")
-"""Load environment variables from .env file."""
-
+# Загружаем .env в os.environ
+load_dotenv(BASE_DIR / ".env", encoding="utf-8")
 
 # ------------------------------------------------------------------
 # 2. Composed Settings class
@@ -47,36 +41,28 @@ class Settings(
     ParserSettings,
     UiSettings,
 ):
-    """
-    Composed settings from all modules.
-
-    Uses multiple inheritance to combine all setting groups.
-    Environment variables are loaded once and distributed to appropriate
-    sub-classes based on their env_prefix configuration.
-    """
-
-    model_config = SettingsConfigDict(extra="ignore", env_nested_delimiter="__", env_prefix="")
+    # Убрали env_file и env_file_encoding — читаем из os.environ
+    model_config = SettingsConfigDict(
+        extra="ignore",
+    )
 
     @property
     def DATABASE_PATH_PATH(self) -> Path:
-            """Returns Path to database file with INSTANCE_NAME substitution."""
-            path = self.DATABASE_PATH
-            if "{{INSTANCE_NAME}}" in path:
-                path = path.replace("{{INSTANCE_NAME}}", self.INSTANCE_NAME)
-            return Path(path)
+        path = self.DATABASE_PATH
+        if "{{INSTANCE_NAME}}" in path:
+            path = path.replace("{{INSTANCE_NAME}}", self.INSTANCE_NAME)
+        return Path(path)
 
     @property
     def DATA_FILE_PATH(self) -> Path:
-            """Returns Path to Excel data file with INSTANCE_NAME substitution."""
-            path = self.DATA_FILE
-            if "{{INSTANCE_NAME}}" in path:
-                path = path.replace("{{INSTANCE_NAME}}", self.INSTANCE_NAME)
-            return Path(path)
-    
+        path = self.DATA_FILE
+        if "{{INSTANCE_NAME}}" in path:
+            path = path.replace("{{INSTANCE_NAME}}", self.INSTANCE_NAME)
+        return Path(path)
 
 # ------------------------------------------------------------------
 # 3. Global settings instance
 # ------------------------------------------------------------------
 
+# Теперь без явной передачи аргументов — всё из os.environ
 settings = Settings()
-"""Global settings instance for application-wide use."""
