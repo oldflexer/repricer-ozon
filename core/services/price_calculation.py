@@ -3,6 +3,7 @@
 """
 
 from datetime import datetime, time
+from typing import Optional
 
 from config.settings import TIMEZONE
 from core.entities import PriceCalculationResult, PricingData, StrategyInterval
@@ -19,12 +20,12 @@ class PriceCalculationService:
         sku: str,
         pricing: PricingData,
         rip: float,
-        intervals: List[StrategyInterval],
+        intervals: list[StrategyInterval],
         competitor_min_price: Optional[float] = None,
         real_customer_price: Optional[float] = None,
     ) -> PriceCalculationResult:
         # --- 1. Расчёт коэффициента дисконта ---
-        index_prices: List[float] = []
+        index_prices: list[float] = []
         approx_real_price: Optional[float] = None
         discount_coef = self.default_coefficient
 
@@ -40,7 +41,7 @@ class PriceCalculationService:
             logger.info(f"SKU {sku}: discount_coef из real_customer_price = {discount_coef:.4f}")
         else:
             # Расчёт через индексы (старая логика)
-            index_data: List[float] = []
+            index_data: list[float] = []
             approx_index_price: Optional[float] = None
             approx_index_data: Optional[float] = None
 
