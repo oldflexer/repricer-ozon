@@ -7,14 +7,14 @@
     3. Отклонения индексов – динамика среднего отношения цены к индексу Ozon.
 """
 
-import streamlit as st
-import pandas as pd
 import numpy as np
-import plotly.graph_objects as go
+import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
+import streamlit as st
 
 from config.settings import TIMEZONE
-from ui.cache import get_repo, get_cached_products
+from ui.cache import get_cached_products, get_repo
 
 
 def render_analytics() -> None:
@@ -79,7 +79,7 @@ def render_dynamics() -> None:
     )
 
     sku_options = [f"{p.sku} – {p.product_name}" for p in products]
-    sku_to_sku = {opt: p.sku for opt, p in zip(sku_options, products)}
+    sku_to_sku = {opt: p.sku for opt, p in zip(sku_options, products, strict=False)}
 
     selected = st.multiselect(
         "Выберите товары для отображения",

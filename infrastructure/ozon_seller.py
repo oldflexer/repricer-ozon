@@ -5,26 +5,25 @@
 
 import time
 from pathlib import Path
-from typing import Optional
 
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.by import By
+from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
 
 from infrastructure.chrome_driver import ChromeDriverManager
 from infrastructure.logger import logger
 
 
 class OzonSellerClient:
-    def __init__(self, headless: bool = False, download_dir: Optional[str] = None):
+    def __init__(self, headless: bool = False, download_dir: str | None = None):
         self.download_dir = download_dir
         self.driver_manager = ChromeDriverManager(
-            headless=headless,
-            use_profile=True,
-            download_dir=download_dir
+            headless=headless, use_profile=True, download_dir=download_dir
         )
-        self.driver = None
-        self.wait = None
+        self.driver: WebDriver | None = None
+        self.wait: WebDriverWait | None = None
 
     def _ensure_driver(self) -> bool:
         if not self.driver_manager.ensure_initialized():
@@ -33,7 +32,9 @@ class OzonSellerClient:
         self.wait = self.driver_manager.wait
         return True
 
-    def navigate_to_prices(self, target_url: str = "https://seller.ozon.ru/app/prices/control") -> bool:
+    def navigate_to_prices(
+        self, target_url: str = "https://seller.ozon.ru/app/prices/control"
+    ) -> bool:
         """
         Переходит на страницу управления ценами.
         Предполагается, что пользователь уже авторизован в профиле.
@@ -56,7 +57,7 @@ class OzonSellerClient:
             logger.error(f"Ошибка при переходе на страницу: {e}")
             return False
 
-    def download_price_template(self, timeout: int = 60) -> Optional[Path]:
+    def download_price_template(self, timeout: int = 60) -> Path | None:
         """
         Нажимает кнопку 'Скачать шаблон xlsx' и ожидает завершения загрузки.
         Возвращает путь к скачанному файлу или None при ошибке.
@@ -77,7 +78,9 @@ class OzonSellerClient:
         # Ждём, пока кнопка станет кликабельной
         try:
             button = self.wait.until(
-                EC.element_to_be_clickable((By.XPATH, "//button[contains(., 'Скачать шаблон xlsx')]"))
+                EC.element_to_be_clickable(
+                    (By.XPATH, "//button[contains(., 'Скачать шаблон xlsx')]")
+                )
             )
         except TimeoutException:
             logger.error("Кнопка 'Скачать шаблон xlsx' не найдена")

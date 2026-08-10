@@ -5,12 +5,9 @@
 
 import os
 import sys
-import time
 from pathlib import Path
 from types import ModuleType
-from typing import Optional
 
-from selenium.common.exceptions import WebDriverException
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.support.ui import WebDriverWait
 
@@ -22,49 +19,59 @@ from infrastructure.logger import logger
 class _LooseVersion:
     def __init__(self, vstring):
         self.vstring = str(vstring)
+
     def __repr__(self):
         return f"LooseVersion('{self.vstring}')"
+
     def __eq__(self, other):
         return self.vstring == str(other)
+
     def __lt__(self, other):
         return self.vstring < str(other)
+
     def __le__(self, other):
         return self.vstring <= str(other)
+
     def __gt__(self, other):
         return self.vstring > str(other)
+
     def __ge__(self, other):
         return self.vstring >= str(other)
 
+
 class _DistutilsVersionModule(ModuleType):
     def __getattr__(self, name):
-        if name == 'LooseVersion':
+        if name == "LooseVersion":
             return _LooseVersion
         raise AttributeError(name)
 
-if 'distutils.version' not in sys.modules:
-    sys.modules['distutils.version'] = _DistutilsVersionModule('distutils.version')
-if 'distutils' not in sys.modules:
-    sys.modules['distutils'] = ModuleType('distutils')
+
+if "distutils.version" not in sys.modules:
+    sys.modules["distutils.version"] = _DistutilsVersionModule("distutils.version")
+if "distutils" not in sys.modules:
+    sys.modules["distutils"] = ModuleType("distutils")
 
 
 class ChromeDriverManager:
-    def __init__(self, headless: bool = False, use_profile: bool = True, download_dir: Optional[str] = None):
+    def __init__(
+        self, headless: bool = False, use_profile: bool = True, download_dir: str | None = None
+    ):
         self.headless = headless
         self.use_profile = use_profile
         self.download_dir = download_dir
-        self.driver: Optional[WebDriver] = None
-        self.wait: Optional[WebDriverWait] = None
+        self.driver: WebDriver | None = None
+        self.wait: WebDriverWait | None = None
 
-    def _get_profile_path(self) -> Optional[str]:
+    def _get_profile_path(self) -> str | None:
         if not self.use_profile:
             return None
-        raw_path = getattr(settings, 'CHROME_PROFILE_PATH', None)
+        raw_path = getattr(settings, "CHROME_PROFILE_PATH", None)
         if not raw_path:
             logger.warning("CHROME_PROFILE_PATH не задан")
             return None
         expanded = os.path.expandvars(raw_path)
         abs_path = Path(expanded).expanduser().resolve()
-        normalized = str(abs_path).replace('\\', '/')
+        normalized = str(abs_path).replace("\\", "/")
         logger.info(f"Нормализованный путь к профилю: {normalized}")
         if not abs_path.exists():
             logger.warning(f"Папка профиля не существует: {normalized} (будет создана)")
@@ -84,6 +91,7 @@ class ChromeDriverManager:
 
     def _build_options(self):
         from selenium.webdriver.chrome.options import Options as ChromeOptions
+
         options = ChromeOptions()
         if self.headless:
             options.add_argument("--headless")
@@ -104,14 +112,14 @@ class ChromeDriverManager:
                 "download.default_directory": str(download_path),
                 "download.prompt_for_download": False,
                 "download.directory_upgrade": True,
-                "safebrowsing.enabled": True
+                "safebrowsing.enabled": True,
             }
             options.add_experimental_option("prefs", prefs)
             logger.info(f"Загрузка файлов будет в: {download_path}")
 
         profile_path = self._get_profile_path()
         if profile_path:
-            if ' ' in profile_path:
+            if " " in profile_path:
                 options.add_argument(f'--user-data-dir="{profile_path}"')
             else:
                 options.add_argument(f"--user-data-dir={profile_path}")
@@ -120,6 +128,7 @@ class ChromeDriverManager:
 
     def _build_selenium_options(self):
         from selenium.webdriver.chrome.options import Options as ChromeOptions
+
         options = ChromeOptions()
         if self.headless:
             options.add_argument("--headless")
@@ -138,13 +147,13 @@ class ChromeDriverManager:
                 "download.default_directory": str(download_path),
                 "download.prompt_for_download": False,
                 "download.directory_upgrade": True,
-                "safebrowsing.enabled": True
+                "safebrowsing.enabled": True,
             }
             options.add_experimental_option("prefs", prefs)
 
         profile_path = self._get_profile_path()
         if profile_path:
-            if ' ' in profile_path:
+            if " " in profile_path:
                 options.add_argument(f'--user-data-dir="{profile_path}"')
             else:
                 options.add_argument(f"--user-data-dir={profile_path}")
@@ -159,6 +168,7 @@ class ChromeDriverManager:
 
             try:
                 from webdriver_manager.chrome import ChromeDriverManager
+
                 driver_path = ChromeDriverManager().install()
             except Exception as e:
                 logger.warning(f"webdriver-manager не смог получить драйвер: {e}")
@@ -178,6 +188,7 @@ class ChromeDriverManager:
             try:
                 from selenium import webdriver
                 from selenium.webdriver.chrome.service import Service
+
                 fallback_options = self._build_selenium_options()
                 if driver_path:
                     service = Service(executable_path=driver_path)

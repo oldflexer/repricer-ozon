@@ -12,7 +12,6 @@ from email import encoders
 from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from typing import Dict, List, Optional
 
 from config.settings import settings
 from infrastructure.logger import logger
@@ -92,7 +91,7 @@ class MailNotifier:
         return self._send(msg)
 
     def send_detailed_report(
-        self, updates: List[Dict], errors: List[str], dry_run: bool = False
+        self, updates: list[dict], errors: list[str], dry_run: bool = False
     ) -> None:
         """
         Отправляет детализированный отчёт о результатах репрайсинга.
@@ -122,31 +121,29 @@ class MailNotifier:
             )
             lines.append("Полные данные прилагаются в CSV-файле.\n")
             csv_data = self._generate_csv(updates)
-            self.send_message_with_attachment(
-                subject, "\n".join(lines), "report.csv", csv_data
-            )
+            self.send_message_with_attachment(subject, "\n".join(lines), "report.csv", csv_data)
             return
 
         lines.append("Детализация по товарам:")
         lines.append("")
         for u in updates:
-                    sku = u.get("sku", "N/A")
-                    name = u.get("product_name", "")
-                    status = u.get("status", "unknown")
-                    old_price = u.get("old_price")
-                    new_price = u.get("new_price")
-                    reason = u.get("reason")
-                    if status == "updated":
-                        if old_price is not None and new_price is not None:
-                            lines.append(f"✅ {sku} – {name}: {old_price:.0f} → {new_price:.0f}")
-                        elif new_price is not None:
-                            lines.append(f"✅ {sku} – {name}: установлена цена {new_price:.0f}")
-                        else:
-                            lines.append(f"✅ {sku} – {name}: обновлено")
-                    elif status == "error":
-                        lines.append(f"❌ {sku} – {name}: ошибка – {reason}")
-                    else:
-                        lines.append(f"❓ {sku} – {name}: неизвестный статус {status}")
+            sku = u.get("sku", "N/A")
+            name = u.get("product_name", "")
+            status = u.get("status", "unknown")
+            old_price = u.get("old_price")
+            new_price = u.get("new_price")
+            reason = u.get("reason")
+            if status == "updated":
+                if old_price is not None and new_price is not None:
+                    lines.append(f"✅ {sku} – {name}: {old_price:.0f} → {new_price:.0f}")
+                elif new_price is not None:
+                    lines.append(f"✅ {sku} – {name}: установлена цена {new_price:.0f}")
+                else:
+                    lines.append(f"✅ {sku} – {name}: обновлено")
+            elif status == "error":
+                lines.append(f"❌ {sku} – {name}: ошибка – {reason}")
+            else:
+                lines.append(f"❓ {sku} – {name}: неизвестный статус {status}")
 
         if errors:
             lines.append("\n❌ Общие ошибки:")
@@ -180,27 +177,29 @@ class MailNotifier:
             logger.error(f"Ошибка отправки email: {e}")
             return False
 
-    def _generate_csv(self, updates: List[Dict]) -> str:
+    def _generate_csv(self, updates: list[dict]) -> str:
         """Генерирует CSV-строку из списка обновлений."""
         output = io.StringIO()
         writer = csv.writer(output)
         writer.writerow(["SKU", "Название", "Старая цена", "Новая цена", "Статус", "Причина"])
         for u in updates:
-            writer.writerow([
-                u.get("sku", ""),
-                u.get("product_name", ""),
-                u.get("old_price", ""),
-                u.get("new_price", ""),
-                u.get("status", ""),
-                u.get("reason", ""),
-            ])
+            writer.writerow(
+                [
+                    u.get("sku", ""),
+                    u.get("product_name", ""),
+                    u.get("old_price", ""),
+                    u.get("new_price", ""),
+                    u.get("status", ""),
+                    u.get("reason", ""),
+                ]
+            )
         return output.getvalue()
 
     # ------------------------------------------------------------------
     # Устаревшие методы (для обратной совместимости)
     # ------------------------------------------------------------------
 
-    def notify_cycle_complete(self, updated_count: int, errors: Optional[List[str]] = None) -> None:
+    def notify_cycle_complete(self, updated_count: int, errors: list[str] | None = None) -> None:
         """
         Устаревший метод. Отправляет краткое уведомление о завершении цикла.
 

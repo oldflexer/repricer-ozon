@@ -1,15 +1,17 @@
+import gc
+import shutil
+import sqlite3
 import sys
 import tempfile
-import shutil
-from pathlib import Path
 from datetime import datetime
-import gc
-import sqlite3
+from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from infrastructure.db import SQLiteRepository
-from core.entities import ProductInfo, StrategyInterval, PricingData, PriceCalculationResult
+from core.entities import PriceCalculationResult, PricingData, ProductInfo, StrategyInterval
 from core.enums import StrategyType
+from infrastructure.db import SQLiteRepository
+
 
 def test_database_operations():
     tmp_dir = tempfile.mkdtemp()
@@ -20,7 +22,9 @@ def test_database_operations():
 
         # Проверка таблиц (в product есть real_customer_price)
         with repo._get_connection() as conn:
-            tables = [row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")]
+            tables = [
+                row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            ]
             assert "product" in tables
             assert "product_strategy" in tables
             assert "product_price_history" in tables
@@ -34,8 +38,15 @@ def test_database_operations():
         print(" ✅ Таблицы созданы корректно с новыми колонками")
 
         # Добавление товара с real_customer_price
-        product = ProductInfo(sku="001", product_name="Test", min_price=200.0, cost_price=150.0,
-                              product_id=10, offer_id="off1", real_customer_price=2300.0)
+        product = ProductInfo(
+            sku="001",
+            product_name="Test",
+            min_price=200.0,
+            cost_price=150.0,
+            product_id=10,
+            offer_id="off1",
+            real_customer_price=2300.0,
+        )
         repo.upsert_product(product)
         all_products = repo.get_all_products()
         assert len(all_products) == 1
@@ -50,8 +61,14 @@ def test_database_operations():
         print(" ✅ update_real_customer_price работает")
 
         # Сохранение стратегий
-        intervals = [StrategyInterval(start="00:00", end="12:00", strategy_type=StrategyType.BELOW, percent=5.0),
-                     StrategyInterval(start="12:00", end="23:59", strategy_type=StrategyType.EQUAL, percent=0.0)]
+        intervals = [
+            StrategyInterval(
+                start="00:00", end="12:00", strategy_type=StrategyType.BELOW, percent=5.0
+            ),
+            StrategyInterval(
+                start="12:00", end="23:59", strategy_type=StrategyType.EQUAL, percent=0.0
+            ),
+        ]
         repo.set_strategies("001", intervals)
         strats = repo.get_strategies("001")
         assert len(strats) == 2
@@ -70,7 +87,7 @@ def test_database_operations():
             ozon_index_data_price=470.0,
             ozon_index_data_index=0.82,
             self_marketplaces_index_data_price=480.0,
-            self_marketplaces_index_data_index=0.81
+            self_marketplaces_index_data_index=0.81,
         )
         result = PriceCalculationResult(
             sku="001",
@@ -79,7 +96,7 @@ def test_database_operations():
             target_strategy_price=520.0,
             result_target_price=520.0,
             marginality=0.2,
-            log_details={"discount_coef": 0.9}
+            log_details={"discount_coef": 0.9},
         )
         repo.save_price_history("001", pricing, result, real_price=2400.0)
         # Проверяем, что real_price сохранилась
@@ -115,6 +132,7 @@ def test_database_operations():
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
     print("✅ Все тесты базы данных пройдены успешно!")
+
 
 if __name__ == "__main__":
     test_database_operations()

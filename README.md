@@ -22,7 +22,7 @@
 - **Отключение автодобавления в акции** Ozon (mass-delete через API).
 - Веб-интерфейс на **Streamlit** (7 страниц: Сводка, Статистика, Аналитика, Анализ, Таблицы, Запросы, Сервис).
 - Поддержка --dry-run (расчёт без отправки) для всех операций.
-- **Alembic-миграции** БД (автозапуск 
+- **Alembic-миграции** БД (автозапуск
 un_migrations_once при старте).
 - **SQLite WAL mode + busy_timeout=30s** для конкурентного доступа.
 - Готов к развёртыванию на сервере через systemd и cron.
@@ -43,7 +43,7 @@ repricer-ozon/
 │   ├── orchestrator.py          # PricingOrchestrator (legacy, делегирует в Coordinator)
 │   ├── price_coordinator.py     # PriceUpdateCoordinator — основной оркестратор репрайсинга
 │   ├── services/
-│   │   ├── price_calculation.py # PriceCalculationService, MarginCalculator, calculate_old_price
+│   │   ├── price_calculation.py # PriceCalculationService, calculate_old_price
 │   │   └── action_service.py    # ActionService — работа с акциями Ozon
 │   └── use_cases/
 │       ├── repricing.py         # RepricingUseCase — вход в цикл репрайсинга
@@ -59,8 +59,8 @@ repricer-ozon/
 │   └── x_display.py             # Поиск X-сервера для headless (Linux)
 ├── scripts/                     # CLI-точки входа
 │   ├── repricer.py              # Репрайсинг (--dry-run)
-│   ├── parser.py                # Парсинг конкурентов (--dry-run, FileLock)
-│   └── disable_auto_add.py      # Отключение автодобавления (--dry-run)
+│   ├── competitors_parser.py    # Парсинг конкурентов (--dry-run, FileLock)
+│   └── actions_disable_auto_add.py # Отключение автодобавления (--dry-run)
 ├── ui/                          # Streamlit UI
 │   ├── app.py                   # Точка входа, роутинг
 │   ├── auth.py                  # Аутентификация
@@ -168,9 +168,9 @@ repricer-ozon/
 12. **Email-отчёт** (CSV-вложение если товаров > 20).
 13. **Автоочистка БД** — удаление записей старше 3 месяцев (раз в день).
 
-## 🕷 Парсер цен конкурентов
+## 🕷 Парсер цен конкурентов (scripts/competitors_parser.py)
 
-- Запуск: `python scripts/parser.py [--dry-run]`
+- Запуск: `python scripts/competitors_parser.py [--dry-run]`
 - Использует `undetected-chromedriver` с monkey-patch (нет обращений к GitHub за версией драйвера).
 - Профиль Chrome: `CHROME_PROFILE_PATH` (сохраняет куки/авторизацию).
 - Парсит до 5 конкурентов на товар (`Конкурент N` / `Цена N`).
@@ -179,9 +179,9 @@ repricer-ozon/
 - Блокировка `filelock` (один экземпляр парсера).
 - Логи: `parser-{INSTANCE_NAME}.log` (изолированные логгеры selenium/UC/WDM).
 
-## 🛑 Отключение автодобавления в акции
+## 🛑 Отключение автодобавления в акции (scripts/actions_disable_auto_add.py)
 
-- Запуск: `python scripts/disable_auto_add.py [--dry-run]`
+- Запуск: `python scripts/actions_disable_auto_add.py [--dry-run]`
 - Получает все акции (`/v1/actions`), даты автодобавления, товары (пагинация).
 - Массовое удаление (`/v1/actions/auto-add/products/delete`) батчами по 1000.
 
@@ -244,10 +244,10 @@ cp .env.example .env
 python scripts/repricer.py [--dry-run]
 
 # 6. Запуск парсера конкурентов
-python scripts/parser.py [--dry-run]
+python scripts/competitors_parser.py [--dry-run]
 
 # 7. Отключение автодобавления
-python scripts/disable_auto_add.py [--dry-run]
+python scripts/actions_disable_auto_add.py [--dry-run]
 
 # 8. Веб-дашборд
 streamlit run app.py

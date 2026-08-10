@@ -3,7 +3,6 @@
 """
 
 from datetime import datetime, time
-from typing import List, Optional
 
 from config.settings import TIMEZONE
 from core.entities import PriceCalculationResult, PricingData, StrategyInterval
@@ -95,11 +94,7 @@ class PriceCalculationService:
             return t >= start or t <= end
 
         active = next(
-            (
-                inv
-                for inv in intervals
-                if time_in_interval(now, inv.start_time, inv.end_time)
-            ),
+            (inv for inv in intervals if time_in_interval(now, inv.start_time, inv.end_time)),
             None,
         )
 
@@ -143,7 +138,9 @@ class PriceCalculationService:
                 else:
                     strategy_price = base_price
 
-                target_strategy_price = strategy_price / discount_coef if discount_coef else strategy_price
+                target_strategy_price = (
+                    strategy_price / discount_coef if discount_coef else strategy_price
+                )
                 result_target_price = target_strategy_price
                 reason = (
                     f"стратегия {'Ниже' if strategy_type == StrategyType.BELOW else 'Выше'} "
@@ -171,8 +168,7 @@ class PriceCalculationService:
         fbo_sales_commission = result_target_price * (pricing.sales_percent_fbo / 100)
         fbo_deliv_to_customer_amount = pricing.fbo_deliv_to_customer_amount
         fbo_direct_flow_avg = (
-            pricing.fbo_direct_flow_trans_min_amount
-            + pricing.fbo_direct_flow_trans_max_amount
+            pricing.fbo_direct_flow_trans_min_amount + pricing.fbo_direct_flow_trans_max_amount
         ) / 2
         fbo_return_flow_amount = pricing.fbo_return_flow_amount
         fbo_total = (
@@ -181,12 +177,11 @@ class PriceCalculationService:
             + fbo_direct_flow_avg
             + fbo_return_flow_amount
         )
-        
+
         fbs_sales_commission = result_target_price * (pricing.sales_percent_fbs / 100)
         fbs_deliv_to_customer_amount = pricing.fbs_deliv_to_customer_amount
         fbs_direct_flow_avg = (
-            pricing.fbs_direct_flow_trans_min_amount
-            + pricing.fbs_direct_flow_trans_max_amount
+            pricing.fbs_direct_flow_trans_min_amount + pricing.fbs_direct_flow_trans_max_amount
         ) / 2
         fbs_first_mile_avg = (
             pricing.fbs_first_mile_min_amount + pricing.fbs_first_mile_max_amount
@@ -200,7 +195,7 @@ class PriceCalculationService:
             + fbs_first_mile_avg
             + fbs_return_flow_amount
         )
-        
+
         total_costs = (fbs_total + fbo_total) / 2 + pricing.net_price
 
         real_price = result_target_price * discount_coef
@@ -262,7 +257,7 @@ class PriceCalculationService:
 
 def calculate_old_price(
     price: float,
-    manual_old_price: Optional[float] = None,
+    manual_old_price: float | None = None,
     multiplier: float = 1.5,
     round_to: int = 100,
 ) -> int:

@@ -4,11 +4,10 @@ Main application settings - composes all sub-settings modules.
 
 import os
 from pathlib import Path
-from typing import Optional
 
 import pytz
 from dotenv import load_dotenv
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import SettingsConfigDict
 
 from config.api import ApiSettings
 from config.db import DatabaseSettings
@@ -32,6 +31,7 @@ load_dotenv(BASE_DIR / ".env", encoding="utf-8")
 # 2. Composed Settings class
 # ------------------------------------------------------------------
 
+
 class Settings(
     InstanceSettings,
     ApiSettings,
@@ -48,6 +48,7 @@ class Settings(
 
     @property
     def DATABASE_PATH_PATH(self) -> Path:
+        """Returns Path to database file with INSTANCE_NAME substitution."""
         path = self.DATABASE_PATH
         if "{{INSTANCE_NAME}}" in path:
             path = path.replace("{{INSTANCE_NAME}}", self.INSTANCE_NAME)
@@ -55,10 +56,12 @@ class Settings(
 
     @property
     def DATA_FILE_PATH(self) -> Path:
+        """Returns Path to Excel data file with INSTANCE_NAME substitution."""
         path = self.DATA_FILE
         if "{{INSTANCE_NAME}}" in path:
             path = path.replace("{{INSTANCE_NAME}}", self.INSTANCE_NAME)
         return Path(path)
+
 
 # ------------------------------------------------------------------
 # 3. Global settings instance
@@ -66,3 +69,4 @@ class Settings(
 
 # Теперь без явной передачи аргументов — всё из os.environ
 settings = Settings()
+"""Global settings instance for application-wide use."""

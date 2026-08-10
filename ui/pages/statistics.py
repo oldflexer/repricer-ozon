@@ -66,9 +66,7 @@ def render_statistics_page() -> None:
     st.subheader("Распределение по типам стратегий")
     strategy_counts = repo.get_strategy_counts()
     if strategy_counts:
-        strat_df = pd.DataFrame(
-            [{"Тип": k, "Количество": v} for k, v in strategy_counts.items()]
-        )
+        strat_df = pd.DataFrame([{"Тип": k, "Количество": v} for k, v in strategy_counts.items()])
         fig_strat_pie = px.pie(
             strat_df,
             values="Количество",

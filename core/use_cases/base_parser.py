@@ -5,14 +5,13 @@
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict
 
 
 class BaseParserUseCase(ABC):
     """Абстрактный базовый класс для всех парсеров."""
 
     @abstractmethod
-    async def execute(self, dry_run: bool = False) -> Dict[str, int]:
+    async def execute(self, dry_run: bool = False) -> dict[str, int]:
         """
         Запускает парсинг.
 

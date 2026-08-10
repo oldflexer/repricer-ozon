@@ -9,11 +9,11 @@ import glob
 import os
 import subprocess
 import sys
-from typing import List, Optional
+
 from infrastructure.logger import logger
 
 
-def get_available_display() -> Optional[str]:
+def get_available_display() -> str | None:
     """
     Определяет доступный X-сервер и возвращает строку DISPLAY (например, ':10.0').
 
@@ -38,8 +38,8 @@ def get_available_display() -> Optional[str]:
             return display
 
     # 2. Ищем сокеты X11
-    sockets: List[str] = glob.glob("/tmp/.X11-unix/X*")
-    displays: List[str] = []
+    sockets: list[str] = glob.glob("/tmp/.X11-unix/X*")
+    displays: list[str] = []
     for sock in sockets:
         num: str = sock.split("/")[-1][1:]  # номер после 'X'
         if num.isdigit():
@@ -68,7 +68,7 @@ def _is_display_available(display: str) -> bool:
         return False
 
     # Проверка существования сокета
-    socket_path: str = f'/tmp/.X11-unix/X{display[1:].split(".")[0]}'
+    socket_path: str = f'/tmp/.X11-unix/X{display[1:].split(".", maxsplit=1)[0]}'
     if not os.path.exists(socket_path):
         return False
 
@@ -92,6 +92,7 @@ def _is_display_available(display: str) -> bool:
                     capture_output=True,
                     text=True,
                     timeout=1,
+                    check=False,
                 )
                 if result.returncode == 0 and result.stdout.strip():
                     return True

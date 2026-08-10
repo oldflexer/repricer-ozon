@@ -17,4 +17,6 @@ class EmailSettings(BaseSettings):
     SMTP_PASSWORD: str = Field(default="", description="SMTP password (or app password)")
     SENDER_EMAIL: str = Field(default="", description="Sender email address")
     RECIPIENT_EMAIL: str = Field(default="", description="Recipient email address")
-    NOTIFICATION_MAX_DETAILS: int = Field(default=20, description="Max products to detail in email; excess goes to CSV attachment")
+    NOTIFICATION_MAX_DETAILS: int = Field(
+        default=20, description="Max products to detail in email; excess goes to CSV attachment"
+    )

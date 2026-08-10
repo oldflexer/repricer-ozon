@@ -33,7 +33,9 @@ async def main() -> None:
 
     parser = argparse.ArgumentParser(description="Обновление таймера актуальности минимальной цены")
     group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument("--product-ids", type=str, help="Список product_id через запятую")
+    group.add_argument(
+        "--product-ids", type=str, help="Список product_id через запятую (например, 123456,789012)"
+    )
     group.add_argument("--all", action="store_true", help="Обновить для всех товаров в базе данных")
     args = parser.parse_args()
 

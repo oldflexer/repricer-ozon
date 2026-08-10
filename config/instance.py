@@ -3,6 +3,7 @@ Instance/multi-tenancy settings.
 """
 
 from pathlib import Path
+
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -12,8 +13,13 @@ class InstanceSettings(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="", extra="ignore")
 
-    INSTANCE_NAME: str = Field(default="Ozon", description="Instance name (used in file names, logs, dashboard title)")
-    DATA_FILE: str = Field(default="./data/products_{{INSTANCE_NAME}}.xlsx", description="Path to Excel data file (supports {{INSTANCE_NAME}} template)")
+    INSTANCE_NAME: str = Field(
+        default="Ozon", description="Instance name (used in file names, logs, dashboard title)"
+    )
+    DATA_FILE: str = Field(
+        default="./data/products_{{INSTANCE_NAME}}.xlsx",
+        description="Path to Excel data file (supports {{INSTANCE_NAME}} template)",
+    )
 
     @property
     def DATA_FILE_PATH(self) -> Path:

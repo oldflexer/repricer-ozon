@@ -5,15 +5,15 @@
 
 import sqlite3
 from pathlib import Path
-from typing import List
 
 from config.settings import settings
 from core.entities import ProductInfo, StrategyInterval
 from core.repository import IProductRepository
 
+from .analytics import AnalyticsMixin
+
 # Импортируем миксины
 from .history import HistoryMixin
-from .analytics import AnalyticsMixin
 from .maintenance import MaintenanceMixin
 
 
@@ -41,131 +41,23 @@ class SQLiteRepository(
         self._initialize_schema()
 
     def _initialize_schema(self) -> None:
-        """Создаёт таблицы, если они не существуют (для тестов и простого запуска без миграций)."""
-        with self._get_connection() as conn:
-            # Таблица товаров
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS product (
-                    product_id INTEGER PRIMARY KEY,
-                    offer_id TEXT,
-                    sku TEXT UNIQUE,
-                    product_name TEXT,
-                    rip REAL,
-                    net_price REAL,
-                    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    real_customer_price REAL
-                )
-            """)
-            # Таблица стратегий (справочник)
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS strategy (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    strategy_name TEXT UNIQUE
-                )
-            """)
-            # Начальные данные стратегий
-            conn.execute("INSERT OR IGNORE INTO strategy(id, strategy_name) VALUES (1, 'Ниже')")
-            conn.execute("INSERT OR IGNORE INTO strategy(id, strategy_name) VALUES (2, 'Выше')")
-            conn.execute("INSERT OR IGNORE INTO strategy(id, strategy_name) VALUES (3, 'Равная')")
-            # Связь товаров со стратегиями (интервалы)
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS product_strategy (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    product_id INTEGER,
-                    interval_start TEXT,
-                    interval_stop TEXT,
-                    strategy_id INTEGER,
-                    strategy_percent REAL,
-                    FOREIGN KEY(product_id) REFERENCES product(product_id),
-                    FOREIGN KEY(strategy_id) REFERENCES strategy(id)
-                )
-            """)
-            # История цен
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS product_price_history (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    product_id INTEGER,
-                    min_price REAL,
-                    price REAL,
-                    old_price REAL,
-                    marketing_seller_price REAL,
-                    net_price REAL,
-                    external_index_data_price REAL,
-                    external_index_data_index REAL,
-                    ozon_index_data_price REAL,
-                    ozon_index_data_index REAL,
-                    self_marketplaces_index_data_price REAL,
-                    self_marketplaces_index_data_index REAL,
-                    result_target_price REAL,
-                    discount_coef REAL,
-                    marginality REAL,
-                    sales_percent_fbs REAL,
-                    acquiring REAL,
-                    fbs_first_mile_min_amount REAL,
-                    fbs_first_mile_max_amount REAL,
-                    fbs_direct_flow_trans_min_amount REAL,
-                    fbs_direct_flow_trans_max_amount REAL,
-                    fbs_deliv_to_customer_amount REAL,
-                    log_details TEXT,
-                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    real_price REAL,
-                    fbo_deliv_to_customer_amount REAL,
-                    fbo_direct_flow_trans_min_amount REAL,
-                    fbo_direct_flow_trans_max_amount REAL,
-                    fbo_return_flow_amount REAL,
-                    fbs_return_flow_amount REAL,
-                    FOREIGN KEY(product_id) REFERENCES product(product_id)
-                )
-            """)
-            # История маржинальности
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS product_marginality_history (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    product_id INTEGER,
-                    marginality REAL,
-                    marginality_week REAL,
-                    marginality_month REAL,
-                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY(product_id) REFERENCES product(product_id)
-                )
-            """)
-            # Служебная таблица
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS maintenance (
-                    key TEXT PRIMARY KEY,
-                    value TEXT,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-            conn.execute("INSERT OR IGNORE INTO maintenance (key, value) VALUES ('last_cleanup', '1970-01-01 00:00:00')")
-            # Индексы
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_product_sku ON product(sku)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_history_product_timestamp ON product_price_history(product_id, timestamp)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_marginality_product_timestamp ON product_marginality_history(product_id, timestamp)")
-            # Таблица дневных агрегатов (миграция 002)
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS product_price_daily (
-                    product_id INTEGER NOT NULL,
-                    date DATE NOT NULL,
-                    avg_price REAL,
-                    avg_marginality REAL,
-                    min_price REAL,
-                    max_price REAL,
-                    updates_count INTEGER,
-                    PRIMARY KEY (product_id, date),
-                    FOREIGN KEY(product_id) REFERENCES product(product_id)
-                )
-            """)
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_daily_product_date ON product_price_daily(product_id, date)")
-            # Таблица логов расчётов (миграция 002)
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS price_calculation_logs (
-                    history_id INTEGER PRIMARY KEY,
-                    log_details TEXT,
-                    FOREIGN KEY(history_id) REFERENCES product_price_history(id)
-                )
-            """)
-            conn.commit()
+        """Создаёт таблицы, если они не существуют (для тестов и простого запуска без миграций).
+
+        DDL читается из SQL-файлов в migrations/sql/ — single source of truth.
+        """
+        sql_dir = Path(__file__).resolve().parent.parent.parent / "migrations" / "sql"
+
+        # Выполняем миграцию 001
+        sql_001 = sql_dir / "001_initial_schema.sql"
+        if sql_001.exists():
+            with self._get_connection() as conn, open(sql_001, encoding="utf-8") as f:
+                conn.executescript(f.read())
+
+        # Выполняем миграцию 002
+        sql_002 = sql_dir / "002_add_daily_aggregates_and_logs.sql"
+        if sql_002.exists():
+            with self._get_connection() as conn, open(sql_002, encoding="utf-8") as f:
+                conn.executescript(f.read())
 
     # ------------------------------------------------------------------
     # Вспомогательные методы
@@ -183,7 +75,7 @@ class SQLiteRepository(
     # Реализация методов IProductRepository (CRUD)
     # ------------------------------------------------------------------
 
-    def get_all_products(self) -> List[ProductInfo]:
+    def get_all_products(self) -> list[ProductInfo]:
         """Возвращает список всех товаров из таблицы product."""
         with self._get_connection() as conn:
             rows = conn.execute("""
@@ -256,7 +148,7 @@ class SQLiteRepository(
             conn.commit()
             return True
 
-    def get_strategies(self, sku: str) -> List[StrategyInterval]:
+    def get_strategies(self, sku: str) -> list[StrategyInterval]:
         """
         Возвращает интервалы стратегий для товара.
 
@@ -287,7 +179,7 @@ class SQLiteRepository(
                 for r in rows
             ]
 
-    def set_strategies(self, sku: str, intervals: List[StrategyInterval]) -> bool:
+    def set_strategies(self, sku: str, intervals: list[StrategyInterval]) -> bool:
         """
         Сохраняет интервалы стратегий для товара (заменяет существующие).
 

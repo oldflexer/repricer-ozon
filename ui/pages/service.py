@@ -117,7 +117,7 @@ def render_service() -> None:
             if new_password and new_password == confirm_password:
                 env_path = Path(__file__).parent.parent.parent / ".env"
                 if env_path.exists():
-                    with open(env_path, "r", encoding="utf-8") as f:
+                    with open(env_path, encoding="utf-8") as f:
                         lines = f.readlines()
                     with open(env_path, "w", encoding="utf-8") as f:
                         for line in lines:

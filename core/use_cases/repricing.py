@@ -4,7 +4,7 @@ Use‑case для запуска полного цикла репрайсинг�
 Делегирует выполнение PriceUpdateCoordinator.
 """
 
-from typing import Any, Dict
+from typing import Any
 
 from core.price_coordinator import PriceUpdateCoordinator
 from core.repository import IProductRepository
@@ -28,11 +28,9 @@ class RepricingUseCase:
             mail_notifier: Сервис для отправки email‑уведомлений.
             loader: Загрузчик данных из Excel.
         """
-        self.coordinator = PriceUpdateCoordinator(
-            repository, api_client, loader, mail_notifier
-        )
+        self.coordinator = PriceUpdateCoordinator(repository, api_client, loader, mail_notifier)
 
-    async def execute(self, dry_run: bool = False) -> Dict[str, Any]:
+    async def execute(self, dry_run: bool = False) -> dict[str, Any]:
         """
         Запускает полный цикл репрайсинга.
 

@@ -1,13 +1,14 @@
 import sys
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
+
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from core.use_cases import RepricingUseCase
-from core.entities import ProductInfo, PricingData, StrategyInterval
+from core.entities import PricingData, ProductInfo, StrategyInterval
 from core.enums import StrategyType
+from core.use_cases import RepricingUseCase
 
 
 @pytest.mark.asyncio
@@ -37,11 +38,13 @@ async def test_execute_dry_run():
         ozon_index_data_price=910.0,
         ozon_index_data_index=0.88,
         self_marketplaces_index_data_price=920.0,
-        self_marketplaces_index_data_index=0.87
+        self_marketplaces_index_data_index=0.87,
     )
     api.get_product_prices.return_value = [pricing]
 
-    repo.get_strategies.return_value = [StrategyInterval(start="00:00", end="23:59", strategy_type=StrategyType.EQUAL, percent=0.0)]
+    repo.get_strategies.return_value = [
+        StrategyInterval(start="00:00", end="23:59", strategy_type=StrategyType.EQUAL, percent=0.0)
+    ]
 
     repo.upsert_product.return_value = True
     repo.set_strategies.return_value = True

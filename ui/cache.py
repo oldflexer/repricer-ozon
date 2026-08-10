@@ -82,6 +82,7 @@ def get_cached_last_prices():
 def get_excel_loader():
     """Создаёт новый экземпляр ExcelLoader."""
     from config.settings import settings
+
     return ExcelLoader(settings.DATA_FILE_PATH)
 
 

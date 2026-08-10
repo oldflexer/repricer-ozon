@@ -6,8 +6,7 @@
 """
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
-import re
+from typing import Any
 
 import pandas as pd
 
@@ -47,13 +46,13 @@ class ExcelLoader(ILoader):
             file_path: Путь к Excel-файлу.
         """
         self.file_path = file_path
-        self._strategies: Dict[str, List[StrategyInterval]] = {}
+        self._strategies: dict[str, list[StrategyInterval]] = {}
 
     # ------------------------------------------------------------------
     # Реализация интерфейса ILoader
     # ------------------------------------------------------------------
 
-    def load(self) -> Tuple[List[ProductInfo], List[str]]:
+    def load(self) -> tuple[list[ProductInfo], list[str]]:
         """
         Загружает товары из Excel с валидацией.
 
@@ -69,9 +68,7 @@ class ExcelLoader(ILoader):
             return [], ["Файл Excel не найден"]
 
         if self.file_path.suffix.lower() != ".xlsx":
-            logger.error(
-                f"Неподдерживаемый формат: {self.file_path.suffix}. Используйте .xlsx"
-            )
+            logger.error(f"Неподдерживаемый формат: {self.file_path.suffix}. Используйте .xlsx")
             return [], [f"Неподдерживаемый формат: {self.file_path.suffix}"]
 
         df = pd.read_excel(self.file_path, engine="openpyxl", dtype=str)
@@ -84,15 +81,11 @@ class ExcelLoader(ILoader):
                 sku_col = col
                 break
         if sku_col is None:
-            return [], [
-                "Не найдена колонка SKU (ожидаются: sku, артикул, article, id, offer_id)"
-            ]
+            return [], ["Не найдена колонка SKU (ожидаются: sku, артикул, article, id, offer_id)"]
 
         # Нормализация SKU для проверки дубликатов
         df["_sku_normalized"] = df[sku_col].astype(str).str.strip()
-        duplicates = df[df["_sku_normalized"].duplicated(keep=False)][
-            "_sku_normalized"
-        ].unique()
+        duplicates = df[df["_sku_normalized"].duplicated(keep=False)]["_sku_normalized"].unique()
         if len(duplicates) > 0:
             return [], [f"Обнаружены дубликаты SKU: {', '.join(duplicates)}"]
 
@@ -111,14 +104,10 @@ class ExcelLoader(ILoader):
                 row, df.columns, ["себестоимость", "cost_price", "cost"], 0.0
             )
             if cost_price <= 0:
-                warnings.append(
-                    f"SKU {sku}: себестоимость = {cost_price} <= 0, товар пропущен"
-                )
+                warnings.append(f"SKU {sku}: себестоимость = {cost_price} <= 0, товар пропущен")
                 continue
 
-            min_price = self._get_float(
-                row, df.columns, ["цена риц", "min_price", "rip"], 0.0
-            )
+            min_price = self._get_float(row, df.columns, ["цена риц", "min_price", "rip"], 0.0)
 
             # Чтение цен конкурентов (используем настраиваемый префикс)
             competitor_prices = []
@@ -137,9 +126,7 @@ class ExcelLoader(ILoader):
             competitor_min_price = min(competitor_prices) if competitor_prices else None
 
             # Парсинг интервалов стратегий
-            intervals, interval_warnings = self._parse_intervals_with_validation(
-                row, df.columns
-            )
+            intervals, interval_warnings = self._parse_intervals_with_validation(row, df.columns)
             warnings.extend(interval_warnings)
 
             if not intervals:
@@ -148,7 +135,9 @@ class ExcelLoader(ILoader):
                     "используется стратегия по умолчанию 'Равная'"
                 )
                 intervals = [
-                    StrategyInterval(start="00:00", end="23:59", strategy_type=StrategyType.EQUAL, percent=0.0)
+                    StrategyInterval(
+                        start="00:00", end="23:59", strategy_type=StrategyType.EQUAL, percent=0.0
+                    )
                 ]
 
             old_price_val = self._get_float(
@@ -171,7 +160,7 @@ class ExcelLoader(ILoader):
         logger.info(f"Загружено {len(products)} товаров, {len(warnings)} предупреждений")
         return products, warnings
 
-    def get_strategy_intervals(self, product: ProductInfo) -> List[StrategyInterval]:
+    def get_strategy_intervals(self, product: ProductInfo) -> list[StrategyInterval]:
         """
         Возвращает интервалы стратегий для товара (из загруженных данных).
 
@@ -183,7 +172,7 @@ class ExcelLoader(ILoader):
         """
         return self._strategies.get(product.sku, [])
 
-    def update_product_in_file(self, sku: str, updates: Dict[str, Any]) -> bool:
+    def update_product_in_file(self, sku: str, updates: dict[str, Any]) -> bool:
         """
         Обновляет данные товара в Excel-файле (точечное обновление ячеек).
 
@@ -275,25 +264,25 @@ class ExcelLoader(ILoader):
 
     @staticmethod
     def _parse_strategy_value(value) -> StrategyType:
-            """
-            Преобразует значение стратегии из Excel в StrategyType enum.
+        """
+        Преобразует значение стратегии из Excel в StrategyType enum.
 
-            Поддерживает:
-                - числа 1, 2, 3,
-                - текстовые варианты: 'ниже', 'выше', 'равная',
-                - любые регистры.
+        Поддерживает:
+            - числа 1, 2, 3,
+            - текстовые варианты: 'ниже', 'выше', 'равная',
+            - любые регистры.
 
-            Args:
-                value: Значение из ячейки (строка, число, None).
+        Args:
+            value: Значение из ячейки (строка, число, None).
 
-            Returns:
-                StrategyType: Соответствующий тип стратегии (по умолчанию EQUAL).
-            """
-            return parse_strategy_value(value)
+        Returns:
+            StrategyType: Соответствующий тип стратегии (по умолчанию EQUAL).
+        """
+        return parse_strategy_value(value)
 
     def _parse_intervals_with_validation(
         self, row: pd.Series, columns: pd.Index
-    ) -> Tuple[List[StrategyInterval], List[str]]:
+    ) -> tuple[list[StrategyInterval], list[str]]:
         """
         Парсит интервалы стратегий из строки Excel с валидацией.
 
@@ -327,7 +316,9 @@ class ExcelLoader(ILoader):
             start, end = start.strip(), end.strip()
 
             # Простая проверка формата HH:MM
-            if not (len(start) == 5 and start[2] == ":" and start[:2].isdigit() and start[3:].isdigit()):
+            if not (
+                len(start) == 5 and start[2] == ":" and start[:2].isdigit() and start[3:].isdigit()
+            ):
                 warnings.append(f"Интервал {i}: некорректное время начала '{start}'")
             if not (len(end) == 5 and end[2] == ":" and end[:2].isdigit() and end[3:].isdigit()):
                 warnings.append(f"Интервал {i}: некорректное время окончания '{end}'")
@@ -343,7 +334,9 @@ class ExcelLoader(ILoader):
                 if pd.notna(percent_val):
                     try:
                         percent = float(percent_val)
-                        if strategy in (StrategyType.BELOW, StrategyType.ABOVE) and (percent < 0 or percent > 100):
+                        if strategy in (StrategyType.BELOW, StrategyType.ABOVE) and (
+                            percent < 0 or percent > 100
+                        ):
                             warnings.append(
                                 f"Интервал {i}: процент {percent} выходит за пределы 0-100, используется 0"
                             )
@@ -354,14 +347,12 @@ class ExcelLoader(ILoader):
                         )
 
             intervals.append(
-                StrategyInterval(
-                    start=start, end=end, strategy_type=strategy, percent=percent
-                )
+                StrategyInterval(start=start, end=end, strategy_type=strategy, percent=percent)
             )
 
         return intervals, warnings
 
-    def _find_column(self, columns: pd.Index, candidates: List[str]) -> Optional[str]:
+    def _find_column(self, columns: pd.Index, candidates: list[str]) -> str | None:
         """Ищет колонку по одному из возможных имён."""
         for cand in candidates:
             if cand in columns:
@@ -369,7 +360,7 @@ class ExcelLoader(ILoader):
         return None
 
     def _get_float(
-        self, row: pd.Series, columns: pd.Index, candidates: List[str], default: float
+        self, row: pd.Series, columns: pd.Index, candidates: list[str], default: float
     ) -> float:
         """Извлекает числовое значение из ячейки по имени колонки."""
         col = self._find_column(columns, candidates)
@@ -388,8 +379,8 @@ class ExcelLoader(ILoader):
         result: PriceCalculationResult,
         marginality_week: float,
         marginality_month: float,
-        old_price_update: Optional[int],
-    ) -> Dict[str, Any]:
+        old_price_update: int | None,
+    ) -> dict[str, Any]:
         """
         Формирует словарь обновлений для Excel на основе результатов расчёта.
 

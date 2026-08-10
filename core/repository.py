@@ -6,7 +6,7 @@
 
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import pandas as pd
 
@@ -17,7 +17,7 @@ class IProductRepository(ABC):
     """Интерфейс репозитория для работы с товарами, стратегиями и историей."""
 
     @abstractmethod
-    def get_all_products(self) -> List[ProductInfo]:
+    def get_all_products(self) -> list[ProductInfo]:
         """Возвращает список всех товаров из БД."""
         pass
 
@@ -49,7 +49,7 @@ class IProductRepository(ABC):
         pass
 
     @abstractmethod
-    def get_strategies(self, sku: str) -> List[StrategyInterval]:
+    def get_strategies(self, sku: str) -> list[StrategyInterval]:
         """
         Возвращает список интервалов стратегий для товара.
 
@@ -62,7 +62,7 @@ class IProductRepository(ABC):
         pass
 
     @abstractmethod
-    def set_strategies(self, sku: str, intervals: List[StrategyInterval]) -> bool:
+    def set_strategies(self, sku: str, intervals: list[StrategyInterval]) -> bool:
         """
         Сохраняет интервалы стратегий для товара (заменяя существующие).
 
@@ -81,7 +81,7 @@ class IProductRepository(ABC):
         sku: str,
         pricing: PricingData,
         result: PriceCalculationResult,
-        real_price: Optional[float] = None,
+        real_price: float | None = None,
     ) -> bool:
         """
         Сохраняет запись истории цен для товара.
@@ -98,7 +98,7 @@ class IProductRepository(ABC):
         pass
 
     @abstractmethod
-    def get_price_history(self, sku: str) -> List[Dict[str, Any]]:
+    def get_price_history(self, sku: str) -> list[dict[str, Any]]:
         """
         Возвращает историю цен для товара.
 
@@ -133,7 +133,7 @@ class IProductRepository(ABC):
         pass
 
     @abstractmethod
-    def get_average_marginality(self, sku: str, days: int) -> Optional[float]:
+    def get_average_marginality(self, sku: str, days: int) -> float | None:
         """
         Возвращает среднюю маржинальность за указанное количество дней.
 
@@ -147,7 +147,7 @@ class IProductRepository(ABC):
         pass
 
     @abstractmethod
-    def get_last_run_time(self) -> Optional[datetime]:
+    def get_last_run_time(self) -> datetime | None:
         """
         Возвращает время последнего успешного запуска репрайсинга (по последней записи истории).
 
@@ -185,7 +185,7 @@ class IProductRepository(ABC):
         pass
 
     @abstractmethod
-    def get_last_cleanup_date(self) -> Optional[datetime]:
+    def get_last_cleanup_date(self) -> datetime | None:
         """
         Возвращает дату последней автоматической очистки БД.
 
@@ -226,7 +226,7 @@ class IProductRepository(ABC):
         sku: str,
         pricing: PricingData,
         result: PriceCalculationResult,
-        real_price: Optional[float] = None,
+        real_price: float | None = None,
     ) -> None:
         """
         Сохраняет агрегированные данные за текущий день (avg, min, max).
@@ -257,7 +257,7 @@ class ILoader(ABC):
     """Интерфейс загрузчика данных из Excel."""
 
     @abstractmethod
-    def load(self) -> Tuple[List[ProductInfo], List[str]]:
+    def load(self) -> tuple[list[ProductInfo], list[str]]:
         """
         Загружает товары из Excel-файла.
 
@@ -267,7 +267,7 @@ class ILoader(ABC):
         pass
 
     @abstractmethod
-    def get_strategy_intervals(self, product: ProductInfo) -> List[StrategyInterval]:
+    def get_strategy_intervals(self, product: ProductInfo) -> list[StrategyInterval]:
         """
         Возвращает интервалы стратегий для заданного товара (из загруженных данных).
 
@@ -280,7 +280,7 @@ class ILoader(ABC):
         pass
 
     @abstractmethod
-    def update_product_in_file(self, sku: str, updates: Dict[str, Any]) -> bool:
+    def update_product_in_file(self, sku: str, updates: dict[str, Any]) -> bool:
         """
         Обновляет данные товара в Excel-файле.
 

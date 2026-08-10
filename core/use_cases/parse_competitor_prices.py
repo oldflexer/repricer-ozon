@@ -9,7 +9,6 @@ UseCase для парсинга цен конкурентов с Ozon.
 
 import random
 import time
-from typing import Dict, Optional
 
 import pandas as pd
 
@@ -28,7 +27,7 @@ class ParseCompetitorPricesUseCase(BaseParserUseCase):
     Использует OzonPriceParser (Selenium) для извлечения цен со страниц товаров.
     """
 
-    def __init__(self, parser: Optional[OzonPriceParser] = None):
+    def __init__(self, parser: OzonPriceParser | None = None):
         """
         Инициализирует UseCase.
 
@@ -37,7 +36,7 @@ class ParseCompetitorPricesUseCase(BaseParserUseCase):
         """
         self.parser = parser or OzonPriceParser()
 
-    def _parse_price_with_retry(self, url: str) -> Optional[float]:
+    def _parse_price_with_retry(self, url: str) -> float | None:
         """
         Пытается получить цену по URL с повторными попытками.
 
@@ -77,7 +76,7 @@ class ParseCompetitorPricesUseCase(BaseParserUseCase):
 
         return None
 
-    async def execute(self, dry_run: bool = False) -> Dict[str, int]:
+    async def execute(self, dry_run: bool = False) -> dict[str, int]:
         """
         Запускает парсинг цен конкурентов.
 
@@ -152,7 +151,7 @@ class ParseCompetitorPricesUseCase(BaseParserUseCase):
                         stats["skipped"] += 1
                         logger.info(f"SKU {sku}, конкурент {i}: товар закончился, пропускаем")
                         continue
-                    elif new_price is not None:
+                    if new_price is not None:
                         excel_updates[(row_num, cols["price_col"])] = new_price
                         stats["updated"] += 1
                         logger.info(f"SKU {sku}, конкурент {i}: {new_price} ₽")

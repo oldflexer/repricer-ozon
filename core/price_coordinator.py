@@ -5,14 +5,14 @@
 расчёта целевых цен, отправки обновлений и сохранения истории.
 """
 
-import asyncio
-from typing import Any, Callable, Dict, List, Optional
+from collections.abc import Callable
+from typing import Any
 
 from config.settings import settings
 from core.entities import ProductInfo
 from core.mappers import build_price_update_request
 from core.repository import IProductRepository
-from core.services import PriceCalculationService, HistoryService, calculate_old_price
+from core.services import HistoryService, PriceCalculationService, calculate_old_price
 from infrastructure.logger import logger
 
 
@@ -40,7 +40,7 @@ class PriceUpdateCoordinator:
         api_client,
         loader,
         notifier,
-        progress_callback: Optional[Callable[[int, int, str], None]] = None,
+        progress_callback: Callable[[int, int, str], None] | None = None,
     ) -> None:
         """
         Инициализирует координатор.
@@ -60,7 +60,7 @@ class PriceUpdateCoordinator:
         self.calc = PriceCalculationService(default_coefficient=settings.COEFFICIENT_OZON)
         self.history_service = HistoryService(repository)
 
-    async def run(self, dry_run: bool = False) -> Dict[str, Any]:
+    async def run(self, dry_run: bool = False) -> dict[str, Any]:
         """
         Запускает полный цикл репрайсинга.
 
@@ -151,7 +151,9 @@ class PriceUpdateCoordinator:
             marginality_week = avg_week if avg_week is not None else result.marginality
             avg_month = self.repo.get_average_marginality(product.sku, 30)
             marginality_month = avg_month if avg_month is not None else result.marginality
-            self.repo.save_marginality(product.sku, result.marginality, marginality_week, marginality_month)
+            self.repo.save_marginality(
+                product.sku, result.marginality, marginality_week, marginality_month
+            )
 
             discount_coef = result.log_details.get("discount_coef", 1.0)
             real_price = result.result_target_price * discount_coef
@@ -197,7 +199,9 @@ class PriceUpdateCoordinator:
                     "(правило Ozon 50%)"
                 )
 
-            net_price_val = int(round(product.cost_price)) if product.cost_price else pricing.net_price
+            net_price_val = (
+                int(round(product.cost_price)) if product.cost_price else pricing.net_price
+            )
 
             req = build_price_update_request(
                 product_id=product.product_id,
@@ -251,7 +255,7 @@ class PriceUpdateCoordinator:
     # Вспомогательные приватные методы
     # ------------------------------------------------------------------
 
-    def _error_update(self, product: ProductInfo, reason: str) -> Dict[str, Any]:
+    def _error_update(self, product: ProductInfo, reason: str) -> dict[str, Any]:
         """Формирует запись об ошибке для отчёта."""
         return {
             "sku": product.sku,
@@ -262,7 +266,9 @@ class PriceUpdateCoordinator:
             "reason": reason,
         }
 
-    def _pending_update(self, product: ProductInfo, old_price: Optional[float], new_price: float) -> Dict[str, Any]:
+    def _pending_update(
+        self, product: ProductInfo, old_price: float | None, new_price: float
+    ) -> dict[str, Any]:
         """Формирует запись о pending-обновлении (перед отправкой)."""
         return {
             "sku": product.sku,
@@ -275,11 +281,11 @@ class PriceUpdateCoordinator:
 
     def _finalize_updates(
         self,
-        updates: List[Dict[str, Any]],
-        products: List[ProductInfo],
-        update_results: Dict[int, Dict],
+        updates: list[dict[str, Any]],
+        products: list[ProductInfo],
+        update_results: dict[int, dict],
         dry_run: bool,
-        stats: Dict[str, Any],
+        stats: dict[str, Any],
     ) -> None:
         """
         Обновляет статусы записей после ответа API (или dry-run).

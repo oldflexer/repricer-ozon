@@ -6,15 +6,15 @@ using plain Python (no external DI library).
 """
 
 from config.settings import settings
-from core.services.price_calculation import PriceCalculationService
 from core.price_coordinator import PriceUpdateCoordinator
-from core.use_cases.repricing import RepricingUseCase
+from core.services.price_calculation import PriceCalculationService
 from core.use_cases.disable_auto_add import DisableAutoAddUseCase
+from core.use_cases.repricing import RepricingUseCase
 from infrastructure.db import SQLiteRepository
 from infrastructure.excel_loader import ExcelLoader
+from infrastructure.mail_notifier import MailNotifier
 from infrastructure.ozon_api import OzonApiClient
 from infrastructure.ozon_competitor import OzonPriceParser
-from infrastructure.mail_notifier import MailNotifier
 
 
 class Container:
