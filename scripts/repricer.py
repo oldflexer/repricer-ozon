@@ -1,12 +1,6 @@
 #!/usr/bin/env python3
 """
 Точка входа для запуска полного цикла репрайсинга.
-
-Загружает товары из Excel, получает данные из Ozon API, рассчитывает
-целевые цены, отправляет обновления и сохраняет историю.
-
-Использование:
-    python scripts/repricer.py [--dry-run] [--no-sync]
 """
 
 import argparse
@@ -17,8 +11,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from core.container import container
+from core.services.real_price_sync import RealPriceSyncService
 from scripts.common import register_signal_handlers, setup_script_logging
-from scripts.sync_prices_from_template import sync_real_prices_async
 
 logger = setup_script_logging("repricer")
 
@@ -27,24 +21,16 @@ async def main() -> None:
     register_signal_handlers()
 
     parser = argparse.ArgumentParser(description="Запуск репрайсинга товаров")
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Тестовый режим: расчёт без отправки цен"
-    )
-    parser.add_argument(
-        "--no-sync",
-        action="store_true",
-        help="Не выполнять синхронизацию цен из шаблона перед запуском"
-    )
+    parser.add_argument("--dry-run", action="store_true", help="Тестовый режим: расчёт без отправки цен")
+    parser.add_argument("--no-sync", action="store_true", help="Не выполнять синхронизацию цен из шаблона перед запуском")
     args = parser.parse_args()
+
+    sync_service = RealPriceSyncService(output_dir="download", headless=False)
 
     # 1. Синхронизация ДО репрайсинга
     if not args.no_sync:
         logger.info("Выполняем синхронизацию реальных цен из шаблона (перед)...")
-        stats = await sync_real_prices_async(
-            output_dir="download",
-            headless=False,
+        stats = await sync_service.sync_real_prices_async(
             dry_run=args.dry_run,
             keep_file=args.dry_run,
             force_delete=False,
@@ -65,9 +51,7 @@ async def main() -> None:
     # 3. Синхронизация ПОСЛЕ репрайсинга (если не dry-run и не отключена)
     if not args.no_sync and not args.dry_run:
         logger.info("Выполняем синхронизацию реальных цен из шаблона (после)...")
-        stats_after = await sync_real_prices_async(
-            output_dir="download",
-            headless=False,
+        stats_after = await sync_service.sync_real_prices_async(
             dry_run=False,
             keep_file=False,
             force_delete=False,

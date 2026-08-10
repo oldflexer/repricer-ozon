@@ -58,7 +58,7 @@ class PriceUpdateCoordinator:
         self.notifier = notifier
         self.progress_callback = progress_callback
         self.calc = PriceCalculationService(default_coefficient=settings.COEFFICIENT_OZON)
-        self.history_service = HistoryService(repository, api_client)
+        self.history_service = HistoryService(repository)
 
     async def run(self, dry_run: bool = False) -> Dict[str, Any]:
         """
@@ -231,7 +231,7 @@ class PriceUpdateCoordinator:
         self._finalize_updates(updates, products, update_results, dry_run, stats)
 
         # 8. Сохранение истории цен
-        await self.history_service.save_history(results_data, updates, valid_ids, dry_run, update_results, wait_seconds=settings.WAIT_AFTER_UPDATE_SECONDS)
+        await self.history_service.save_history(results_data, updates, dry_run, update_results)
 
         stats["prices_updated"] = sum(1 for u in updates if u.get("status") == "updated")
         self.notifier.send_detailed_report(updates, stats["errors"], dry_run=dry_run)
