@@ -44,7 +44,7 @@ def render_service() -> None:
         pivot = pivot.reindex(columns=correct_order, fill_value=0)
         fig_heatmap = px.imshow(
             pivot,
-            labels=dict(x="День недели", y="Час (МСК)", color="Количество обновлений"),
+            labels={'x': "День недели", 'y': "Час (МСК)", 'color': "Количество обновлений"},
             title="Тепловая карта обновлений цен (90 дней)",
             aspect="auto",
             color_continuous_scale="Viridis",

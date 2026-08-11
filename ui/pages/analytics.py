@@ -128,11 +128,11 @@ def render_dynamics() -> None:
 
         if fig_price.data:
             fig_price.update_layout(
-                legend=dict(orientation="h", y=-0.2),
+                legend={'orientation': "h", 'y': -0.2},
                 yaxis_title="Цена (₽)",
             )
             fig_margin.update_layout(
-                legend=dict(orientation="h", y=-0.2),
+                legend={'orientation': "h", 'y': -0.2},
                 yaxis_title="Маржинальность (%)",
             )
 
@@ -256,7 +256,7 @@ def render_forecasting() -> None:
             y=df_plot["price_actual"],
             mode="markers",
             name="Факт",
-            marker=dict(color="blue", size=6),
+            marker={'color': "blue", 'size': 6},
         )
     )
     fig_price.add_trace(
@@ -265,14 +265,14 @@ def render_forecasting() -> None:
             y=df_plot["price_trend"],
             mode="lines",
             name="Тренд + прогноз",
-            line=dict(color="red", width=2, dash="solid"),
+            line={'color': "red", 'width': 2, 'dash': "solid"},
         )
     )
     fig_price.update_layout(
         title="Средняя цена (факт и тренд)",
         xaxis_title="Дата",
         yaxis_title="Цена (₽)",
-        legend=dict(orientation="h", y=-0.2),
+        legend={'orientation': "h", 'y': -0.2},
     )
     st.plotly_chart(fig_price, width="stretch")
 
@@ -284,7 +284,7 @@ def render_forecasting() -> None:
             y=df_plot["margin_actual"],
             mode="markers",
             name="Факт",
-            marker=dict(color="blue", size=6),
+            marker={'color': "blue", 'size': 6},
         )
     )
     fig_margin.add_trace(
@@ -293,14 +293,14 @@ def render_forecasting() -> None:
             y=df_plot["margin_trend"],
             mode="lines",
             name="Тренд + прогноз",
-            line=dict(color="red", width=2, dash="solid"),
+            line={'color': "red", 'width': 2, 'dash': "solid"},
         )
     )
     fig_margin.update_layout(
         title="Средняя маржинальность (факт и тренд)",
         xaxis_title="Дата",
         yaxis_title="Маржинальность (%)",
-        legend=dict(orientation="h", y=-0.2),
+        legend={'orientation': "h", 'y': -0.2},
     )
     st.plotly_chart(fig_margin, width="stretch")
 

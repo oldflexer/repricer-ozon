@@ -101,10 +101,11 @@ def dto_to_strategy_interval(dto: StrategyIntervalDTO) -> StrategyInterval:
     )
 
 
-def build_price_update_request(
+def build_price_update_request(  # noqa: PLR0913
     product_id: int,
     price: int,
     min_price: int,
+    *,
     net_price: int | None = None,
     old_price: int | None = None,
     manage_elastic_boosting: bool = settings.MANAGE_ELASTIC_BOOSTING,

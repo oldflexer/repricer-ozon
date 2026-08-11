@@ -50,13 +50,13 @@ class SQLiteRepository(
         # Выполняем миграцию 001
         sql_001 = sql_dir / "001_initial_schema.sql"
         if sql_001.exists():
-            with self._get_connection() as conn, open(sql_001, encoding="utf-8") as f:
+            with self._get_connection() as conn, sql_001.open(encoding="utf-8") as f:
                 conn.executescript(f.read())
 
         # Выполняем миграцию 002
         sql_002 = sql_dir / "002_add_daily_aggregates_and_logs.sql"
         if sql_002.exists():
-            with self._get_connection() as conn, open(sql_002, encoding="utf-8") as f:
+            with self._get_connection() as conn, sql_002.open(encoding="utf-8") as f:
                 conn.executescript(f.read())
 
     # ------------------------------------------------------------------
@@ -210,3 +210,4 @@ class SQLiteRepository(
                 )
             conn.commit()
             return True
+

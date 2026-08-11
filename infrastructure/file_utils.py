@@ -5,7 +5,6 @@
 безопасного точечного обновления Excel-файлов с сохранением форматирования.
 """
 
-import os
 import shutil
 import time
 from pathlib import Path
@@ -36,9 +35,9 @@ def wait_for_excel_available(file_path: Path, timeout: int = LOCK_WAIT_TIMEOUT) 
 
     while time.time() < deadline:
         try:
-            with open(test_file, "w") as f:
+            with test_file.open("w") as f:
                 f.write("lock_test")
-            os.remove(test_file)
+            test_file.unlink()
             return True
         except PermissionError:
             logger.warning(f"Файл {file_path} занят. Ожидание освобождения...")
@@ -79,16 +78,14 @@ def save_safely(updates: dict, file_path: Path, max_retries: int = 3) -> None:
 
             wb.save(tmp_path)
             wb.close()
-            os.replace(tmp_path, file_path)
+            tmp_path.replace(file_path)
             logger.info(f"Файл {file_path} успешно сохранён (попытка {attempt})")
             return
         except Exception as e:
             last_error = e
             logger.warning(f"Ошибка сохранения (попытка {attempt}/{max_retries}): {e}")
             if tmp_path.exists():
-                os.remove(tmp_path)
-            if attempt < max_retries:
-                time.sleep(1)
-
+                tmp_path.unlink()
     logger.error(f"Не удалось сохранить файл {file_path} после {max_retries} попыток: {last_error}")
     raise last_error or RuntimeError("Ошибка сохранения файла")
+

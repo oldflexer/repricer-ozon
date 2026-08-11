@@ -18,7 +18,6 @@ from config.settings import settings
 from core.container import container
 from core.use_cases.update_price_timer import UpdatePriceTimerUseCase
 from infrastructure.db import SQLiteRepository
-from infrastructure.logger import setup_logging
 from scripts.common import register_signal_handlers, setup_script_logging
 
 logger = setup_script_logging("update_price_timer")

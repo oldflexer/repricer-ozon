@@ -29,7 +29,7 @@ class Container:
         self._price_calculation_service = None
 
     # ------------------------------------------------------------------
-    # Infrastructure (Singletons)
+    # Infrastructure singletons
     # ------------------------------------------------------------------
 
     @property
@@ -122,3 +122,4 @@ class Container:
 
 # Global container instance
 container = Container()
+

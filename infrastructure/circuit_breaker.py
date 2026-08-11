@@ -128,3 +128,4 @@ ozon_api_circuit_breaker = CircuitBreaker(
 ozon_parser_circuit_breaker = CircuitBreaker(
     failure_threshold=3, recovery_timeout=60.0, success_threshold=1
 )
+

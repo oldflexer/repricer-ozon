@@ -2,7 +2,6 @@
 Main application settings - composes all sub-settings modules.
 """
 
-import os
 from pathlib import Path
 
 import pytz

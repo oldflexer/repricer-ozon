@@ -146,7 +146,7 @@ def render_commissions_analysis() -> None:
                 y=[0, max_val],
                 mode="lines",
                 name="y=x",
-                line=dict(dash="dash", color="gray"),
+                line={'dash': "dash", 'color': "gray"},
             )
         )
         st.plotly_chart(fig_scatter, width="stretch")
@@ -268,20 +268,20 @@ def render_abc_analysis() -> None:
             name="Накопленный процент",
             yaxis="y2",
             mode="lines+markers",
-            line=dict(color="red", width=2),
+            line={'color': "red", 'width': 2},
         )
     )
     fig_pareto.update_layout(
         title=f"ABC-анализ по прибыли (топ-{top_n} товаров, от большей прибыли к меньшей)",
         xaxis_title="SKU",
         yaxis_title="Прибыль (₽)",
-        yaxis2=dict(
-            title="Накопленный процент (%)",
-            overlaying="y",
-            side="right",
-            range=[0, 100],
-        ),
-        legend=dict(x=0.01, y=0.99),
+        yaxis2={
+            'title': "Накопленный процент (%)",
+            'overlaying': "y",
+            'side': "right",
+            'range': [0, 100],
+        },
+        legend={'x': 0.01, 'y': 0.99},
         width=None,
     )
     fig_pareto.update_xaxes(type="category")

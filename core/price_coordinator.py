@@ -60,7 +60,7 @@ class PriceUpdateCoordinator:
         self.calc = PriceCalculationService(default_coefficient=settings.COEFFICIENT_OZON)
         self.history_service = HistoryService(repository)
 
-    async def run(self, dry_run: bool = False) -> dict[str, Any]:
+    async def run(self, dry_run: bool = False) -> dict[str, Any]:  # noqa: PLR0912, PLR0915
         """
         Запускает полный цикл репрайсинга.
 
@@ -76,14 +76,6 @@ class PriceUpdateCoordinator:
         """
         stats = {"products_loaded": 0, "prices_updated": 0, "errors": [], "warnings": []}
         updates = []
-
-        # Проверка доступности Excel
-        from infrastructure.file_utils import wait_for_excel_available
-
-        if not wait_for_excel_available(settings.DATA_FILE_PATH):
-            logger.error("Excel-файл занят другим процессом, репрайсинг отменён")
-            self.notifier.send_detailed_report([], ["Excel-файл занят"], dry_run=dry_run)
-            return stats
 
         # 1. Загрузка Excel
         if self.progress_callback:

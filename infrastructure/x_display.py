@@ -5,10 +5,10 @@
 На Windows всегда возвращает None.
 """
 
-import glob
 import os
 import subprocess
 import sys
+from pathlib import Path
 
 from infrastructure.logger import logger
 
@@ -38,7 +38,7 @@ def get_available_display() -> str | None:
             return display
 
     # 2. Ищем сокеты X11
-    sockets: list[str] = glob.glob("/tmp/.X11-unix/X*")
+    sockets: list[str] = [str(p) for p in Path("/tmp/.X11-unix").glob("X*")]
     displays: list[str] = []
     for sock in sockets:
         num: str = sock.split("/")[-1][1:]  # номер после 'X'
@@ -68,8 +68,8 @@ def _is_display_available(display: str) -> bool:
         return False
 
     # Проверка существования сокета
-    socket_path: str = f'/tmp/.X11-unix/X{display[1:].split(".", maxsplit=1)[0]}'
-    if not os.path.exists(socket_path):
+    socket_path = Path(f'/tmp/.X11-unix/X{display[1:].split(".", maxsplit=1)[0]}')
+    if not socket_path.exists():
         return False
 
     # Проверка через xdpyinfo (если установлен)
@@ -84,8 +84,8 @@ def _is_display_available(display: str) -> bool:
         return True
     except (subprocess.TimeoutExpired, FileNotFoundError, subprocess.CalledProcessError):
         # Если xdpyinfo нет, проверяем .Xauthority
-        xauth_file: str = os.environ.get("XAUTHORITY", os.path.expanduser("~/.Xauthority"))
-        if os.path.exists(xauth_file):
+        xauth_file = Path(os.environ.get("XAUTHORITY", str(Path.home() / ".Xauthority")))
+        if xauth_file.exists():
             try:
                 result: subprocess.CompletedProcess[str] = subprocess.run(
                     ["xauth", "list", display],
@@ -99,3 +99,4 @@ def _is_display_available(display: str) -> bool:
             except (subprocess.TimeoutExpired, FileNotFoundError):
                 pass
         return False
+

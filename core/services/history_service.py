@@ -2,7 +2,7 @@
 Сервис для сохранения истории цен и дневных агрегатов.
 """
 
-from typing import List, Dict, Any
+from typing import Any
 
 from core.repository import IProductRepository
 from infrastructure.logger import logger
@@ -16,10 +16,10 @@ class HistoryService:
 
     async def save_history(
         self,
-        results_data: List[tuple],
-        updates: List[Dict[str, Any]],
+        results_data: list[tuple],
+        updates: list[dict[str, Any]],
         dry_run: bool,
-        update_results: Dict[int, Dict],
+        update_results: dict[int, dict],
     ) -> None:
         """
         Сохраняет историю цен и дневные агрегаты.

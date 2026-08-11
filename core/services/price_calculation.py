@@ -3,7 +3,6 @@
 """
 
 from datetime import datetime, time
-from typing import Optional
 
 from config.settings import TIMEZONE
 from core.entities import PriceCalculationResult, PricingData, StrategyInterval
@@ -15,18 +14,18 @@ class PriceCalculationService:
     def __init__(self, default_coefficient: float = 0.5) -> None:
         self.default_coefficient = default_coefficient
 
-    def calculate(
+    def calculate(  # noqa: PLR0912, PLR0915, PLR0913, PLR0917
         self,
         sku: str,
         pricing: PricingData,
         rip: float,
         intervals: list[StrategyInterval],
-        competitor_min_price: Optional[float] = None,
-        real_customer_price: Optional[float] = None,
+        competitor_min_price: float | None = None,
+        real_customer_price: float | None = None,
     ) -> PriceCalculationResult:
         # --- 1. Расчёт коэффициента дисконта ---
         index_prices: list[float] = []
-        approx_real_price: Optional[float] = None
+        approx_real_price: float | None = None
         discount_coef = self.default_coefficient
 
         # Приоритет: реальная цена покупателя из БД (актуальная из шаблона)
@@ -42,8 +41,8 @@ class PriceCalculationService:
         else:
             # Расчёт через индексы (старая логика)
             index_data: list[float] = []
-            approx_index_price: Optional[float] = None
-            approx_index_data: Optional[float] = None
+            approx_index_price: float | None = None
+            approx_index_data: float | None = None
 
             if pricing.external_index_data_index and pricing.external_index_data_index != 0 and pricing.external_index_data_price is not None:
                 index_prices.append(pricing.external_index_data_price)
@@ -201,10 +200,7 @@ class PriceCalculationService:
 
         real_price = result_target_price * discount_coef
 
-        if real_price > 0:
-            marginality = (real_price - total_costs) / real_price
-        else:
-            marginality = 0.0
+        marginality = (real_price - total_costs) / real_price if real_price > 0 else 0.0
 
         log_details = {
             "approx_real_price": approx_real_price,

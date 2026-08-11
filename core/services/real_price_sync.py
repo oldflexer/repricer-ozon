@@ -5,22 +5,20 @@
 
 import asyncio
 import gc
-import os
 import tempfile
 import time
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Any
 
 from filelock import FileLock, Timeout
 
 from config.settings import settings
 from infrastructure.db import SQLiteRepository
+from infrastructure.logger import logger
 from infrastructure.ozon_seller import OzonSellerClient
 from infrastructure.template_parser import TemplateParser
-from infrastructure.logger import logger
 
-
-LOCK_FILE = os.path.join(tempfile.gettempdir(), "repricer_sync_template.lock")
+LOCK_FILE = str(Path(tempfile.gettempdir()) / "repricer_sync_template.lock")
 
 
 def delete_file_with_retry(file_path: Path, max_attempts: int = 5, delay: float = 1.0) -> bool:
@@ -49,7 +47,7 @@ class RealPriceSyncService:
         self.output_dir = output_dir
         self.headless = headless
 
-    async def _download_template(self) -> Optional[Path]:
+    async def _download_template(self) -> Path | None:
         """Скачивает шаблон цен из панели Ozon."""
         client = OzonSellerClient(headless=self.headless, download_dir=self.output_dir)
         try:
@@ -61,9 +59,8 @@ class RealPriceSyncService:
             if downloaded:
                 logger.info(f"Шаблон скачан: {downloaded}")
                 return downloaded
-            else:
-                logger.error("Не удалось скачать шаблон")
-                return None
+            logger.error("Не удалось скачать шаблон")
+            return None
         finally:
             client.close()
 
@@ -129,7 +126,7 @@ class RealPriceSyncService:
         keep_file: bool = False,
         force_delete: bool = False,
         use_lock: bool = True,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Асинхронная синхронизация реальных цен из шаблона Ozon.
         Возвращает статистику.
@@ -143,9 +140,10 @@ class RealPriceSyncService:
                     )
             except Timeout:
                 logger.error(
-                    f"Не удалось получить блокировку за {settings.PARSER_LOCK_TIMEOUT} секунд. "
-                    "Синхронизация пропущена."
-                )
+                                    f"Не удалось получить блокировку за "
+                                    f"{settings.PARSER_LOCK_TIMEOUT} секунд. "
+                                    "Синхронизация пропущена."
+                                )
                 return {}
         else:
             return await self._sync_real_prices_impl(
@@ -157,7 +155,7 @@ class RealPriceSyncService:
         dry_run: bool,
         keep_file: bool,
         force_delete: bool,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Реализация синхронизации (без блокировки)."""
         output_path = Path(self.output_dir)
         output_path.mkdir(parents=True, exist_ok=True)
@@ -174,11 +172,10 @@ class RealPriceSyncService:
         stats = self._process_template(downloaded_file, dry_run=dry_run)
 
         if not stats:
-            logger.warning("Статистика пуста, возможно, файл не содержит данных")
-            if force_delete and not keep_file:
-                if delete_file_with_retry(downloaded_file):
-                    logger.info("Файл удалён принудительно (нет данных)")
-            return stats
+                    logger.warning("Статистика пуста, возможно, файл не содержит данных")
+                    if force_delete and not keep_file and delete_file_with_retry(downloaded_file):
+                        logger.info("Файл удалён принудительно (нет данных)")
+                    return stats
 
         # 3. Вывод статистики в лог
         logger.info(
@@ -231,7 +228,7 @@ class RealPriceSyncService:
         keep_file: bool = False,
         force_delete: bool = False,
         use_lock: bool = True,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Синхронная обёртка."""
         return asyncio.run(
             self.sync_real_prices_async(
@@ -241,3 +238,4 @@ class RealPriceSyncService:
                 use_lock=use_lock,
             )
         )
+

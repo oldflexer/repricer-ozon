@@ -3,6 +3,7 @@
 Поддерживает загрузку файлов в указанную папку.
 """
 
+import contextlib
 import os
 import sys
 from pathlib import Path
@@ -25,6 +26,9 @@ class _LooseVersion:
 
     def __eq__(self, other):
         return self.vstring == str(other)
+
+    def __hash__(self) -> int:
+        return hash(self.vstring)
 
     def __lt__(self, other):
         return self.vstring < str(other)
@@ -215,10 +219,8 @@ class ChromeDriverManager:
 
     def close(self):
         if self.driver:
-            try:
+            with contextlib.suppress(Exception):
                 self.driver.quit()
-            except Exception:
-                pass
         self.driver = None
         self.wait = None
 
@@ -226,3 +228,4 @@ class ChromeDriverManager:
         if self.driver is None:
             return self.init_driver()
         return True
+

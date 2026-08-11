@@ -152,7 +152,7 @@ class AnalyticsMixin(DBConnectionMixin):
     def get_strategy_performance(self, days: int = 30) -> pd.DataFrame:
         """Возвращает эффективность стратегий за указанный период."""
         with self._get_connection() as conn:
-            df = pd.read_sql_query(
+            return pd.read_sql_query(
                 """
                 SELECT
                     s.strategy_name as "Стратегия",
@@ -167,12 +167,11 @@ class AnalyticsMixin(DBConnectionMixin):
                 conn,
                 params=(-days,),
             )
-            return df
 
     def get_stale_products(self, days: int = 7) -> pd.DataFrame:
         """Возвращает товары, у которых давно не было обновлений цен."""
         with self._get_connection() as conn:
-            df = pd.read_sql_query(
+            return pd.read_sql_query(
                 """
                 SELECT
                     p.sku, p.product_name,
@@ -187,7 +186,6 @@ class AnalyticsMixin(DBConnectionMixin):
                 conn,
                 params=(days,),
             )
-            return df
 
     def get_update_heatmap(self, days: int = 90) -> pd.DataFrame:
         """Возвращает данные для тепловой карты обновлений."""

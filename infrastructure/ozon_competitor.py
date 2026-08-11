@@ -74,7 +74,7 @@ class OzonPriceParser:
 
             # Проверка, что товар не закончился
             try:
-                out_of_stock = self.driver.find_element(
+                self.driver.find_element(
                     By.XPATH, "//h2[contains(text(), 'Этот товар закончился')]"
                 )
                 logger.info(f"Товар закончился: {product_url}")

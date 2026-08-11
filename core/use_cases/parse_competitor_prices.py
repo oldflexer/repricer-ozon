@@ -7,6 +7,7 @@ UseCase для парсинга цен конкурентов с Ozon.
 Обновляет колонки Цена 1..N в Excel-файле точечно, сохраняя форматирование.
 """
 
+import contextlib
 import random
 import time
 
@@ -76,7 +77,7 @@ class ParseCompetitorPricesUseCase(BaseParserUseCase):
 
         return None
 
-    async def execute(self, dry_run: bool = False) -> dict[str, int]:
+    async def execute(self, dry_run: bool = False) -> dict[str, int]:  # noqa: PLR0912, PLR0915
         """
         Запускает парсинг цен конкурентов.
 
@@ -182,10 +183,8 @@ class ParseCompetitorPricesUseCase(BaseParserUseCase):
         if not dry_run:
             if excel_updates:
                 if wait_for_excel_available(excel_path):
-                    try:
+                    with contextlib.suppress(Exception):
                         save_safely(excel_updates, excel_path)
-                    except Exception:
-                        pass
                 else:
                     logger.error("Файл стал недоступен перед сохранением. Данные не сохранены.")
             elif stats["updated"] == 0:

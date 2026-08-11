@@ -142,8 +142,7 @@ async def run_parsing(dry_run: bool = False) -> dict[str, Any]:
     # На Windows ничего не делаем – DISPLAY не требуется
 
     use_case = ParseCompetitorPricesUseCase()
-    stats = await use_case.execute(dry_run=dry_run)
-    return stats
+    return await use_case.execute(dry_run=dry_run)
 
 
 def execute_parsing(dry_run: bool) -> tuple[str, str]:

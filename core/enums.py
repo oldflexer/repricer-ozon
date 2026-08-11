@@ -6,6 +6,8 @@
 
 from enum import IntEnum
 
+import pandas as pd
+
 from infrastructure.logger import logger
 
 
@@ -46,8 +48,6 @@ def parse_strategy_value(value) -> StrategyType:
     Returns:
         StrategyType: Соответствующий тип стратегии (по умолчанию EQUAL).
     """
-    import pandas as pd
-
     if pd.isna(value):
         return StrategyType.EQUAL
 
