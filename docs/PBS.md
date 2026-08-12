@@ -1,6 +1,6 @@
-# PBS (Product Breakdown Structure) — `repricer-ozon`
+# PBS (Product Breakdown Structure) - repricer-ozon
 
-PBS описывает **иерархию продукта** (подсистемы и модули), без привязки к задачам разработки.
+PBS описывает иерархию продукта (подсистемы и модули), без привязки к задачам разработки.
 
 ## Иерархия
 
@@ -9,40 +9,65 @@ PBS описывает **иерархию продукта** (подсистем
 │
 ├── 1. Конфигурация
 │   └── 1.1. Параметры окружения (config/settings.py) — API-ключи, SMTP, пути, коэффициенты
-│   └── 1.2. .env-файлы — секреты и переменные окружения
+│   └── 1.2. API-настройки (config/api.py) — batch size, retries, timeout
+│   └── 1.3. UI-настройки (config/ui.py) — web user/pass
+│   └── 1.4. Instance-пути (config/instance.py) — data/logs пути
+│   └── 1.5. .env-файлы — секреты и переменные окружения
+│   └── 1.6. pyproject.toml — конфигурация проекта (ruff, mypy, pytest, deps)
 │
 ├── 2. Доменный слой (core)
 │   ├── 2.1. Сущности (entities.py) — ProductInfo, PricingData, StrategyInterval, PriceCalculationResult
 │   ├── 2.2. DTO (dto.py) — ProductDTO, PriceUpdateRequestDTO, ProductViewModel
-│   ├── 2.3. Мапперы (mappers.py) — преобразование entities ↔ DTO
+│   ├── 2.3. Мапперы (mappers.py) — преобразование entities <-> DTO
 │   ├── 2.4. Контракты (repository.py) — IProductRepository, ILoader
 │   ├── 2.5. Бизнес-сервисы
 │   │   ├── 2.5.1. PriceCalculationService — алгоритм расчёта цены (индексы, FBS-комиссии, стратегии)
 │   │   ├── 2.5.2. MarginCalculator — расчёт маржинальности с учётом всех комиссий
 │   │   ├── 2.5.3. ActionService — работа с акциями Ozon (получение/удаление автодобавления)
-│   │   └── 2.5.4. calculate_old_price — расчёт old_price для Ozon
+│   │   ├── 2.5.4. calculate_old_price — расчёт old_price для Ozon
+│   │   ├── 2.5.5. HistoryService — сохранение истории цен и дневных агрегатов
+│   │   ├── 2.5.6. MigrationService — запуск Alembic миграций
+│   │   └── 2.5.7. RealPriceSyncService — синхронизация реальных цен из шаблона Ozon
 │   ├── 2.6. Оркестраторы
 │   │   ├── 2.6.1. PriceUpdateCoordinator — оркестрация полного цикла репрайсинга
 │   │   └── 2.6.2. PricingOrchestrator — устаревший, делегирует в PriceUpdateCoordinator
-│   ├── 2.7. Use Cases
-│   │   ├── 2.7.1. RepricingUseCase — вход в цикл репрайсинга
-│   │   └── 2.7.2. DisableAutoAddUseCase — вход в операцию отключения автодобавления
+│   ├── 2.7. DI-контейнер (container.py) — singletons для инфраструктуры
+│   ├── 2.8. Enums (enums.py) — StrategyType (IntEnum), parse_strategy_value
+│   ├── 2.9. Use Cases
+│   │   ├── 2.9.1. RepricingUseCase — вход в цикл репрайсинга
+│   │   ├── 2.9.2. DisableAutoAddUseCase — вход в операцию отключения автодобавления
+│   │   ├── 2.9.3. ParseCompetitorPricesUseCase — парсинг цен конкурентов
+│   │   └── 2.9.4. BaseParserUseCase — базовый класс для парсеров
 │
 ├── 3. Инфраструктура (infrastructure)
-│   ├── 3.1. SQLiteRepository — БД: товары, стратегии, история цен, маржи, агрегаты, очистка
+│   ├── 3.1. SQLiteRepository (db/) — БД: товары, стратегии, история цен, маржи, агрегаты, очистка
+│   │   ├── 3.1.1. connection.py — DBConnectionMixin (PRAGMA, WAL)
+│   │   ├── 3.1.2. crud.py — CRUDMixin
+│   │   ├── 3.1.3. strategies.py — StrategyMixin
+│   │   ├── 3.1.4. history.py — HistoryMixin
+│   │   ├── 3.1.5. marginality.py — MarginalityMixin
+│   │   ├── 3.1.6. analytics.py — AnalyticsMixin
+│   │   └── 3.1.7. maintenance.py — MaintenanceMixin
 │   ├── 3.2. ExcelLoader — чтение/запись Excel (товары, стратегии, обновление ячеек)
 │   ├── 3.3. OzonApiClient — HTTP-клиент Ozon Seller API (product info, prices, actions)
-│   ├── 3.4. OzonPriceParser — парсер цен конкурентов через undetected-chromedriver
-│   ├── 3.5. MailNotifier — email-отчёты (plain + CSV-вложения)
-│   ├── 3.6. Logger —.setRotation onstructlog + TimedRotatingFileHandler
-│   ├── 3.7. FileUtils — блокировка/безопасное сохранение Excel
-│   ├── 3.8. XDisplay — поиск доступного X-сервера для headless-браузера (Linux)
-│   └── 3.9. Миграции (run_migrations_once) — запуск Alembic upgrade at startup
+│   ├── 3.4. OzonSellerClient — Selenium для скачивания шаблона цен
+│   ├── 3.5. OzonPriceParser — парсер цен конкурентов через undetected-chromedriver
+│   ├── 3.6. MailNotifier — email-отчёты (plain + CSV-вложения)
+│   ├── 3.7. Logger — structlog + TimedRotatingFileHandler
+│   ├── 3.8. FileUtils — блокировка/безопасное сохранение Excel (pathlib)
+│   ├── 3.9. ChromeDriverManager — undetected-chromedriver + fallback
+│   ├── 3.10. CircuitBreaker — для API/парсера
+│   ├── 3.11. TemplateParser — парсинг шаблона цен (zip XML + openpyxl fallback)
+│   ├── 3.12. XDisplay — поиск доступного X-сервера для headless-браузера (Linux, pathlib)
+│   └── 3.13. Миграции (run_migrations_once) — запуск Alembic upgrade at startup
 │
 ├── 4. CLI-скрипты (scripts)
-│   ├── 4.1. repricer.py — запуск репрайсинга → Ozon API → расчёт → отправка цен → сохранение
-│   ├── 4.2. parser.py — запуск парсера цен конкурентов → Chrome → запись в Excel
-│   └── 4.3. disable_auto_add.py — отключение автодобавления в акции через Ozon API
+│   ├── 4.1. repricer.py — запуск репрайсинга -> Ozon API -> расчёт -> отправка цен -> сохранение
+│   ├── 4.2. competitors_parser.py — запуск парсера цен конкурентов -> Chrome -> запись в Excel
+│   ├── 4.3. actions_disable_auto_add.py — отключение автодобавления в акции через Ozon API
+│   ├── 4.4. health_check.py — проверка здоровья (диск, БД, Excel)
+│   ├── 4.5. actions_update_price_timer.py — таймер обновления цен
+│   └── 4.6. common.py — общие утилиты (сигналы, логирование)
 │
 ├── 5. Веб-дашборд (ui / app.py)
 │   ├── 5.1. app.py — точка входа Streamlit, роутинг по страницам
@@ -97,37 +122,47 @@ graph TD
 
     subgraph C1["1. Конфигурация"]
         C1a["1.1 settings.py"]
-        C1b["1.2 .env"]
-        C1c["1.3 pyproject.toml"]
+        C1b["1.2 api.py"]
+        C1c["1.3 ui.py"]
+        C1d["1.4 instance.py"]
+        C1e["1.5 .env"]
+        C1f["1.6 pyproject.toml"]
     end
 
     subgraph C2["2. Доменный слой (core)"]
-        C2a["2.1 Entities & Enums"]
+        C2a["2.1 Entities and Enums"]
         C2b["2.2 DTO"]
         C2c["2.3 Mappers"]
         C2d["2.4 Repository Contracts"]
-        C2e["2.5 Services (PriceCalc, Action)"]
+        C2e["2.5 Services (PriceCalc, Action, History, Migration, RealPriceSync)"]
         C2f["2.6 Orchestrators"]
-        C2g["2.7 Use Cases"]
+        C2g["2.7 Container"]
+        C2h["2.8 Use Cases"]
     end
 
     subgraph C3["3. Инфраструктура"]
-        C3a["3.1 SQLiteRepository"]
+        C3a["3.1 SQLiteRepository (db/)"]
         C3b["3.2 ExcelLoader"]
         C3c["3.3 OzonApiClient"]
-        C3d["3.4 OzonPriceParser"]
-        C3e["3.5 MailNotifier"]
-        C3f["3.6 Logger"]
-        C3g["3.7 FileUtils"]
-        C3h["3.8 XDisplay"]
-        C3i["3.9 Migrations (Alembic)"]
+        C3d["3.4 OzonSellerClient"]
+        C3e["3.5 OzonPriceParser"]
+        C3f["3.6 MailNotifier"]
+        C3g["3.7 Logger"]
+        C3h["3.8 FileUtils"]
+        C3i["3.9 ChromeDriverManager"]
+        C3j["3.10 CircuitBreaker"]
+        C3k["3.11 TemplateParser"]
+        C3l["3.12 XDisplay"]
+        C3m["3.13 Migrations (Alembic)"]
     end
 
     subgraph C4["4. CLI-скрипты"]
-        C4a["4.0 common.py"]
-        C4b["4.1 repricer.py"]
-        C4c["4.2 parser.py"]
-        C4d["4.3 disable_auto_add.py"]
+        C4a["4.1 repricer.py"]
+        C4b["4.2 competitors_parser.py"]
+        C4c["4.3 actions_disable_auto_add.py"]
+        C4d["4.4 health_check.py"]
+        C4e["4.5 actions_update_price_timer.py"]
+        C4f["4.6 common.py"]
     end
 
     subgraph C5["5. Веб-дашборд"]
@@ -140,8 +175,8 @@ graph TD
     end
 
     subgraph C6["6. База данных"]
-        C6a["6.1–6.8 Tables (8)"]
-        C6b["6.9–6.10 Migrations (2)"]
+        C6a["6.1-6.8 Tables (8)"]
+        C6b["6.9-6.10 Migrations (2)"]
     end
 
     subgraph C7["7. Внешние интеграции"]
@@ -152,12 +187,12 @@ graph TD
     end
 
     subgraph C8["8. Тесты"]
-        C8a["8.1–8.9 Test suites (9)"]
+        C8a["8.1-8.9 Test suites (9)"]
     end
 
     subgraph C9["9. Документация"]
         C9a["9.1 README.md"]
-        C9b["9.2 docs/ (PBS, WBS, file structure)"]
+        C9b["9.2 docs (PBS, WBS, file structure)"]
     end
 
     ROOT --> C1
