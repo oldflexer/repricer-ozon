@@ -67,8 +67,8 @@ class SQLiteRepository(
         """Создаёт и возвращает соединение с SQLite с нужными настройками."""
         conn = sqlite3.connect(str(self.db_path))
         conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA busy_timeout = 30000")
-        conn.execute("PRAGMA journal_mode = WAL")
+        conn.execute(f"PRAGMA busy_timeout = {settings.SQLITE_BUSY_TIMEOUT}")
+        conn.execute(f"PRAGMA journal_mode = {settings.SQLITE_JOURNAL_MODE}")
         return conn
 
     # ------------------------------------------------------------------
@@ -210,4 +210,3 @@ class SQLiteRepository(
                 )
             conn.commit()
             return True
-

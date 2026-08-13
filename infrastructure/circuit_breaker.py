@@ -12,6 +12,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import TypeVar
 
+from config.settings import settings
+
 T = TypeVar("T")
 
 
@@ -122,10 +124,14 @@ class CircuitBreaker:
 
 # Глобальные экземпляры для разных сервисов
 ozon_api_circuit_breaker = CircuitBreaker(
-    failure_threshold=5, recovery_timeout=30.0, success_threshold=2
+    failure_threshold=settings.API_CB_FAILURE_THRESHOLD,
+    recovery_timeout=settings.API_CB_RECOVERY_TIMEOUT,
+    success_threshold=settings.API_CB_SUCCESS_THRESHOLD
 )
 
 ozon_parser_circuit_breaker = CircuitBreaker(
-    failure_threshold=3, recovery_timeout=60.0, success_threshold=1
+    failure_threshold=settings.PARSER_CB_FAILURE_THRESHOLD,
+    recovery_timeout=settings.PARSER_CB_RECOVERY_TIMEOUT,
+    success_threshold=settings.PARSER_CB_SUCCESS_THRESHOLD
 )
 

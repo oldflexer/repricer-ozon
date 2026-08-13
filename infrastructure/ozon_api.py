@@ -296,7 +296,7 @@ class OzonApiClient:
         result_map = {}
 
         # API принимает не более 1000 ID за раз
-        batch_size = 1000
+        batch_size = settings.API_TIMER_BATCH_SIZE
         for i in range(0, len(product_ids), batch_size):
             batch = product_ids[i : i + batch_size]
             payload = {"product_ids": batch}

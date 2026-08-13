@@ -27,6 +27,11 @@ class PricingSettings(BaseSettings):
         default=10, description="Pause after price update before fetching actual prices (seconds)"
     )
 
+    # Ozon API min_price rule: min_price >= price * MIN_PRICE_RATIO (default 50%)
+    MIN_PRICE_RATIO: float = Field(
+        default=0.5, description="Minimum price ratio for Ozon API (min_price >= price * ratio)"
+    )
+
     # Strategy settings
     SCHEDULE_INTERVALS_COUNT: int = Field(
         default=4, description="Number of strategy intervals to read from Excel"

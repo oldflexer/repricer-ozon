@@ -86,6 +86,8 @@ def save_safely(updates: dict, file_path: Path, max_retries: int = 3) -> None:
             logger.warning(f"Ошибка сохранения (попытка {attempt}/{max_retries}): {e}")
             if tmp_path.exists():
                 tmp_path.unlink()
+            if attempt < max_retries:
+                time.sleep(1)
     logger.error(f"Не удалось сохранить файл {file_path} после {max_retries} попыток: {last_error}")
     raise last_error or RuntimeError("Ошибка сохранения файла")
 

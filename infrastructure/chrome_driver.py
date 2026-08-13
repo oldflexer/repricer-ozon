@@ -171,9 +171,9 @@ class ChromeDriverManager:
             from selenium.webdriver.chrome.service import Service
 
             try:
-                from webdriver_manager.chrome import ChromeDriverManager
+                from webdriver_manager.chrome import ChromeDriverManager as WDMChromeDriverManager
 
-                driver_path = ChromeDriverManager().install()
+                driver_path = WDMChromeDriverManager().install()
             except Exception as e:
                 logger.warning(f"webdriver-manager не смог получить драйвер: {e}")
 
@@ -210,8 +210,8 @@ class ChromeDriverManager:
 
     def _configure_driver(self):
         assert self.driver is not None
-        self.driver.set_page_load_timeout(30)
-        self.wait = WebDriverWait(self.driver, 30)
+        self.driver.set_page_load_timeout(settings.CHROME_PAGE_LOAD_TIMEOUT)
+        self.wait = WebDriverWait(self.driver, settings.CHROME_IMPLICIT_WAIT)
 
     def restart(self) -> bool:
         self.close()
@@ -228,4 +228,3 @@ class ChromeDriverManager:
         if self.driver is None:
             return self.init_driver()
         return True
-

@@ -51,6 +51,38 @@ class ParserSettings(BaseSettings):
         default=150, description="Main Chrome version for driver (fallback if auto-detect fails)"
     )
 
+    # Selenium timeouts
+    CHROME_PAGE_LOAD_TIMEOUT: int = Field(
+        default=30, description="Chrome page load timeout (seconds)"
+    )
+    CHROME_IMPLICIT_WAIT: int = Field(
+        default=30, description="Chrome implicit wait / WebDriverWait timeout (seconds)"
+    )
+
+    # Page load delays (for dynamic content)
+    OZON_SELLER_PAGE_LOAD_DELAY: float = Field(
+        default=3.0, description="Delay after page load for Ozon Seller page (seconds)"
+    )
+    OZON_COMPETITOR_PAGE_LOAD_DELAY_MIN: float = Field(
+        default=5.0, description="Min delay after page load for competitor page (seconds)"
+    )
+    OZON_COMPETITOR_PAGE_LOAD_DELAY_MAX: float = Field(
+        default=10.0, description="Max delay after page load for competitor page (seconds)"
+    )
+
+    # Retry delays between parser restarts
+    PARSER_RESTART_DELAY_MIN: float = Field(
+        default=2.0, description="Min delay before parser restart retry (seconds)"
+    )
+    PARSER_RESTART_DELAY_MAX: float = Field(
+        default=4.0, description="Max delay before parser restart retry (seconds)"
+    )
+
+    # File lock retry delay
+    EXCEL_LOCK_RETRY_DELAY: float = Field(
+        default=2.0, description="Delay between file lock retries (seconds)"
+    )
+
     # Column name prefixes (for localization)
     COMPETITOR_URL_COLUMN_PREFIX: str = Field(
         default="Конкурент",
