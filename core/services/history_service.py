@@ -47,7 +47,9 @@ class HistoryService:
 
             # Сохраняем историю и агрегаты с вычисленным real_price
             self.repo.save_price_history(product.sku, pricing, result, real_price=real_price_value)
-            self.repo.save_daily_aggregates(product.sku, pricing, result, real_price=real_price_value)
+            self.repo.save_daily_aggregates(
+                product.sku, pricing, result, real_price=real_price_value
+            )
 
             # Обновляем поле new_price в отчёте (для email)
             for u in updates:

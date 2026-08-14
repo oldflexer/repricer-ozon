@@ -9,13 +9,14 @@
 import signal
 
 from config.settings import settings
-from infrastructure.logger import logger
+from infrastructure.logger import logger, setup_logging
+from infrastructure.logger import setup_parser_logging as _setup_parser_logging
 
 # Глобальный флаг для graceful shutdown (используется в скриптах)
 _shutdown_requested = False
 
 
-def _signal_handler(signum: int, frame) -> None:
+def _signal_handler(signum: int, _frame) -> None:
     """Стандартный обработчик сигналов для graceful shutdown."""
     global _shutdown_requested
     logger.warning(f"Received signal {signum}, initiating graceful shutdown...")
@@ -50,8 +51,6 @@ def setup_script_logging(script_name: str, mode: str = "a"):
     Returns:
         Настроенный логгер.
     """
-    from infrastructure.logger import setup_logging
-
     return setup_logging(f"{script_name}-{settings.INSTANCE_NAME}.log", mode=mode)
 
 
@@ -66,6 +65,4 @@ def setup_parser_logging(script_name: str, mode: str = "a"):
     Returns:
         Настроенный логгер.
     """
-    from infrastructure.logger import setup_parser_logging
-
-    return setup_parser_logging(f"{script_name}-{settings.INSTANCE_NAME}.log", mode=mode)
+    return _setup_parser_logging(f"{script_name}-{settings.INSTANCE_NAME}.log", mode=mode)

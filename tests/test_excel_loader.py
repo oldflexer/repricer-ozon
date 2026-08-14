@@ -133,9 +133,9 @@ class TestExcelLoader:
 
             mock_ws.iter_rows = iter_rows
             mock_ws.cell = Mock(
-                side_effect=lambda row, col: header_cells[col - 1]
-                if row == 1
-                else data_cells[col - 1]
+                side_effect=lambda row, col: (
+                    header_cells[col - 1] if row == 1 else data_cells[col - 1]
+                )
             )
 
             mock_wb = MagicMock()

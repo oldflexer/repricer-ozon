@@ -36,7 +36,7 @@ class Container:
     def repository(self) -> SQLiteRepository:
         """Get or create the database repository (singleton)."""
         if self._repository is None:
-            self._repository = SQLiteRepository(settings.DATABASE_PATH_PATH)
+            self._repository = SQLiteRepository(settings.database_path_path)
         return self._repository
 
     @property
@@ -50,7 +50,7 @@ class Container:
     def loader(self) -> ExcelLoader:
         """Get or create the Excel loader (singleton)."""
         if self._loader is None:
-            self._loader = ExcelLoader(settings.DATA_FILE_PATH)
+            self._loader = ExcelLoader(settings.data_file_path)
         return self._loader
 
     @property
@@ -122,4 +122,3 @@ class Container:
 
 # Global container instance
 container = Container()
-

@@ -25,7 +25,7 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 # Подстановка пути к БД из настроек (с поддержкой INSTANCE_NAME)
-db_path = settings.DATABASE_PATH_PATH.resolve()
+db_path = settings.database_path_path.resolve()
 db_uri = f"sqlite:///{db_path.as_posix()}"
 config.set_main_option("sqlalchemy.url", db_uri)
 

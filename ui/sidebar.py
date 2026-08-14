@@ -22,9 +22,10 @@ from filelock import FileLock, Timeout
 from config.settings import settings
 from core.use_cases import ParseCompetitorPricesUseCase, RepricingUseCase
 from infrastructure.logger import setup_logging, setup_parser_logging
+from infrastructure.x_display import get_available_display
 from ui.cache import get_api_client, get_excel_loader, get_mail_notifier, get_repo
 
-LOCK_FILE = os.path.join(tempfile.gettempdir(), "repricer_parser.lock")
+LOCK_FILE = Path(tempfile.gettempdir()) / "repricer_parser.lock"
 
 
 def get_base64_encoded_image(image_path: Path) -> str:
@@ -37,7 +38,7 @@ def get_base64_encoded_image(image_path: Path) -> str:
     Returns:
         base64-строка.
     """
-    with open(image_path, "rb") as f:
+    with image_path.open("rb") as f:
         return base64.b64encode(f.read()).decode()
 
 
@@ -129,8 +130,6 @@ async def run_parsing(dry_run: bool = False) -> dict[str, Any]:
 
     # Настройка окружения только для Linux
     if not sys.platform.startswith("win"):
-        from infrastructure.x_display import get_available_display
-
         display = get_available_display()
         if display:
             os.environ["DISPLAY"] = display
@@ -157,26 +156,28 @@ def execute_parsing(dry_run: bool) -> tuple[str, str]:
     """
     lock = FileLock(LOCK_FILE, timeout=settings.PARSER_LOCK_TIMEOUT)
     try:
-        with lock.acquire(timeout=settings.PARSER_LOCK_TIMEOUT):
-            with st.status("Выполняется парсинг конкурентов...", expanded=True) as status:
-                st.write("Инициализация браузера и загрузка страниц Ozon...")
-                try:
-                    stats = asyncio.run(run_parsing(dry_run=dry_run))
-                    if not dry_run:
-                        st.cache_data.clear()
-                        st.cache_resource.clear()
-                    status.update(label="Парсинг завершён!", state="complete")
-                    msg = (
-                        f"Готово! Обновлено цен: {stats.get('updated', 0)}, "
-                        f"ошибок: {stats.get('errors', 0)}, "
-                        f"пропущено: {stats.get('skipped', 0)}"
-                    )
-                    return msg, "success"
-                except Exception as e:
-                    status.update(label="Ошибка парсинга", state="error")
-                    return f"Ошибка: {e}", "error"
-                finally:
-                    st.session_state.parsing_running = False
+        with (
+            lock.acquire(timeout=settings.PARSER_LOCK_TIMEOUT),
+            st.status("Выполняется парсинг конкурентов...", expanded=True) as status,
+        ):
+            st.write("Инициализация браузера и загрузка страниц Ozon...")
+            try:
+                stats = asyncio.run(run_parsing(dry_run=dry_run))
+                if not dry_run:
+                    st.cache_data.clear()
+                    st.cache_resource.clear()
+                status.update(label="Парсинг завершён!", state="complete")
+                msg = (
+                    f"Готово! Обновлено цен: {stats.get('updated', 0)}, "
+                    f"ошибок: {stats.get('errors', 0)}, "
+                    f"пропущено: {stats.get('skipped', 0)}"
+                )
+                return msg, "success"
+            except Exception as e:
+                status.update(label="Ошибка парсинга", state="error")
+                return f"Ошибка: {e}", "error"
+            finally:
+                st.session_state.parsing_running = False
     except Timeout:
         st.error("Парсер уже выполняется. Попробуйте позже.", icon=":material/cancel:")
         st.session_state.parsing_running = False
@@ -195,12 +196,12 @@ def render_sidebar_section_excel(disabled: bool) -> None:
             "Загрузка Excel недоступна во время выполнения репрайсинга",
             icon=":material/info:",
         )
-        if settings.DATA_FILE_PATH.exists():
-            with open(settings.DATA_FILE_PATH, "rb") as f:
+        if settings.data_file_path.exists():
+            with settings.data_file_path.open("rb") as f:
                 st.download_button(
                     "Скачать текущий Excel",
                     f,
-                    file_name=settings.DATA_FILE_PATH.name,
+                    file_name=settings.data_file_path.name,
                     width="stretch",
                     disabled=True,
                 )
@@ -214,10 +215,10 @@ def render_sidebar_section_excel(disabled: bool) -> None:
                 key="excel_uploader",
             )
             if uploaded_file is not None:
-                with open(settings.DATA_FILE_PATH, "wb") as f:
+                with settings.data_file_path.open("wb") as f:
                     f.write(uploaded_file.getbuffer())
                 st.success(
-                    f"Файл загружен: {settings.DATA_FILE_PATH.name}",
+                    f"Файл загружен: {settings.data_file_path.name}",
                     icon=":material/check_circle:",
                 )
                 st.cache_data.clear()
@@ -225,12 +226,12 @@ def render_sidebar_section_excel(disabled: bool) -> None:
         except Exception as e:
             st.error(f"Ошибка при загрузке файла: {e}", icon=":material/cancel:")
 
-        if settings.DATA_FILE_PATH.exists():
-            with open(settings.DATA_FILE_PATH, "rb") as f:
+        if settings.data_file_path.exists():
+            with settings.data_file_path.open("rb") as f:
                 st.download_button(
                     "Скачать текущий Excel",
                     f,
-                    file_name=settings.DATA_FILE_PATH.name,
+                    file_name=settings.data_file_path.name,
                     width="stretch",
                 )
         else:

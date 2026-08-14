@@ -21,8 +21,14 @@ async def main() -> None:
     register_signal_handlers()
 
     parser = argparse.ArgumentParser(description="Запуск репрайсинга товаров")
-    parser.add_argument("--dry-run", action="store_true", help="Тестовый режим: расчёт без отправки цен")
-    parser.add_argument("--no-sync", action="store_true", help="Не выполнять синхронизацию цен из шаблона перед запуском")
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Тестовый режим: расчёт без отправки цен"
+    )
+    parser.add_argument(
+        "--no-sync",
+        action="store_true",
+        help="Не выполнять синхронизацию цен из шаблона перед запуском",
+    )
     args = parser.parse_args()
 
     sync_service = RealPriceSyncService(output_dir="download", headless=False)

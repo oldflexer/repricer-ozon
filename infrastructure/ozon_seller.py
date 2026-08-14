@@ -9,7 +9,7 @@ from pathlib import Path
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.remote.webdriver import WebDriver
-from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support import expected_conditions as ec
 from selenium.webdriver.support.ui import WebDriverWait
 
 from infrastructure.chrome_driver import ChromeDriverManager
@@ -49,7 +49,7 @@ class OzonSellerClient:
             logger.info(f"Переход на {target_url}")
             self.driver.get(target_url)
             # Ждём загрузки страницы (появление любого элемента)
-            self.wait.until(EC.presence_of_element_located((By.TAG_NAME, "body")))
+            self.wait.until(ec.presence_of_element_located((By.TAG_NAME, "body")))
             time.sleep(3)  # даём время на динамическую загрузку
             logger.info("✅ Страница управления ценами загружена")
             return True
@@ -78,7 +78,7 @@ class OzonSellerClient:
         # Ждём, пока кнопка станет кликабельной
         try:
             button = self.wait.until(
-                EC.element_to_be_clickable(
+                ec.element_to_be_clickable(
                     (By.XPATH, "//button[contains(., 'Скачать шаблон xlsx')]")
                 )
             )

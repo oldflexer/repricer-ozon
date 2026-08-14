@@ -90,7 +90,7 @@ class MailNotifier:
 
         return self._send(msg)
 
-    def send_detailed_report(
+    def send_detailed_report(  # noqa: PLR0912
         self, updates: list[dict], errors: list[str], dry_run: bool = False
     ) -> None:
         """

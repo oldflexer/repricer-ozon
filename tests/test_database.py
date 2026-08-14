@@ -13,7 +13,7 @@ from core.enums import StrategyType
 from infrastructure.db import SQLiteRepository
 
 
-def test_database_operations():
+def test_database_operations() -> None:  # noqa: PLR0915
     tmp_dir = tempfile.mkdtemp()
     db_path = Path(tmp_dir) / "test.db"
 

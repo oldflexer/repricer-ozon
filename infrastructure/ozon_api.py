@@ -20,6 +20,9 @@ from infrastructure.circuit_breaker import (
 from infrastructure.http_retry import retry_on_error
 from infrastructure.logger import logger
 
+# HTTP status codes
+HTTP_OK = 200
+
 
 class OzonApiClient:
     """
@@ -59,7 +62,7 @@ class OzonApiClient:
             Ответ в виде словаря или None при ошибке.
         """
         resp = await self.client.get(url, headers=self.headers)
-        if resp.status_code == 200:
+        if resp.status_code == HTTP_OK:
             return resp.json()
         logger.warning(f"GET {url} returned {resp.status_code}, body: {resp.text[:500]}")
         return None
@@ -78,7 +81,7 @@ class OzonApiClient:
             Ответ в виде словаря или None при ошибке.
         """
         resp = await self.client.post(url, headers=self.headers, json=payload)
-        if resp.status_code == 200:
+        if resp.status_code == HTTP_OK:
             return resp.json()
         logger.warning(f"POST {url} returned {resp.status_code}, body: {resp.text[:500]}")
         return None

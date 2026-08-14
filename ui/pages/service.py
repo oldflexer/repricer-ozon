@@ -44,7 +44,7 @@ def render_service() -> None:
         pivot = pivot.reindex(columns=correct_order, fill_value=0)
         fig_heatmap = px.imshow(
             pivot,
-            labels={'x': "День недели", 'y': "Час (МСК)", 'color': "Количество обновлений"},
+            labels={"x": "День недели", "y": "Час (МСК)", "color": "Количество обновлений"},
             title="Тепловая карта обновлений цен (90 дней)",
             aspect="auto",
             color_continuous_scale="Viridis",
@@ -62,7 +62,7 @@ def render_service() -> None:
         last_run_msk = last_run_utc.astimezone(TIMEZONE)
         st.markdown(
             f'<i class="fa-regular fa-clock"></i> Последний запуск (МСК): '
-            f'{last_run_msk.strftime("%Y-%m-%d %H:%M")}',
+            f"{last_run_msk.strftime('%Y-%m-%d %H:%M')}",
             unsafe_allow_html=True,
         )
     else:
@@ -78,14 +78,14 @@ def render_service() -> None:
     with col1:
         if st.button("Скачать БД", icon=":material/save:"):
             db_data = (
-                open(settings.DATABASE_PATH_PATH, "rb").read()
-                if settings.DATABASE_PATH_PATH.exists()
+                settings.database_path_path.read_bytes()
+                if settings.database_path_path.exists()
                 else b""
             )
             st.download_button(
                 "Скачать",
                 data=db_data,
-                file_name=settings.DATABASE_PATH_PATH.name,
+                file_name=settings.database_path_path.name,
                 mime="application/octet-stream",
             )
     with col2:
@@ -105,8 +105,8 @@ def render_service() -> None:
     # Информация о файлах
     st.divider()
     st.subheader("Информация о файлах")
-    st.caption(f"Файл данных: {settings.DATA_FILE_PATH.resolve()}")
-    st.caption(f"База данных: {settings.DATABASE_PATH_PATH.resolve()}")
+    st.caption(f"Файл данных: {settings.data_file_path.resolve()}")
+    st.caption(f"База данных: {settings.database_path_path.resolve()}")
 
     # Изменение пароля
     st.divider()
@@ -117,9 +117,9 @@ def render_service() -> None:
             if new_password and new_password == confirm_password:
                 env_path = Path(__file__).parent.parent.parent / ".env"
                 if env_path.exists():
-                    with open(env_path, encoding="utf-8") as f:
+                    with env_path.open(encoding="utf-8") as f:
                         lines = f.readlines()
-                    with open(env_path, "w", encoding="utf-8") as f:
+                    with env_path.open("w", encoding="utf-8") as f:
                         for line in lines:
                             if line.startswith("WEB_PASS="):
                                 f.write(f"WEB_PASS={new_password}\n")

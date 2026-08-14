@@ -92,7 +92,7 @@ class HistoryMixin(DBConnectionMixin):
     def save_daily_aggregates(
         self,
         sku: str,
-        pricing: PricingData,
+        _pricing: PricingData,
         result: PriceCalculationResult,
         real_price: float | None = None,
     ) -> None:

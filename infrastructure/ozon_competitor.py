@@ -10,7 +10,7 @@ import time
 from selenium.common.exceptions import NoSuchElementException, TimeoutException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.remote.webdriver import WebDriver
-from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support import expected_conditions as ec
 from selenium.webdriver.support.ui import WebDriverWait
 
 from infrastructure.chrome_driver import ChromeDriverManager
@@ -96,7 +96,7 @@ class OzonPriceParser:
             for selector in price_selectors:
                 try:
                     elements = self.wait.until(
-                        EC.presence_of_all_elements_located((By.CSS_SELECTOR, selector))
+                        ec.presence_of_all_elements_located((By.CSS_SELECTOR, selector))
                     )
                     for el in elements:
                         text = el.text.strip()

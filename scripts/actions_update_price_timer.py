@@ -39,7 +39,7 @@ async def main() -> None:
     args = parser.parse_args()
 
     if args.all:
-        repo = SQLiteRepository(settings.DATABASE_PATH_PATH)
+        repo = SQLiteRepository(settings.database_path_path)
         products = repo.get_all_products()
         product_ids = [p.product_id for p in products if p.product_id]
         logger.info(f"Загружено {len(product_ids)} товаров из БД")

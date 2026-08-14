@@ -6,6 +6,8 @@ from typing import Any
 
 import pandas as pd
 
+from core.enums import StrategyType
+
 from .base import DBConnectionMixin
 
 
@@ -141,9 +143,9 @@ class AnalyticsMixin(DBConnectionMixin):
             for strategies in per_sku.values():
                 if len(strategies) > 1:
                     counts["Смешанная"] += 1
-                elif 1 in strategies:
+                elif StrategyType.BELOW in strategies:
                     counts["Ниже"] += 1
-                elif 2 in strategies:
+                elif StrategyType.ABOVE in strategies:
                     counts["Выше"] += 1
                 else:
                     counts["Равная"] += 1

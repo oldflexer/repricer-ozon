@@ -44,10 +44,18 @@ class PriceCalculationService:
             approx_index_price: float | None = None
             approx_index_data: float | None = None
 
-            if pricing.external_index_data_index and pricing.external_index_data_index != 0 and pricing.external_index_data_price is not None:
+            if (
+                pricing.external_index_data_index
+                and pricing.external_index_data_index != 0
+                and pricing.external_index_data_price is not None
+            ):
                 index_prices.append(pricing.external_index_data_price)
                 index_data.append(pricing.external_index_data_index)
-            if pricing.ozon_index_data_index and pricing.ozon_index_data_index != 0 and pricing.ozon_index_data_price is not None:
+            if (
+                pricing.ozon_index_data_index
+                and pricing.ozon_index_data_index != 0
+                and pricing.ozon_index_data_price is not None
+            ):
                 index_prices.append(pricing.ozon_index_data_price)
                 index_data.append(pricing.ozon_index_data_index)
             if (

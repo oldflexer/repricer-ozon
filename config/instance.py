@@ -22,7 +22,7 @@ class InstanceSettings(BaseSettings):
     )
 
     @property
-    def DATA_FILE_PATH(self) -> Path:
+    def data_file_path(self) -> Path:
         """Returns Path to data file with INSTANCE_NAME substitution."""
         path = self.DATA_FILE
         if "{{INSTANCE_NAME}}" in path:

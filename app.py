@@ -57,7 +57,7 @@ check_auth()
 
 # Репозиторий БД
 if "repo" not in st.session_state:
-    st.session_state.repo = SQLiteRepository(settings.DATABASE_PATH_PATH)
+    st.session_state.repo = SQLiteRepository(settings.database_path_path)
 
 # Состояния репрайсинга
 if "running" not in st.session_state:
@@ -106,4 +106,3 @@ elif page == "Сервис":
     render_service()
 else:
     st.error("Страница не найдена")
-

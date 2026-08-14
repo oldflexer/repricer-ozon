@@ -23,6 +23,14 @@ from config.ui import UiSettings
 TIMEZONE = pytz.timezone("Europe/Moscow")
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# Константы для валидации и порогов (используются вместо magic values)
+TIME_FORMAT_LENGTH = 5  # Длина строки времени HH:MM
+PERCENT_MAX = 100  # Максимальный процент для стратегий
+ABC_A_THRESHOLD = 80  # Порог категории A в ABC-анализе (%)
+ABC_B_THRESHOLD = 95  # Порог категории B в ABC-анализе (%)
+DEFAULT_TOP_N = 2  # Количество товаров по умолчанию в мультиселекте
+LOW_MARGIN_THRESHOLD = 10  # Порог низкой маржинальности (%)
+
 # Загружаем .env в os.environ
 load_dotenv(BASE_DIR / ".env", encoding="utf-8")
 
@@ -46,7 +54,7 @@ class Settings(
     )
 
     @property
-    def DATABASE_PATH_PATH(self) -> Path:
+    def database_path_path(self) -> Path:
         """Returns Path to database file with INSTANCE_NAME substitution."""
         path = self.DATABASE_PATH
         if "{{INSTANCE_NAME}}" in path:
@@ -54,7 +62,7 @@ class Settings(
         return Path(path)
 
     @property
-    def DATA_FILE_PATH(self) -> Path:
+    def data_file_path(self) -> Path:
         """Returns Path to Excel data file with INSTANCE_NAME substitution."""
         path = self.DATA_FILE
         if "{{INSTANCE_NAME}}" in path:

@@ -29,7 +29,7 @@ class SQLiteRepository(
     Использует PRAGMA busy_timeout и WAL-режим для конкурентного доступа.
     """
 
-    def __init__(self, db_path: Path = settings.DATABASE_PATH_PATH) -> None:
+    def __init__(self, db_path: Path = settings.database_path_path) -> None:
         """
         Инициализирует репозиторий, создавая директорию для БД при необходимости.
 

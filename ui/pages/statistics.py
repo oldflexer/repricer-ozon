@@ -12,6 +12,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
+from config.settings import LOW_MARGIN_THRESHOLD
 from ui.cache import get_cached_last_prices, get_cached_strategy_roi, get_repo
 
 
@@ -35,7 +36,7 @@ def render_statistics_page() -> None:
     med_margin = margins.median()
     min_margin = margins.min()
     max_margin = margins.max()
-    low_margin_count = (margins < 10).sum()
+    low_margin_count = (margins < LOW_MARGIN_THRESHOLD).sum()
 
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Средняя маржинальность", f"{avg_margin:.2f}%")
@@ -43,7 +44,7 @@ def render_statistics_page() -> None:
     col3.metric("Мин. маржа", f"{min_margin:.2f}%")
     col4.metric("Макс. маржа", f"{max_margin:.2f}%")
     col5, col6, col7, col8 = st.columns(4)
-    col5.metric("Товаров с маржей < 10%", f"{low_margin_count}")
+    col5.metric(f"Товаров с маржей < {LOW_MARGIN_THRESHOLD}%", f"{low_margin_count}")
 
     st.divider()
 

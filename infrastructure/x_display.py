@@ -68,7 +68,7 @@ def _is_display_available(display: str) -> bool:
         return False
 
     # Проверка существования сокета
-    socket_path = Path(f'/tmp/.X11-unix/X{display[1:].split(".", maxsplit=1)[0]}')
+    socket_path = Path(f"/tmp/.X11-unix/X{display[1:].split('.', maxsplit=1)[0]}")
     if not socket_path.exists():
         return False
 
@@ -99,4 +99,3 @@ def _is_display_available(display: str) -> bool:
             except (subprocess.TimeoutExpired, FileNotFoundError):
                 pass
         return False
-

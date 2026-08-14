@@ -3,7 +3,6 @@ Unit tests for file_utils.py
 """
 
 import tempfile
-import time
 from pathlib import Path
 from unittest.mock import MagicMock, mock_open, patch
 
@@ -174,7 +173,8 @@ class TestFileUtils:
             with (
                 patch("shutil.copy2"),
                 patch(
-                    "infrastructure.file_utils.load_workbook", side_effect=Exception("Persistent error")
+                    "infrastructure.file_utils.load_workbook",
+                    side_effect=Exception("Persistent error"),
                 ),
                 patch.object(Path, "exists", return_value=True),
                 patch.object(Path, "unlink"),

@@ -90,4 +90,3 @@ def save_safely(updates: dict, file_path: Path, max_retries: int = 3) -> None:
                 time.sleep(1)
     logger.error(f"Не удалось сохранить файл {file_path} после {max_retries} попыток: {last_error}")
     raise last_error or RuntimeError("Ошибка сохранения файла")
-

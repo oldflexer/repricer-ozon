@@ -9,8 +9,16 @@ import sys
 from pathlib import Path
 from types import ModuleType
 
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options as ChromeOptions
+from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.support.ui import WebDriverWait
+
+try:
+    from webdriver_manager.chrome import ChromeDriverManager as WDMChromeDriverManager
+except Exception:
+    WDMChromeDriverManager = None  # type: ignore[assignment,misc]
 
 from config.settings import settings
 from infrastructure.logger import logger
@@ -94,8 +102,6 @@ class ChromeDriverManager:
                     pass
 
     def _build_options(self):
-        from selenium.webdriver.chrome.options import Options as ChromeOptions
-
         options = ChromeOptions()
         if self.headless:
             options.add_argument("--headless")
@@ -131,8 +137,6 @@ class ChromeDriverManager:
         return options
 
     def _build_selenium_options(self):
-        from selenium.webdriver.chrome.options import Options as ChromeOptions
-
         options = ChromeOptions()
         if self.headless:
             options.add_argument("--headless")
@@ -167,13 +171,9 @@ class ChromeDriverManager:
     def init_driver(self) -> bool:
         driver_path = None
         try:
-            from selenium import webdriver
-            from selenium.webdriver.chrome.service import Service
-
             try:
-                from webdriver_manager.chrome import ChromeDriverManager as WDMChromeDriverManager
-
-                driver_path = WDMChromeDriverManager().install()
+                if WDMChromeDriverManager is not None:
+                    driver_path = WDMChromeDriverManager().install()
             except Exception as e:
                 logger.warning(f"webdriver-manager не смог получить драйвер: {e}")
 
@@ -190,9 +190,6 @@ class ChromeDriverManager:
         except Exception as e:
             logger.error(f"Ошибка инициализации драйвера: {e}")
             try:
-                from selenium import webdriver
-                from selenium.webdriver.chrome.service import Service
-
                 fallback_options = self._build_selenium_options()
                 if driver_path:
                     service = Service(executable_path=driver_path)

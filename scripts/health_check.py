@@ -6,9 +6,14 @@ Provides readiness/liveness probes for systemd/k8s deployments.
 Checks: database connectivity, API credentials, disk space, log directory.
 """
 
+import argparse
+import json
+import shutil
 import sys
 from pathlib import Path
 from typing import Any
+
+import openpyxl
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -41,10 +46,8 @@ def check_api_credentials() -> dict[str, Any]:
 def check_disk_space() -> dict[str, Any]:
     """Check disk space for data and logs directories."""
     try:
-        import shutil
-
-        data_dir = Path(settings.DATA_FILE).parent
-        log_dir = Path(settings.DATA_FILE).parent.parent / "logs"
+        data_dir = Path(settings.data_file_path).parent
+        log_dir = Path(settings.data_file_path).parent.parent / "logs"
 
         results = {}
         for name, path in [("data", data_dir), ("logs", log_dir)]:
@@ -67,13 +70,11 @@ def check_disk_space() -> dict[str, Any]:
 def check_excel_file() -> dict[str, Any]:
     """Check Excel data file accessibility."""
     try:
-        excel_path = settings.DATA_FILE_PATH
+        excel_path = settings.data_file_path
         if not excel_path.exists():
             return {"status": "degraded", "details": f"Excel file not found: {excel_path}"}
 
         # Try to open it
-        import openpyxl
-
         wb = openpyxl.load_workbook(excel_path, read_only=True)
         wb.close()
 
@@ -87,7 +88,7 @@ def check_excel_file() -> dict[str, Any]:
 def check_log_directory() -> dict[str, Any]:
     """Check log directory exists and is writable."""
     try:
-        log_dir = Path(settings.DATA_FILE).parent.parent / "logs"
+        log_dir = Path(settings.data_file_path).parent.parent / "logs"
         log_dir.mkdir(parents=True, exist_ok=True)
 
         # Test write
@@ -124,9 +125,6 @@ def run_checks() -> dict[str, Any]:
 
 def main():
     """Main entry point."""
-    import argparse
-    import json
-
     parser = argparse.ArgumentParser(description="Health check for Repricer-Ozon")
     parser.add_argument("--json", action="store_true", help="Output as JSON")
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")

@@ -7,6 +7,7 @@
 
 import streamlit as st
 
+from config.settings import settings
 from infrastructure.db import SQLiteRepository
 from infrastructure.excel_loader import ExcelLoader
 from infrastructure.mail_notifier import MailNotifier
@@ -81,8 +82,6 @@ def get_cached_last_prices():
 # ------ ЭТИ ФУНКЦИИ НЕ КЭШИРУЕМ (создают новые объекты) ------
 def get_excel_loader():
     """Создаёт новый экземпляр ExcelLoader."""
-    from config.settings import settings
-
     return ExcelLoader(settings.DATA_FILE_PATH)
 
 
