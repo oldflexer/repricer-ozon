@@ -48,7 +48,7 @@ class Settings(
     ParserSettings,
     UiSettings,
 ):
-    # Убрали env_file и env_file_encoding — читаем из os.environ
+    # Убрали env_file и env_file_encoding - читаем из os.environ
     model_config = SettingsConfigDict(
         extra="ignore",
     )
@@ -74,6 +74,6 @@ class Settings(
 # 3. Global settings instance
 # ------------------------------------------------------------------
 
-# Теперь без явной передачи аргументов — всё из os.environ
+# Теперь без явной передачи аргументов - всё из os.environ
 settings = Settings()
 """Global settings instance for application-wide use."""

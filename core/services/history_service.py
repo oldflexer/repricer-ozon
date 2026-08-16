@@ -4,14 +4,14 @@
 
 from typing import Any
 
-from core.repository import IProductRepository
+from core.repository import IRepository
 from infrastructure.logger import logger
 
 
 class HistoryService:
     """Сервис для сохранения истории цен и дневных агрегатов."""
 
-    def __init__(self, repository: IProductRepository):
+    def __init__(self, repository: IRepository):
         self.repo = repository
 
     async def save_history(
@@ -34,7 +34,7 @@ class HistoryService:
         if not update_results:
             for product, pricing, result in results_data:
                 self.repo.save_price_history(product.sku, pricing, result, real_price=None)
-                self.repo.save_daily_aggregates(product.sku, pricing, result, real_price=None)
+                self.repo.save_daily_aggregates(product.sku, result, real_price=None)
             return
 
         # Для каждого товара вычисляем real_price из имеющихся данных

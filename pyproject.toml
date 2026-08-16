@@ -51,6 +51,8 @@ line-length = 100
 target-version = "py311"
 
 [tool.ruff.lint]
+
+[tool.ruff.lint]
 select = [
     "E",   # pycodestyle errors
     "W",   # pycodestyle warnings
@@ -84,7 +86,7 @@ skip-magic-trailing-comma = false
 line-ending = "lf"
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 warn_return_any = false
 warn_unused_configs = false
 disallow_untyped_defs = false
@@ -101,10 +103,10 @@ ignore_missing_imports = true
 # Exclude pre-commit cache and virtual environment directories
 exclude = [
     ".venv",
-    ".cache",
-    "site-packages",
-    "pre-commit",
-    "numpy",
+    ".*/__pycache__",
+    ".*/site-packages",
+    ".*/pre-commit.*",
+    ".*/numpy",
 ]
 
 [[tool.mypy.overrides]]

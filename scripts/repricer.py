@@ -71,7 +71,7 @@ async def main() -> None:
         logger.info("Синхронизация после репрайсинга пропущена (dry-run)")
 
     # 4. Закрытие API
-    api = container.api_client
+    api = container.api_client()
     await api.close()
 
 

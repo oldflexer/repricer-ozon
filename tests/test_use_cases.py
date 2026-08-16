@@ -8,7 +8,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from core.entities import PricingData, ProductInfo, StrategyInterval
 from core.enums import StrategyType
-from core.use_cases import RepricingUseCase
+from core.use_cases import RepricingUseCase, RepricingUseCaseDependencies
 
 
 @pytest.mark.asyncio
@@ -53,7 +53,17 @@ async def test_execute_dry_run():
     repo.get_average_marginality.return_value = None
     loader.update_product_in_file.return_value = True
 
-    use_case = RepricingUseCase(repo, api, notifier, loader)
+    deps = RepricingUseCaseDependencies(
+        product_repo=repo,
+        history_repo=repo,
+        analytics_repo=repo,
+        marginality_repo=repo,
+        maintenance_repo=repo,
+        api_client=api,
+        mail_notifier=notifier,
+        loader=loader,
+    )
+    use_case = RepricingUseCase(deps)
     stats = await use_case.execute(dry_run=True)
 
     assert stats["products_loaded"] == 1
@@ -73,7 +83,17 @@ async def test_execute_without_products():
     # load() returns tuple (products, warnings)
     loader.load.return_value = ([], [])
 
-    use_case = RepricingUseCase(repo, api, notifier, loader)
+    deps = RepricingUseCaseDependencies(
+        product_repo=repo,
+        history_repo=repo,
+        analytics_repo=repo,
+        marginality_repo=repo,
+        maintenance_repo=repo,
+        api_client=api,
+        mail_notifier=notifier,
+        loader=loader,
+    )
+    use_case = RepricingUseCase(deps)
     stats = await use_case.execute(dry_run=False)
 
     assert stats["products_loaded"] == 0

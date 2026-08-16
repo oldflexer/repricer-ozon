@@ -30,6 +30,38 @@ def render_service() -> None:
     repo = get_repo()
 
     # Тепловая карта
+    _render_heatmap(repo)
+
+    st.divider()
+
+    # Последний запуск
+    _render_last_run(repo)
+
+    st.divider()
+
+    # Работа с БД
+    _render_db_operations(repo)
+
+    st.divider()
+
+    # Информация о файлах
+    _render_file_info()
+
+    st.divider()
+
+    # Изменение пароля
+    _render_password_change()
+
+    st.divider()
+
+    # Диагностика
+    _render_diagnostics(repo)
+
+
+def _render_heatmap(repo) -> None:
+    """
+    Рендерит тепловую карту обновлений.
+    """
     st.subheader("Тепловая карта обновлений")
     heatmap_data = repo.get_update_heatmap(days=90)
     if not heatmap_data.empty:
@@ -45,6 +77,7 @@ def render_service() -> None:
         fig_heatmap = px.imshow(
             pivot,
             labels={"x": "День недели", "y": "Час (МСК)", "color": "Количество обновлений"},
+            labels={"x": "День недели", "y": "Час (МСК)", "color": "Количество обновлений"},
             title="Тепловая карта обновлений цен (90 дней)",
             aspect="auto",
             color_continuous_scale="Viridis",
@@ -53,9 +86,11 @@ def render_service() -> None:
     else:
         st.info("Недостаточно данных для тепловой карты", icon=":material/info:")
 
-    st.divider()
 
-    # Последний запуск
+def _render_last_run(repo) -> None:
+    """
+    Рендерит информацию о последнем запуске.
+    """
     st.subheader("Последний запуск")
     last_run_utc = repo.get_last_run_time()
     if last_run_utc:
@@ -71,8 +106,11 @@ def render_service() -> None:
             unsafe_allow_html=True,
         )
 
-    # Работа с БД
-    st.divider()
+
+def _render_db_operations(repo) -> None:
+    """
+    Рендерит секцию работы с БД.
+    """
     st.subheader("Работа с БД")
     col1, col2 = st.columns(2)
     with col1:
@@ -85,6 +123,7 @@ def render_service() -> None:
             st.download_button(
                 "Скачать",
                 data=db_data,
+                file_name=settings.database_path_path.name,
                 file_name=settings.database_path_path.name,
                 mime="application/octet-stream",
             )
@@ -102,14 +141,22 @@ def render_service() -> None:
         last_cleanup_msk = last_cleanup.astimezone(TIMEZONE)
         st.caption(f"Последняя очистка БД: {last_cleanup_msk.strftime('%Y-%m-%d %H:%M')}")
 
-    # Информация о файлах
-    st.divider()
+
+def _render_file_info() -> None:
+    """
+    Рендерит информацию о файлах.
+    """
     st.subheader("Информация о файлах")
     st.caption(f"Файл данных: {settings.data_file_path.resolve()}")
     st.caption(f"База данных: {settings.database_path_path.resolve()}")
+    st.caption(f"Файл данных: {settings.data_file_path.resolve()}")
+    st.caption(f"База данных: {settings.database_path_path.resolve()}")
 
-    # Изменение пароля
-    st.divider()
+
+def _render_password_change() -> None:
+    """
+    Рендерит секцию изменения пароля.
+    """
     with st.expander("Изменить пароль", icon=":material/lock:"):
         new_password = st.text_input("Новый пароль", type="password", key="new_pass")
         confirm_password = st.text_input("Подтвердите пароль", type="password", key="confirm_pass")
@@ -118,7 +165,9 @@ def render_service() -> None:
                 env_path = Path(__file__).parent.parent.parent / ".env"
                 if env_path.exists():
                     with env_path.open(encoding="utf-8") as f:
+                    with env_path.open(encoding="utf-8") as f:
                         lines = f.readlines()
+                    with env_path.open("w", encoding="utf-8") as f:
                     with env_path.open("w", encoding="utf-8") as f:
                         for line in lines:
                             if line.startswith("WEB_PASS="):
@@ -134,8 +183,11 @@ def render_service() -> None:
             else:
                 st.error("Пароли не совпадают или пусты", icon=":material/cancel:")
 
-    # Диагностика
-    st.divider()
+
+def _render_diagnostics(repo) -> None:
+    """
+    Рендерит секцию диагностики.
+    """
     st.subheader("Диагностика")
     if st.button("Проверить соединение с БД", icon=":material/database:"):
         try:

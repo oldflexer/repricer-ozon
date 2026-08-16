@@ -3,9 +3,9 @@
 Извлекает данные из листа "Товары и цены", рассчитывает реальную цену.
 """
 
-import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
+from xml.etree import ElementTree
 
 import pandas as pd
 from openpyxl import load_workbook
@@ -44,6 +44,7 @@ class TemplateParser:
         "fbs_logistics_min": "Логистика Ozon, минимум, FBS",
         "fbs_logistics_max": "Логистика Ozon, максимум, FBS",
         "fbs_delivery": "Доставка до места выдачи, FBS",
+    }
     }
 
     def __init__(self, file_path: Path):
@@ -361,3 +362,96 @@ class TemplateParser:
             real_price = self.calculate_real_price(p)
             results.append((p, real_price, sales_type))
         return results
+
+    # ------------------------------------------------------------------
+    # Вспомогательные методы для _read_xlsx_via_zip
+    # ------------------------------------------------------------------
+
+    def _find_target_sheet(self, zf: zipfile.ZipFile) -> str | None:
+        """Находит лист с данными SKU и Статус."""
+        sheet_files = [
+            f for f in zf.namelist() if f.startswith("xl/worksheets/sheet") and f.endswith(".xml")
+        ]
+        sheet_files.sort()
+        logger.info(f"Найдены листы: {sheet_files}")
+
+        # Ищем лист с заголовками SKU и Статус
+        target_sheet = None
+        for sf in sheet_files:
+            try:
+                content = zf.read(sf).decode("utf-8", errors="ignore")
+                if "SKU" in content and "Статус" in content:
+                    target_sheet = sf
+                    logger.info(f"Найден лист с данными: {sf}")
+                    break
+            except Exception:
+                continue
+
+        if not target_sheet:
+            # Если не нашли, берём второй лист (индекс 1)
+            if len(sheet_files) > MIN_SHEET_INDEX:
+                target_sheet = sheet_files[MIN_SHEET_INDEX]
+                logger.info(f"Используем второй лист: {target_sheet}")
+            else:
+                logger.error("Не найден лист с данными")
+                return None
+        return target_sheet
+
+    def _read_shared_strings(self, zf: zipfile.ZipFile) -> list[str]:
+        """Читает shared strings из zip-архива."""
+        shared_strings = []
+        try:
+            ss_xml = zf.read("xl/sharedStrings.xml")
+            ss_root = ElementTree.fromstring(ss_xml)
+            for si in ss_root.findall(
+                ".//{http://schemas.openxmlformats.org/spreadsheetml/2006/main}si"
+            ):
+                texts = [
+                    t.text or ""
+                    for t in si.findall(
+                        ".//{http://schemas.openxmlformats.org/spreadsheetml/2006/main}t"
+                    )
+                ]
+                shared_strings.append("".join(texts))
+            logger.info(f"Загружено {len(shared_strings)} общих строк")
+        except Exception as e:
+            logger.warning(f"Не удалось прочитать sharedStrings: {e}")
+        return shared_strings
+
+    def _read_sheet_data(
+        self, zf: zipfile.ZipFile, target_sheet: str, shared_strings: list[str]
+    ) -> list[list[str]]:
+        """Читает данные листа из zip-архива."""
+        sheet_xml = zf.read(target_sheet)
+        root = ElementTree.fromstring(sheet_xml)
+        ns = {"main": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+
+        rows = []
+        for row_elem in root.findall(".//main:row", ns):
+            row_data = []
+            for cell in row_elem.findall(".//main:c", ns):
+                cell_type = cell.get("t")
+                value_elem = cell.find(".//main:v", ns)
+                if value_elem is not None:
+                    value = value_elem.text
+                    if cell_type == "s" and value is not None:
+                        idx = int(value)
+                        value = shared_strings[idx] if idx < len(shared_strings) else ""
+                else:
+                    value = ""
+                row_data.append(value)
+            if any(row_data):  # пропускаем пустые строки
+                rows.append(row_data)
+        return rows
+
+    def _build_dataframe(self, rows: list[list[str]]) -> pd.DataFrame:
+        """Создает DataFrame из строк данных."""
+        headers = rows[1]  # вторая строка
+        # Удаляем пустые заголовки справа
+        while headers and not headers[-1]:
+            headers.pop()
+
+        data = rows[2:]  # данные начиная с третьей строки
+        data = [row[: len(headers)] for row in data]  # обрезаем до длины заголовков
+
+        return pd.DataFrame(data, columns=headers)

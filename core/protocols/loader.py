@@ -1,34 +1,16 @@
 """
-Абстрактные интерфейсы для работы с хранилищем данных.
+Протоколы (Interfaces) для загрузчиков данных.
 
-Определяет контракты для репозитория товаров и загрузчика данных из Excel.
+Определяют контракты для работы с Excel и другими источниками данных.
 """
 
-from abc import ABC, abstractmethod
-from typing import Any
+from abc import abstractmethod
+from typing import Any, Protocol
 
-from .entities import ProductInfo, StrategyInterval
-from .protocols.repository import (
-    IAnalyticsRepository,
-    IMaintenanceRepository,
-    IMarginalityRepository,
-    IPriceHistoryRepository,
-    IProductRepository,
-    IRepository,
-)
-
-__all__ = [
-    "IProductRepository",
-    "IPriceHistoryRepository",
-    "IMarginalityRepository",
-    "IAnalyticsRepository",
-    "IMaintenanceRepository",
-    "IRepository",
-    "ILoader",
-]
+from core.entities import ProductInfo, StrategyInterval
 
 
-class ILoader(ABC):
+class ILoader(Protocol):
     """Интерфейс загрузчика данных из Excel."""
 
     @abstractmethod
@@ -39,7 +21,7 @@ class ILoader(ABC):
         Returns:
             Кортеж (список товаров, список предупреждений/ошибок).
         """
-        pass
+        ...
 
     @abstractmethod
     def get_strategy_intervals(self, product: ProductInfo) -> list[StrategyInterval]:
@@ -52,7 +34,7 @@ class ILoader(ABC):
         Returns:
             Список StrategyInterval.
         """
-        pass
+        ...
 
     @abstractmethod
     def update_product_in_file(self, sku: str, updates: dict[str, Any]) -> bool:
@@ -66,4 +48,4 @@ class ILoader(ABC):
         Returns:
             True в случае успеха.
         """
-        pass
+        ...

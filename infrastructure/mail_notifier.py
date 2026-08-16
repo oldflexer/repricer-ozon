@@ -104,25 +104,49 @@ class MailNotifier:
             errors: Список общих ошибок.
             dry_run: Флаг тестового запуска (добавляет пометку в тему).
         """
-        if dry_run:
-            subject = f"[DRY-RUN] Репрайсер {settings.INSTANCE_NAME} – результаты расчёта (цены не отправлялись)"
-        else:
-            updated_count = sum(1 for u in updates if u.get("status") == "updated")
-            subject = f"Репрайсер {settings.INSTANCE_NAME} – цикл завершён. Обновлено товаров: {updated_count}"
+        subject = self._build_subject(updates, dry_run)
 
+        if len(updates) > settings.NOTIFICATION_MAX_DETAILS:
+            lines = self._build_summary_lines(updates, dry_run)
+            csv_data = self._generate_csv(updates)
+            self.send_message_with_attachment(subject, "\n".join(lines), "report.csv", csv_data)
+            return
+
+        lines = self._build_detailed_lines(updates, dry_run, errors)
+        body = "\n".join(lines)
+        self.send_message(subject, body)
+
+    # ------------------------------------------------------------------
+    # Вспомогательные методы
+    # ------------------------------------------------------------------
+
+    def _build_subject(self, updates: list[dict], dry_run: bool) -> str:
+        """Формирует тему письма."""
+        if dry_run:
+            return f"[DRY-RUN] Репрайсер {settings.INSTANCE_NAME} – результаты расчёта (цены не отправлялись)"
+        updated_count = sum(1 for u in updates if u.get("status") == "updated")
+        return f"Репрайсер {settings.INSTANCE_NAME} – цикл завершён. Обновлено товаров: {updated_count}"
+
+    def _build_summary_lines(self, updates: list[dict], dry_run: bool) -> list[str]:
+        """Формирует краткие строки для CSV-отчёта."""
         lines = []
         if dry_run:
             lines.append("*** ЭТО ТЕСТОВЫЙ ЗАПУСК (DRY-RUN). ЦЕНЫ НЕ ОТПРАВЛЯЛИСЬ. ***\n")
 
-        if len(updates) > settings.NOTIFICATION_MAX_DETAILS:
-            lines.append(
-                f"Количество товаров ({len(updates)}) превышает лимит детализации "
-                f"({settings.NOTIFICATION_MAX_DETAILS})."
-            )
-            lines.append("Полные данные прилагаются в CSV-файле.\n")
-            csv_data = self._generate_csv(updates)
-            self.send_message_with_attachment(subject, "\n".join(lines), "report.csv", csv_data)
-            return
+        lines.append(
+            f"Количество товаров ({len(updates)}) превышает лимит детализации "
+            f"({settings.NOTIFICATION_MAX_DETAILS})."
+        )
+        lines.append("Полные данные прилагаются в CSV-файле.\n")
+        return lines
+
+    def _build_detailed_lines(
+        self, updates: list[dict], dry_run: bool, errors: list[str]
+    ) -> list[str]:
+        """Формирует детализированные строки для текстового отчёта."""
+        lines = []
+        if dry_run:
+            lines.append("*** ЭТО ТЕСТОВЫЙ ЗАПУСК (DRY-RUN). ЦЕНЫ НЕ ОТПРАВЛЯЛИСЬ. ***\n")
 
         lines.append("Детализация по товарам:")
         lines.append("")
@@ -150,12 +174,7 @@ class MailNotifier:
             for err in errors:
                 lines.append(f"  - {err}")
 
-        body = "\n".join(lines)
-        self.send_message(subject, body)
-
-    # ------------------------------------------------------------------
-    # Вспомогательные методы
-    # ------------------------------------------------------------------
+        return lines
 
     def _check_config(self) -> bool:
         """Проверяет, что все необходимые SMTP-параметры заданы."""

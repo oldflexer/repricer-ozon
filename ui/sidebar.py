@@ -20,11 +20,16 @@ import streamlit as st
 from filelock import FileLock, Timeout
 
 from config.settings import settings
-from core.use_cases import ParseCompetitorPricesUseCase, RepricingUseCase
+from core.use_cases import (
+    ParseCompetitorPricesUseCase,
+    RepricingUseCase,
+    RepricingUseCaseDependencies,
+)
 from infrastructure.logger import setup_logging, setup_parser_logging
 from infrastructure.x_display import get_available_display
 from ui.cache import get_api_client, get_excel_loader, get_mail_notifier, get_repo
 
+LOCK_FILE = Path(tempfile.gettempdir()) / "repricer_parser.lock"
 LOCK_FILE = Path(tempfile.gettempdir()) / "repricer_parser.lock"
 
 
@@ -38,6 +43,7 @@ def get_base64_encoded_image(image_path: Path) -> str:
     Returns:
         base64-строка.
     """
+    with image_path.open("rb") as f:
     with image_path.open("rb") as f:
         return base64.b64encode(f.read()).decode()
 
@@ -61,7 +67,18 @@ def run_repricing(dry_run: bool = False) -> dict[str, Any]:
         api = get_api_client()
         notifier = get_mail_notifier()
         repo = get_repo()
-        use_case = RepricingUseCase(repo, api, notifier, loader)
+        deps = RepricingUseCaseDependencies(
+            product_repo=repo,
+            history_repo=repo,
+            analytics_repo=repo,
+            marginality_repo=repo,
+            maintenance_repo=repo,
+            api_client=api,
+            mail_notifier=notifier,
+            loader=loader,
+            calculator=None,
+        )
+        use_case = RepricingUseCase(deps)
         try:
             stats = await use_case.execute(dry_run=dry_run)
         finally:
@@ -178,6 +195,28 @@ def execute_parsing(dry_run: bool) -> tuple[str, str]:
                 return f"Ошибка: {e}", "error"
             finally:
                 st.session_state.parsing_running = False
+        with (
+            lock.acquire(timeout=settings.PARSER_LOCK_TIMEOUT),
+            st.status("Выполняется парсинг конкурентов...", expanded=True) as status,
+        ):
+            st.write("Инициализация браузера и загрузка страниц Ozon...")
+            try:
+                stats = asyncio.run(run_parsing(dry_run=dry_run))
+                if not dry_run:
+                    st.cache_data.clear()
+                    st.cache_resource.clear()
+                status.update(label="Парсинг завершён!", state="complete")
+                msg = (
+                    f"Готово! Обновлено цен: {stats.get('updated', 0)}, "
+                    f"ошибок: {stats.get('errors', 0)}, "
+                    f"пропущено: {stats.get('skipped', 0)}"
+                )
+                return msg, "success"
+            except Exception as e:
+                status.update(label="Ошибка парсинга", state="error")
+                return f"Ошибка: {e}", "error"
+            finally:
+                st.session_state.parsing_running = False
     except Timeout:
         st.error("Парсер уже выполняется. Попробуйте позже.", icon=":material/cancel:")
         st.session_state.parsing_running = False
@@ -198,9 +237,12 @@ def render_sidebar_section_excel(disabled: bool) -> None:
         )
         if settings.data_file_path.exists():
             with settings.data_file_path.open("rb") as f:
+        if settings.data_file_path.exists():
+            with settings.data_file_path.open("rb") as f:
                 st.download_button(
                     "Скачать текущий Excel",
                     f,
+                    file_name=settings.data_file_path.name,
                     file_name=settings.data_file_path.name,
                     width="stretch",
                     disabled=True,
@@ -216,8 +258,10 @@ def render_sidebar_section_excel(disabled: bool) -> None:
             )
             if uploaded_file is not None:
                 with settings.data_file_path.open("wb") as f:
+                with settings.data_file_path.open("wb") as f:
                     f.write(uploaded_file.getbuffer())
                 st.success(
+                    f"Файл загружен: {settings.data_file_path.name}",
                     f"Файл загружен: {settings.data_file_path.name}",
                     icon=":material/check_circle:",
                 )
@@ -236,6 +280,101 @@ def render_sidebar_section_excel(disabled: bool) -> None:
                 )
         else:
             st.warning("Файл Excel пока не существует.", icon=":material/warning:")
+
+
+def _handle_repricing_buttons(is_busy: bool) -> None:
+    """Обрабатывает кнопки репрайсинга."""
+    st.markdown(
+        '<h3><i class="fa-solid fa-arrows-up-down"></i> Репрайсинг</h3>', unsafe_allow_html=True
+    )
+    if is_busy:
+        st.warning("Выполняется задача. Пожалуйста, подождите...", icon=":material/warning:")
+
+    if st.session_state.get("running"):
+        st.button(
+            "Репрайсинг товаров",
+            type="primary",
+            width="stretch",
+            disabled=True,
+            icon=":material/rocket_launch:",
+        )
+        st.button(
+            "Тест репрайсинга",
+            width="stretch",
+            disabled=True,
+            icon=":material/bug_report:",
+        )
+    else:
+        if st.button(
+            "Репрайсинг товаров",
+            type="primary",
+            width="stretch",
+            icon=":material/rocket_launch:",
+        ):
+            st.session_state.running = True
+            st.session_state.dry_run_mode = False
+            st.rerun()
+        if st.button(
+            "Тест репрайсинга",
+            width="stretch",
+            icon=":material/bug_report:",
+        ):
+            st.session_state.running = True
+            st.session_state.dry_run_mode = True
+            st.rerun()
+
+
+def _handle_parsing_buttons(is_busy: bool) -> None:
+    """Обрабатывает кнопки парсинга."""
+    st.markdown(
+        '<h3><i class="fa-solid fa-spider"></i> Парсинг конкурентов</h3>', unsafe_allow_html=True
+    )
+    if is_busy:
+        st.warning("Выполняется задача. Пожалуйста, подождите...", icon=":material/warning:")
+
+    if st.session_state.get("parsing_running"):
+        st.button(
+            "Парсинг цен",
+            type="primary",
+            width="stretch",
+            disabled=True,
+            icon=":material/rocket_launch:",
+        )
+        st.button(
+            "Тест парсинга",
+            width="stretch",
+            disabled=True,
+            icon=":material/bug_report:",
+        )
+    else:
+        if st.button(
+            "Парсинг цен",
+            type="primary",
+            width="stretch",
+            icon=":material/rocket_launch:",
+        ):
+            st.session_state.parsing_running = True
+            st.session_state.parsing_dry_run = False
+            st.rerun()
+        if st.button(
+            "Тест парсинга",
+            width="stretch",
+            icon=":material/bug_report:",
+        ):
+            st.session_state.parsing_running = True
+            st.session_state.parsing_dry_run = True
+            st.rerun()
+
+
+def _display_result_message() -> None:
+    """Отображает сообщение о результате выполнения задачи."""
+    if st.session_state.get("result_message"):
+        if st.session_state.get("result_type") == "success":
+            st.success(st.session_state.result_message, icon=":material/check_circle:")
+        else:
+            st.error(st.session_state.result_message, icon=":material/cancel:")
+        st.session_state.result_message = None
+        st.session_state.result_type = None
 
 
 def render_sidebar() -> None:
@@ -287,92 +426,15 @@ def render_sidebar() -> None:
         st.rerun()
 
     # Отображение сообщения о результате
-    if st.session_state.get("result_message"):
-        if st.session_state.get("result_type") == "success":
-            st.success(st.session_state.result_message, icon=":material/check_circle:")
-        else:
-            st.error(st.session_state.result_message, icon=":material/cancel:")
-        st.session_state.result_message = None
-        st.session_state.result_type = None
+    _display_result_message()
 
-    is_busy = st.session_state.get("running") or st.session_state.get("parsing_running")
+    is_busy = bool(st.session_state.get("running") or st.session_state.get("parsing_running"))
 
     # Кнопки репрайсинга
-    st.markdown(
-        '<h3><i class="fa-solid fa-arrows-up-down"></i> Репрайсинг</h3>', unsafe_allow_html=True
-    )
-    if is_busy:
-        st.warning("Выполняется задача. Пожалуйста, подождите...", icon=":material/warning:")
-
-    if st.session_state.get("running"):
-        st.button(
-            "Репрайсинг товаров",
-            type="primary",
-            width="stretch",
-            disabled=True,
-            icon=":material/rocket_launch:",
-        )
-        st.button(
-            "Тест репрайсинга",
-            width="stretch",
-            disabled=True,
-            icon=":material/bug_report:",
-        )
-    else:
-        if st.button(
-            "Репрайсинг товаров",
-            type="primary",
-            width="stretch",
-            icon=":material/rocket_launch:",
-        ):
-            st.session_state.running = True
-            st.session_state.dry_run_mode = False
-            st.rerun()
-        if st.button(
-            "Тест репрайсинга",
-            width="stretch",
-            icon=":material/bug_report:",
-        ):
-            st.session_state.running = True
-            st.session_state.dry_run_mode = True
-            st.rerun()
+    _handle_repricing_buttons(is_busy)
 
     # Кнопки парсинга
-    st.markdown(
-        '<h3><i class="fa-solid fa-spider"></i> Парсинг конкурентов</h3>', unsafe_allow_html=True
-    )
-    if st.session_state.get("parsing_running"):
-        st.button(
-            "Парсинг цен",
-            type="primary",
-            width="stretch",
-            disabled=True,
-            icon=":material/rocket_launch:",
-        )
-        st.button(
-            "Тест парсинга",
-            width="stretch",
-            disabled=True,
-            icon=":material/bug_report:",
-        )
-    else:
-        if st.button(
-            "Парсинг цен",
-            type="primary",
-            width="stretch",
-            icon=":material/rocket_launch:",
-        ):
-            st.session_state.parsing_running = True
-            st.session_state.parsing_dry_run = False
-            st.rerun()
-        if st.button(
-            "Тест парсинга",
-            width="stretch",
-            icon=":material/bug_report:",
-        ):
-            st.session_state.parsing_running = True
-            st.session_state.parsing_dry_run = True
-            st.rerun()
+    _handle_parsing_buttons(is_busy)
 
     # Работа с Excel
     st.markdown(

@@ -56,7 +56,7 @@ async def test_update_prices_dry_run(tmp_path):
     # Мокаем путь к Excel
     from config.settings import settings
 
-    with patch.object(type(settings), "DATA_FILE_PATH", new_callable=PropertyMock) as mock_path:
+    with patch.object(type(settings), "data_file_path", new_callable=PropertyMock) as mock_path:
         mock_path.return_value = excel_path
 
         # Создаём UseCase и мокаем парсинг
@@ -80,7 +80,7 @@ async def test_update_prices_real_run(tmp_path):
     # Мокаем путь к Excel
     from config.settings import settings
 
-    with patch.object(type(settings), "DATA_FILE_PATH", new_callable=PropertyMock) as mock_path:
+    with patch.object(type(settings), "data_file_path", new_callable=PropertyMock) as mock_path:
         mock_path.return_value = excel_path
 
         # Мокаем только wait_for_excel_available, но НЕ save_safely (чтобы проверить реальную запись)
@@ -101,7 +101,7 @@ async def test_update_prices_file_not_found(tmp_path):
     """Тест, когда файл не найден."""
     from config.settings import settings
 
-    with patch.object(type(settings), "DATA_FILE_PATH", new_callable=PropertyMock) as mock_path:
+    with patch.object(type(settings), "data_file_path", new_callable=PropertyMock) as mock_path:
         mock_path.return_value = tmp_path / "nonexistent.xlsx"
 
         use_case = ParseCompetitorPricesUseCase()

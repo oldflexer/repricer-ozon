@@ -51,7 +51,7 @@ async def main() -> None:
         logger.error("Нет product_id для обновления")
         sys.exit(1)
 
-    api = container.api_client
+    api = container.api_client()
     use_case = UpdatePriceTimerUseCase(api)
 
     try:
