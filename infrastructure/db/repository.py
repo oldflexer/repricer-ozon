@@ -29,7 +29,7 @@ class SQLiteRepository(
     Использует PRAGMA busy_timeout и WAL-режим для конкурентного доступа.
     """
 
-    def __init__(self, db_path: Path = settings.DATABASE_PATH_PATH) -> None:
+    def __init__(self, db_path: Path = settings.database_path_path) -> None:
         """
         Инициализирует репозиторий, создавая директорию для БД при необходимости.
 
@@ -211,3 +211,15 @@ class SQLiteRepository(
             conn.commit()
             return True
 
+    def get_strategy_counts(self) -> dict[str, int]:
+        """Возвращает количество интервалов стратегий по типам."""
+        with self._get_connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT s.strategy_name, COUNT(*) as count
+                FROM product_strategy ps
+                JOIN strategy s ON ps.strategy_id = s.id
+                GROUP BY s.strategy_name
+                """
+            ).fetchall()
+            return {r["strategy_name"]: r["count"] for r in rows}

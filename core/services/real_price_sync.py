@@ -76,7 +76,7 @@ class RealPriceSyncService:
             logger.warning("Нет результатов для обновления")
             return {}
 
-        repo = SQLiteRepository(settings.DATABASE_PATH_PATH)
+        repo = SQLiteRepository(settings.database_path_path)
         db_products = repo.get_all_products()
         sku_to_product = {p.sku: p for p in db_products}
         logger.info(f"Загружено {len(sku_to_product)} товаров из БД")
@@ -106,7 +106,9 @@ class RealPriceSyncService:
                 continue
 
             if dry_run:
-                logger.info(f"DRY-RUN: SKU {sku} -> real_price = {real_price:.2f} (тип: {sales_type})")
+                logger.info(
+                    f"DRY-RUN: SKU {sku} -> real_price = {real_price:.2f} (тип: {sales_type})"
+                )
                 stats["updated"] += 1
                 continue
 
@@ -135,20 +137,16 @@ class RealPriceSyncService:
             lock = FileLock(LOCK_FILE, timeout=settings.PARSER_LOCK_TIMEOUT)
             try:
                 with lock.acquire(timeout=settings.PARSER_LOCK_TIMEOUT):
-                    return await self._sync_real_prices_impl(
-                        dry_run, keep_file, force_delete
-                    )
+                    return await self._sync_real_prices_impl(dry_run, keep_file, force_delete)
             except Timeout:
                 logger.error(
-                                    f"Не удалось получить блокировку за "
-                                    f"{settings.PARSER_LOCK_TIMEOUT} секунд. "
-                                    "Синхронизация пропущена."
-                                )
+                    f"Не удалось получить блокировку за "
+                    f"{settings.PARSER_LOCK_TIMEOUT} секунд. "
+                    "Синхронизация пропущена."
+                )
                 return {}
         else:
-            return await self._sync_real_prices_impl(
-                dry_run, keep_file, force_delete
-            )
+            return await self._sync_real_prices_impl(dry_run, keep_file, force_delete)
 
     async def _sync_real_prices_impl(
         self,
@@ -172,10 +170,10 @@ class RealPriceSyncService:
         stats = self._process_template(downloaded_file, dry_run=dry_run)
 
         if not stats:
-                    logger.warning("Статистика пуста, возможно, файл не содержит данных")
-                    if force_delete and not keep_file and delete_file_with_retry(downloaded_file):
-                        logger.info("Файл удалён принудительно (нет данных)")
-                    return stats
+            logger.warning("Статистика пуста, возможно, файл не содержит данных")
+            if force_delete and not keep_file and delete_file_with_retry(downloaded_file):
+                logger.info("Файл удалён принудительно (нет данных)")
+            return stats
 
         # 3. Вывод статистики в лог
         logger.info(
@@ -204,7 +202,7 @@ class RealPriceSyncService:
         elif keep_file:
             should_delete = False
             delete_reason = "файл сохранён (--keep-file)"
-        elif stats['errors'] == 0:
+        elif stats["errors"] == 0:
             should_delete = True
             delete_reason = "успешная обработка без ошибок"
         else:
@@ -238,4 +236,3 @@ class RealPriceSyncService:
                 use_lock=use_lock,
             )
         )
-

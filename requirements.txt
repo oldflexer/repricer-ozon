@@ -1,29 +1,29 @@
-# .env
-python-dotenv==1.2.2
-pydantic-settings==2.14.2
-pytz==2026.3.post1
-filelock==3.32.2
-# linters
-ruff==0.16.2
-mypy==2.3.0
 # db
 alembic==1.18.5
+filelock==3.32.2
 # api
 httpx==0.28.1
+mypy==2.3.0
+openpyxl==3.1.5
 # excel
 pandas==3.0.5
-openpyxl==3.1.5
+plotly==6.9.0
+pydantic-settings==2.14.2
 # test
 pytest==9.1.1
 pytest-asyncio==1.4.0
 pytest-httpx==0.36.2
 pytest-mock==3.15.1
+# .env
+python-dotenv==1.2.2
+pytz==2026.3.post1
+# linters
+ruff==0.16.2
+selenium==4.46.0
 # dashboard
 streamlit==1.60.0
-plotly==6.9.0
 # logging
 structlog==26.1.0
 # parser
 undetected-chromedriver==3.5.5
 webdriver-manager==4.1.2
-selenium==4.46.0

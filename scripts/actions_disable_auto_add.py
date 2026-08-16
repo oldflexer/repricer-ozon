@@ -45,7 +45,7 @@ async def main() -> None:
         stats = await use_case.execute(dry_run=args.dry_run)
         logger.info(f"Статистика: {stats}")
     finally:
-        api = container.api_client
+        api = container.api_client()
         await api.close()
 
 

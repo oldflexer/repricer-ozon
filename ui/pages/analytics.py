@@ -81,10 +81,11 @@ def render_dynamics() -> None:
     sku_options = [f"{p.sku} – {p.product_name}" for p in products]
     sku_to_sku = {opt: p.sku for opt, p in zip(sku_options, products, strict=False)}
 
+    default_products_count = 2
     selected = st.multiselect(
         "Выберите товары для отображения",
         sku_options,
-        default=sku_options[:2] if len(sku_options) >= 2 else sku_options,
+        default=sku_options[: min(len(sku_options), default_products_count)],
         key="analytics_multi",
     )
 
@@ -128,11 +129,11 @@ def render_dynamics() -> None:
 
         if fig_price.data:
             fig_price.update_layout(
-                legend={'orientation': "h", 'y': -0.2},
+                legend={"orientation": "h", "y": -0.2},
                 yaxis_title="Цена (₽)",
             )
             fig_margin.update_layout(
-                legend={'orientation': "h", 'y': -0.2},
+                legend={"orientation": "h", "y": -0.2},
                 yaxis_title="Маржинальность (%)",
             )
 
@@ -147,10 +148,41 @@ def render_dynamics() -> None:
 
 def render_forecasting() -> None:
     """
-    Отрисовывает вкладку прогнозирования с полиномиальной регрессией.
+    Отрисовывает вкладку прогнозирования с полиномиальной регрессии.
     """
     repo = get_repo()
 
+    # Получение параметров от пользователя
+    history_days, degree, forecast_days = _get_forecast_params()
+    # Подготовка данных
+    daily_df = _prepare_forecast_data(repo, history_days)
+    if daily_df is None:
+        return
+
+    # Проверка достаточности данных
+    train_len = len(daily_df)
+    if train_len <= degree:
+        st.warning(
+            f"Недостаточно данных для полинома степени {degree}. Нужно больше {degree} точек.",
+            icon=":material/warning:",
+        )
+        return
+
+    # Аппроксимация полиномом
+    price_poly, margin_poly = _fit_polynomial(daily_df, degree)
+    # Расчёт прогноза
+    forecast_data = _calculate_forecast(daily_df, price_poly, margin_poly, forecast_days, degree)
+    if forecast_data is None:
+        return
+
+    # Построение графиков
+    _render_forecast_charts(forecast_data, degree)
+    # Отображение деталей
+    _render_forecast_details(forecast_data, degree, forecast_days)
+
+
+def _get_forecast_params() -> tuple[int, int, int]:
+    """Получает параметры прогнозирования от пользователя."""
     col1, col2, col3 = st.columns(3)
     with col1:
         history_days = st.slider(
@@ -178,14 +210,18 @@ def render_forecasting() -> None:
             step=1,
             key="forecast_days",
         )
+    return history_days, degree, forecast_days
 
+
+def _prepare_forecast_data(repo, history_days: int) -> pd.DataFrame | None:
+    """Подготавливает данные для прогнозирования."""
     daily_df = repo.get_daily_trends(days=history_days)
     if daily_df.empty:
         st.warning(
             "Недостаточно исторических данных для прогнозирования",
             icon=":material/warning:",
         )
-        return
+        return None
 
     daily_df["day"] = pd.to_datetime(daily_df["day"])
     daily_df["avg_price"] = pd.to_numeric(daily_df["avg_price"], errors="coerce")
@@ -198,18 +234,15 @@ def render_forecasting() -> None:
             "Недостаточно числовых данных для прогнозирования",
             icon=":material/warning:",
         )
-        return
+        return None
 
     daily_df["avg_margin_pct"] = daily_df["avg_margin"] * 100
+    return daily_df
 
+
+def _fit_polynomial(daily_df: pd.DataFrame, degree: int) -> tuple[np.poly1d, np.poly1d]:
+    """Выполняет полиномиальную аппроксимацию данных."""
     train_len = len(daily_df)
-    if train_len <= degree:
-        st.warning(
-            f"Недостаточно данных для полинома степени {degree}. Нужно больше {degree} точек.",
-            icon=":material/warning:",
-        )
-        return
-
     x_train = np.arange(train_len)
     price_train = daily_df["avg_price"].astype(float).to_numpy()
     margin_train = daily_df["avg_margin_pct"].astype(float).to_numpy()
@@ -220,6 +253,18 @@ def render_forecasting() -> None:
     margin_coeffs = np.polyfit(x_train, margin_train, degree)
     margin_poly = np.poly1d(margin_coeffs)
 
+    return price_poly, margin_poly
+
+
+def _calculate_forecast(
+    daily_df: pd.DataFrame,
+    price_poly: np.poly1d,
+    margin_poly: np.poly1d,
+    forecast_days: int,
+    degree: int,
+) -> dict | None:
+    """Рассчитывает прогноз на основе полиномиальной аппроксимации."""
+    train_len = len(daily_df)
     total_len = train_len + forecast_days
     x_full = np.arange(total_len)
     price_forecast_full = price_poly(x_full)
@@ -248,6 +293,24 @@ def render_forecasting() -> None:
         }
     )
 
+    return {
+        "df_plot": df_plot,
+        "hist_price": hist_price,
+        "forecast_price": forecast_price,
+        "hist_margin": hist_margin,
+        "forecast_margin": forecast_margin,
+        "last_date": last_date,
+        "forecast_dates": forecast_dates,
+        "all_dates": all_dates,
+        "train_len": train_len,
+        "forecast_days": forecast_days,
+        "degree": degree,
+    }
+
+
+def _render_forecast_charts(forecast_data: dict, degree: int) -> None:
+    """Отрисовывает графики прогноза."""
+    df_plot = forecast_data["df_plot"]
     st.subheader(f"Прогноз средней цены (полином степени {degree})")
     fig_price = go.Figure()
     fig_price.add_trace(
@@ -256,7 +319,7 @@ def render_forecasting() -> None:
             y=df_plot["price_actual"],
             mode="markers",
             name="Факт",
-            marker={'color': "blue", 'size': 6},
+            marker={"color": "blue", "size": 6},
         )
     )
     fig_price.add_trace(
@@ -265,14 +328,14 @@ def render_forecasting() -> None:
             y=df_plot["price_trend"],
             mode="lines",
             name="Тренд + прогноз",
-            line={'color': "red", 'width': 2, 'dash': "solid"},
+            line={"color": "red", "width": 2, "dash": "solid"},
         )
     )
     fig_price.update_layout(
         title="Средняя цена (факт и тренд)",
         xaxis_title="Дата",
         yaxis_title="Цена (₽)",
-        legend={'orientation': "h", 'y': -0.2},
+        legend={"orientation": "h", "y": -0.2},
     )
     st.plotly_chart(fig_price, width="stretch")
 
@@ -284,7 +347,7 @@ def render_forecasting() -> None:
             y=df_plot["margin_actual"],
             mode="markers",
             name="Факт",
-            marker={'color': "blue", 'size': 6},
+            marker={"color": "blue", "size": 6},
         )
     )
     fig_margin.add_trace(
@@ -293,27 +356,30 @@ def render_forecasting() -> None:
             y=df_plot["margin_trend"],
             mode="lines",
             name="Тренд + прогноз",
-            line={'color': "red", 'width': 2, 'dash': "solid"},
+            line={"color": "red", "width": 2, "dash": "solid"},
         )
     )
     fig_margin.update_layout(
         title="Средняя маржинальность (факт и тренд)",
         xaxis_title="Дата",
         yaxis_title="Маржинальность (%)",
-        legend={'orientation': "h", 'y': -0.2},
+        legend={"orientation": "h", "y": -0.2},
     )
     st.plotly_chart(fig_margin, width="stretch")
 
+
+def _render_forecast_details(forecast_data: dict, degree: int, forecast_days: int) -> None:
+    """Отрисовывает детали прогноза в расширяемой секции."""
     with st.expander("Детали прогноза"):
-        st.write(f"**Использовано дней истории:** {train_len}")
+        st.write(f"**Использовано дней истории:** {forecast_data['train_len']}")
         st.write(f"**Степень полинома:** {degree}")
         st.write(
             f"**Прогнозируемая средняя цена через {forecast_days} дней:** "
-            f"{forecast_price[-1]:.0f} ₽"
+            f"{forecast_data['forecast_price'][-1]:.0f} ₽"
         )
         st.write(
             f"**Прогнозируемая средняя маржинальность через {forecast_days} дней:** "
-            f"{forecast_margin[-1]:.1f}%"
+            f"{forecast_data['forecast_margin'][-1]:.1f}%"
         )
         st.caption(
             "Прогноз построен методом полиномиальной регрессии (кривая) по историческим данным. "

@@ -21,8 +21,14 @@ async def main() -> None:
     register_signal_handlers()
 
     parser = argparse.ArgumentParser(description="Запуск репрайсинга товаров")
-    parser.add_argument("--dry-run", action="store_true", help="Тестовый режим: расчёт без отправки цен")
-    parser.add_argument("--no-sync", action="store_true", help="Не выполнять синхронизацию цен из шаблона перед запуском")
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Тестовый режим: расчёт без отправки цен"
+    )
+    parser.add_argument(
+        "--no-sync",
+        action="store_true",
+        help="Не выполнять синхронизацию цен из шаблона перед запуском",
+    )
     args = parser.parse_args()
 
     sync_service = RealPriceSyncService(output_dir="download", headless=False)
@@ -65,7 +71,7 @@ async def main() -> None:
         logger.info("Синхронизация после репрайсинга пропущена (dry-run)")
 
     # 4. Закрытие API
-    api = container.api_client
+    api = container.api_client()
     await api.close()
 
 

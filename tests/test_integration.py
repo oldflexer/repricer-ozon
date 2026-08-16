@@ -6,7 +6,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from core.entities import PricingData
-from core.use_cases import RepricingUseCase
+from core.use_cases import RepricingUseCase, RepricingUseCaseDependencies
 from infrastructure.db import SQLiteRepository
 from infrastructure.excel_loader import ExcelLoader
 from infrastructure.mail_notifier import MailNotifier
@@ -99,7 +99,17 @@ async def test_full_cycle_dry_run(tmp_path):
     )
     mock_api.set_price(1, pricing)
 
-    use_case = RepricingUseCase(repo, mock_api, notifier, loader)
+    deps = RepricingUseCaseDependencies(
+        product_repo=repo,
+        history_repo=repo,
+        analytics_repo=repo,
+        marginality_repo=repo,
+        maintenance_repo=repo,
+        api_client=mock_api,
+        mail_notifier=notifier,
+        loader=loader,
+    )
+    use_case = RepricingUseCase(deps)
     stats = await use_case.execute(dry_run=True)
 
     assert stats["products_loaded"] == 1

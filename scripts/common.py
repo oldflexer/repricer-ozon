@@ -15,7 +15,7 @@ from infrastructure.logger import logger
 _shutdown_requested = False
 
 
-def _signal_handler(signum: int, frame) -> None:
+def _signal_handler(signum: int, _frame) -> None:
     """Стандартный обработчик сигналов для graceful shutdown."""
     global _shutdown_requested
     logger.warning(f"Received signal {signum}, initiating graceful shutdown...")

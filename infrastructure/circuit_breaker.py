@@ -113,9 +113,10 @@ class CircuitBreaker:
                 if self._state == CircuitState.HALF_OPEN:
                     # Любая ошибка в HALF_OPEN возвращает в OPEN
                     self._state = CircuitState.OPEN
-                elif self._state == CircuitState.CLOSED:
-                    if self._failures >= self.failure_threshold:
-                        self._state = CircuitState.OPEN
+                elif (
+                    self._state == CircuitState.CLOSED and self._failures >= self.failure_threshold
+                ):
+                    self._state = CircuitState.OPEN
 
             raise
 
@@ -128,4 +129,3 @@ ozon_api_circuit_breaker = CircuitBreaker(
 ozon_parser_circuit_breaker = CircuitBreaker(
     failure_threshold=3, recovery_timeout=60.0, success_threshold=1
 )
-

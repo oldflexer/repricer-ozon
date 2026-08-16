@@ -21,6 +21,85 @@ from infrastructure.http_retry import retry_on_error
 from infrastructure.logger import logger
 
 
+def parse_pricing_data(data: dict) -> PricingData:
+    """
+    Парсит ответ Ozon API (/v5/product/info/prices) в PricingData entity.
+
+    Args:
+        data: Словарь с данными ответа API.
+
+    Returns:
+        PricingData: Объект с заполненными полями.
+    """
+    price_obj = data.get("price", {})
+    indexes = data.get("price_indexes", {})
+    commissions = data.get("commissions", {})
+
+    def _get_index(index_name: str) -> tuple[float | None, float | None]:
+        """Извлекает цену и значение индекса из блока price_indexes."""
+        idx = indexes.get(index_name)
+        if isinstance(idx, dict):
+            min_price = idx.get("min_price")
+            if min_price in ("", None):
+                min_price_val = None
+            else:
+                try:
+                    min_price_val = float(min_price)
+                except (ValueError, TypeError):
+                    min_price_val = None
+
+            idx_val = idx.get("price_index_value")
+            if idx_val in ("", None):
+                idx_value = None
+            else:
+                try:
+                    idx_value = float(idx_val)
+                except (ValueError, TypeError):
+                    idx_value = None
+            return min_price_val, idx_value
+        return None, None
+
+    ext_price, ext_index = _get_index("external_index_data")
+    ozon_price, ozon_index = _get_index("ozon_index_data")
+    self_price, self_index = _get_index("self_marketplaces_index_data")
+
+    return PricingData(
+        product_id=data["product_id"],
+        price=float(price_obj.get("price", 0)),
+        old_price=float(price_obj.get("old_price", 0)),
+        min_price=float(price_obj.get("min_price", 0)),
+        net_price=float(price_obj.get("net_price", 0)),
+        marketing_seller_price=float(price_obj.get("marketing_seller_price", 0)),
+        external_index_data_price=ext_price,
+        external_index_data_index=ext_index,
+        ozon_index_data_price=ozon_price,
+        ozon_index_data_index=ozon_index,
+        self_marketplaces_index_data_price=self_price,
+        self_marketplaces_index_data_index=self_index,
+        acquiring=float(data.get("acquiring", 0)),
+        fbo_deliv_to_customer_amount=float(commissions.get("fbo_deliv_to_customer_amount", 0)),
+        fbo_direct_flow_trans_max_amount=float(
+            commissions.get("fbo_direct_flow_trans_max_amount", 0)
+        ),
+        fbo_direct_flow_trans_min_amount=float(
+            commissions.get("fbo_direct_flow_trans_min_amount", 0)
+        ),
+        fbo_return_flow_amount=float(commissions.get("fbo_return_flow_amount", 0)),
+        fbs_deliv_to_customer_amount=float(commissions.get("fbs_deliv_to_customer_amount", 0)),
+        fbs_direct_flow_trans_max_amount=float(
+            commissions.get("fbs_direct_flow_trans_max_amount", 0)
+        ),
+        fbs_direct_flow_trans_min_amount=float(
+            commissions.get("fbs_direct_flow_trans_min_amount", 0)
+        ),
+        fbs_first_mile_max_amount=float(commissions.get("fbs_first_mile_max_amount", 0)),
+        fbs_first_mile_min_amount=float(commissions.get("fbs_first_mile_min_amount", 0)),
+        fbs_return_flow_amount=float(commissions.get("fbs_return_flow_amount", 0)),
+        sales_percent_fbo=float(commissions.get("sales_percent_fbo", 0)),
+        sales_percent_fbs=float(commissions.get("sales_percent_fbs", 0)),
+    )
+
+
 class OzonApiClient:
     """
     Асинхронный клиент для Ozon Seller API.
@@ -59,7 +138,7 @@ class OzonApiClient:
             Ответ в виде словаря или None при ошибке.
         """
         resp = await self.client.get(url, headers=self.headers)
-        if resp.status_code == 200:
+        if resp.status_code == httpx.codes.OK:
             return resp.json()
         logger.warning(f"GET {url} returned {resp.status_code}, body: {resp.text[:500]}")
         return None
@@ -78,7 +157,7 @@ class OzonApiClient:
             Ответ в виде словаря или None при ошибке.
         """
         resp = await self.client.post(url, headers=self.headers, json=payload)
-        if resp.status_code == 200:
+        if resp.status_code == httpx.codes.OK:
             return resp.json()
         logger.warning(f"POST {url} returned {resp.status_code}, body: {resp.text[:500]}")
         return None
@@ -157,7 +236,7 @@ class OzonApiClient:
             resp_data = await self._post_with_cb(url, payload)
             if resp_data and "items" in resp_data:
                 for item in resp_data["items"]:
-                    all_prices.append(PricingData.from_api_response(item))
+                    all_prices.append(parse_pricing_data(item))
             await asyncio.sleep(settings.API_BATCH_DELAY)
 
         return all_prices

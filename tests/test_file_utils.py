@@ -15,18 +15,21 @@ class TestFileUtils:
 
     def test_wait_for_excel_available_success(self):
         """Test wait_for_excel_available when file is immediately available."""
-        file_path = Path("/tmp/test.xlsx")
+        file_path = Path("C:/tmp/test.xlsx")
 
-        with patch("builtins.open", mock_open()) as m, patch("os.remove") as mock_remove:
+        with (
+            patch("pathlib.Path.open", mock_open()) as m,
+            patch("pathlib.Path.unlink") as mock_unlink,
+        ):
             result = wait_for_excel_available(file_path, timeout=1)
 
             assert result is True
-            m.assert_called_once_with(file_path.with_suffix(".lock_test"), "w")
-            mock_remove.assert_called_once_with(file_path.with_suffix(".lock_test"))
+            m.assert_called_once_with("w")
+            mock_unlink.assert_called_once()
 
     def test_wait_for_excel_available_permission_error_then_success(self):
         """Test wait_for_excel_available with temporary PermissionError."""
-        file_path = Path("/tmp/test.xlsx")
+        file_path = Path("C:/tmp/test.xlsx")
 
         call_count = [0]
 
@@ -34,11 +37,14 @@ class TestFileUtils:
             call_count[0] += 1
             if call_count[0] == 1:
                 raise PermissionError("File busy")
-            return mock_open()(*args, **kwargs)
+            mock_file = MagicMock()
+            mock_file.__enter__.return_value = mock_file
+            mock_file.__exit__.return_value = None
+            return mock_file
 
         with (
-            patch("builtins.open", side_effect=mock_open_func),
-            patch("os.remove"),
+            patch("pathlib.Path.open", side_effect=mock_open_func),
+            patch("pathlib.Path.unlink"),
             patch("time.sleep") as mock_sleep,
         ):
             result = wait_for_excel_available(file_path, timeout=5)
@@ -48,7 +54,7 @@ class TestFileUtils:
 
     def test_wait_for_excel_available_timeout(self):
         """Test wait_for_excel_available times out."""
-        file_path = Path("/tmp/test.xlsx")
+        file_path = Path("C:/tmp/test.xlsx")
 
         # time.time() is called multiple times in the while loop
         # Also the logging module uses time.time() internally
@@ -56,7 +62,7 @@ class TestFileUtils:
         time_values = [1000 + i for i in range(200)]  # 1000-1199
 
         with (
-            patch("builtins.open", side_effect=PermissionError("File busy")),
+            patch("pathlib.Path.open", side_effect=PermissionError("File busy")),
             patch("time.sleep"),
             patch("time.time", side_effect=time_values),
         ):
@@ -66,22 +72,22 @@ class TestFileUtils:
 
     def test_wait_for_excel_available_other_exception(self):
         """Test wait_for_excel_available with unexpected exception."""
-        file_path = Path("/tmp/test.xlsx")
+        file_path = Path("C:/tmp/test.xlsx")
 
-        with patch("builtins.open", side_effect=OSError("Disk full")):
+        with patch("pathlib.Path.open", side_effect=OSError("Disk full")):
             result = wait_for_excel_available(file_path, timeout=1)
 
             assert result is False
 
     def test_save_safely_success(self):
         """Test save_safely succeeds on first attempt."""
-        file_path = Path("/tmp/test.xlsx")
+        file_path = Path("C:/tmp/test.xlsx")
         updates = {(1, 1): "value1", (2, 2): "value2"}
 
         with (
             patch("shutil.copy2"),
             patch("infrastructure.file_utils.load_workbook") as mock_load_wb,
-            patch("os.replace") as mock_replace,
+            patch("pathlib.Path.replace") as mock_replace,
         ):
             mock_wb = MagicMock()
             mock_ws = MagicMock()
@@ -97,7 +103,7 @@ class TestFileUtils:
 
     def test_save_safely_retries_then_succeeds(self):
         """Test save_safely retries on failure then succeeds."""
-        file_path = Path("/tmp/test.xlsx")
+        file_path = Path("C:/tmp/test.xlsx")
         updates = {(1, 1): "value1"}
 
         call_count = [0]
@@ -114,9 +120,9 @@ class TestFileUtils:
         with (
             patch("shutil.copy2"),
             patch("infrastructure.file_utils.load_workbook", side_effect=mock_load_wb_func),
-            patch("os.replace"),
-            patch("os.path.exists", return_value=True),
-            patch("os.remove"),
+            patch("pathlib.Path.replace"),
+            patch("pathlib.Path.exists", return_value=True),
+            patch("pathlib.Path.unlink"),
             patch("time.sleep") as mock_sleep,
         ):
             save_safely(updates, file_path, max_retries=3)
@@ -126,7 +132,7 @@ class TestFileUtils:
 
     def test_save_safely_all_retries_fail(self):
         """Test save_safely raises after all retries fail."""
-        file_path = Path("/tmp/test.xlsx")
+        file_path = Path("C:/tmp/test.xlsx")
         updates = {(1, 1): "value1"}
 
         with (
@@ -134,8 +140,8 @@ class TestFileUtils:
             patch(
                 "infrastructure.file_utils.load_workbook", side_effect=Exception("Persistent error")
             ),
-            patch("os.path.exists", return_value=True),
-            patch("os.remove"),
+            patch("pathlib.Path.exists", return_value=True),
+            patch("pathlib.Path.unlink"),
             patch("time.sleep"),
             pytest.raises(Exception, match="Persistent error"),
         ):
@@ -143,7 +149,7 @@ class TestFileUtils:
 
     def test_save_safely_no_active_sheet(self):
         """Test save_safely fails when no active sheet."""
-        file_path = Path("/tmp/test.xlsx")
+        file_path = Path("C:/tmp/test.xlsx")
         updates = {(1, 1): "value1"}
 
         with (

@@ -87,7 +87,7 @@ class ParseCompetitorPricesUseCase(BaseParserUseCase):
         Returns:
             Словарь со статистикой: updated, errors, skipped.
         """
-        excel_path = settings.DATA_FILE_PATH
+        excel_path = settings.data_file_path
 
         if not excel_path.exists():
             logger.error(f"Файл не найден: {excel_path}")

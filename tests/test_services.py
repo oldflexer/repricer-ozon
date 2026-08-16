@@ -3,9 +3,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from core.entities import PriceCalculationResult, PricingData, StrategyInterval
+from core.entities import PriceCalculationResult, StrategyInterval
 from core.enums import StrategyType
 from core.services import PriceCalculationService
+from infrastructure.ozon_api import parse_pricing_data
 
 
 def test_calculation_service():
@@ -26,7 +27,7 @@ def test_calculation_service():
             "self_marketplaces_index_data": {"min_price": 920.0, "price_index_value": 0.87},
         },
     }
-    pricing = PricingData.from_api_response(raw_data)
+    pricing = parse_pricing_data(raw_data)
 
     intervals = [
         StrategyInterval(start="00:00", end="23:59", strategy_type=StrategyType.EQUAL, percent=0.0)

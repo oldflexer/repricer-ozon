@@ -25,7 +25,7 @@ from scripts.common import register_signal_handlers, setup_parser_logging
 
 logger = setup_parser_logging("parser")
 
-LOCK_FILE = os.path.join(tempfile.gettempdir(), "repricer_parser.lock")
+LOCK_FILE = Path(tempfile.gettempdir()) / "repricer_parser.lock"
 
 
 async def main_async(dry_run: bool) -> None:

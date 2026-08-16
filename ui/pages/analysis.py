@@ -146,7 +146,7 @@ def render_commissions_analysis() -> None:
                 y=[0, max_val],
                 mode="lines",
                 name="y=x",
-                line={'dash': "dash", 'color': "gray"},
+                line={"dash": "dash", "color": "gray"},
             )
         )
         st.plotly_chart(fig_scatter, width="stretch")
@@ -213,9 +213,11 @@ def render_abc_analysis() -> None:
 
     def assign_category(percent: float) -> str:
         """Определяет категорию A/B/C по накопленному проценту."""
-        if percent <= 80:
+        abc_a_threshold = 80.0
+        abc_b_threshold = 95.0
+        if percent <= abc_a_threshold:
             return "A"
-        if percent <= 95:
+        if percent <= abc_b_threshold:
             return "B"
         return "C"
 
@@ -268,7 +270,7 @@ def render_abc_analysis() -> None:
             name="Накопленный процент",
             yaxis="y2",
             mode="lines+markers",
-            line={'color': "red", 'width': 2},
+            line={"color": "red", "width": 2},
         )
     )
     fig_pareto.update_layout(
@@ -276,12 +278,12 @@ def render_abc_analysis() -> None:
         xaxis_title="SKU",
         yaxis_title="Прибыль (₽)",
         yaxis2={
-            'title': "Накопленный процент (%)",
-            'overlaying': "y",
-            'side': "right",
-            'range': [0, 100],
+            "title": "Накопленный процент (%)",
+            "overlaying": "y",
+            "side": "right",
+            "range": [0, 100],
         },
-        legend={'x': 0.01, 'y': 0.99},
+        legend={"x": 0.01, "y": 0.99},
         width=None,
     )
     fig_pareto.update_xaxes(type="category")

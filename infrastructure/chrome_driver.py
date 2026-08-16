@@ -228,4 +228,3 @@ class ChromeDriverManager:
         if self.driver is None:
             return self.init_driver()
         return True
-

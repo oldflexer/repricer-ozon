@@ -122,33 +122,6 @@ class AnalyticsMixin(DBConnectionMixin):
                 params=(limit,),
             )
 
-    def get_strategy_counts(self) -> dict[str, int]:
-        """Подсчитывает количество товаров по типам стратегий."""
-        with self._get_connection() as conn:
-            rows = conn.execute(
-                """
-                SELECT p.sku, ps.strategy_id
-                FROM product p
-                JOIN product_strategy ps ON p.product_id = ps.product_id
-                """
-            ).fetchall()
-            counts = {"Ниже": 0, "Выше": 0, "Равная": 0, "Смешанная": 0}
-            per_sku: dict[str, set[int]] = {}
-            for r in rows:
-                sku = r["sku"]
-                sid = r["strategy_id"]
-                per_sku.setdefault(sku, set()).add(sid)
-            for strategies in per_sku.values():
-                if len(strategies) > 1:
-                    counts["Смешанная"] += 1
-                elif 1 in strategies:
-                    counts["Ниже"] += 1
-                elif 2 in strategies:
-                    counts["Выше"] += 1
-                else:
-                    counts["Равная"] += 1
-            return counts
-
     def get_strategy_performance(self, days: int = 30) -> pd.DataFrame:
         """Возвращает эффективность стратегий за указанный период."""
         with self._get_connection() as conn:

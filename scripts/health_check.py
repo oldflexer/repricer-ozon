@@ -67,7 +67,7 @@ def check_disk_space() -> dict[str, Any]:
 def check_excel_file() -> dict[str, Any]:
     """Check Excel data file accessibility."""
     try:
-        excel_path = settings.DATA_FILE_PATH
+        excel_path = settings.data_file_path
         if not excel_path.exists():
             return {"status": "degraded", "details": f"Excel file not found: {excel_path}"}
 

@@ -40,13 +40,13 @@ class Settings(
     ParserSettings,
     UiSettings,
 ):
-    # Убрали env_file и env_file_encoding — читаем из os.environ
+    # Убрали env_file и env_file_encoding - читаем из os.environ
     model_config = SettingsConfigDict(
         extra="ignore",
     )
 
     @property
-    def DATABASE_PATH_PATH(self) -> Path:
+    def database_path_path(self) -> Path:
         """Returns Path to database file with INSTANCE_NAME substitution."""
         path = self.DATABASE_PATH
         if "{{INSTANCE_NAME}}" in path:
@@ -54,7 +54,7 @@ class Settings(
         return Path(path)
 
     @property
-    def DATA_FILE_PATH(self) -> Path:
+    def data_file_path(self) -> Path:
         """Returns Path to Excel data file with INSTANCE_NAME substitution."""
         path = self.DATA_FILE
         if "{{INSTANCE_NAME}}" in path:
@@ -66,6 +66,6 @@ class Settings(
 # 3. Global settings instance
 # ------------------------------------------------------------------
 
-# Теперь без явной передачи аргументов — всё из os.environ
+# Теперь без явной передачи аргументов - всё из os.environ
 settings = Settings()
 """Global settings instance for application-wide use."""

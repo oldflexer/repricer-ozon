@@ -3,9 +3,9 @@
 Извлекает данные из листа "Товары и цены", рассчитывает реальную цену.
 """
 
-import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
+from xml.etree import ElementTree
 
 import pandas as pd
 from openpyxl import load_workbook
@@ -44,190 +44,128 @@ class TemplateParser:
         "fbs_logistics_min": "Логистика Ozon, минимум, FBS",
         "fbs_logistics_max": "Логистика Ozon, максимум, FBS",
         "fbs_delivery": "Доставка до места выдачи, FBS",
-        }
+    }
 
     def __init__(self, file_path: Path):
         self.file_path = file_path
         self.df: pd.DataFrame | None = None
 
+    def _load_via_openpyxl(self) -> bool:
+        """Загружает файл через openpyxl."""
+        wb = load_workbook(self.file_path, data_only=True, read_only=True, keep_links=False)
+        if "Товары и цены" not in wb.sheetnames:
+            logger.error("Лист 'Товары и цены' не найден")
+            wb.close()
+            return False
+        ws = wb["Товары и цены"]
+        data = []
+        headers = []
+        for i, row in enumerate(ws.iter_rows(values_only=True)):
+            if i == 0:
+                continue  # первая строка служебная
+            if i == 1:
+                headers = [str(cell).strip() if cell is not None else "" for cell in row]
+                while headers and not headers[-1]:
+                    headers.pop()
+                continue
+            if any(cell is not None for cell in row):
+                data.append(row[: len(headers)])
+        wb.close()
+        self.df = pd.DataFrame(data, columns=headers)
+        logger.info(f"Загружен через openpyxl, строк: {len(self.df)}")
+        return True
+
+    def _validate_and_prepare_data(self) -> bool:
+        """Проверяет наличие всех необходимых столбцов и преобразует числовые столбцы."""
+        if self.df is None:
+            logger.error("Данные не загружены")
+            return False
+
+        # Проверка наличия всех необходимых столбцов
+        missing = []
+        for _key, col_name in self.COLUMN_NAMES.items():
+            if col_name not in self.df.columns:
+                missing.append(col_name)
+        if missing:
+            logger.error(f"Не найдены столбцы: {missing}")
+            return False
+
+        # Преобразование числовых столбцов
+        numeric_cols = [
+            "stock_ozon",
+            "stock_my",
+            "price_before_discount",
+            "price_with_discount",
+            "discount_with_action",
+            "acquiring",
+            "fbo_reward_percent",
+            "fbo_logistics_min",
+            "fbo_logistics_max",
+            "fbo_delivery",
+            "fbo_handling",
+            "fbs_reward_percent",
+            "fbs_handling_min",
+            "fbs_handling_max",
+            "fbs_handling_nonstandard",
+            "fbs_logistics_min",
+            "fbs_logistics_max",
+            "fbs_delivery",
+        ]
+        for col in numeric_cols:
+            if col in self.COLUMN_NAMES:
+                col_name = self.COLUMN_NAMES[col]
+                self.df[col_name] = pd.to_numeric(self.df[col_name], errors="coerce")
+
+        return True
+
     def _read_xlsx_via_zip(self) -> pd.DataFrame | None:
-            """
-            Читает xlsx как zip-архив, извлекая данные напрямую из XML,
-            минуя повреждённые стили.
-            """
-            try:
-                with zipfile.ZipFile(self.file_path, 'r') as zf:
-                    # Получаем список файлов листов
-                    sheet_files = [
-                        f for f in zf.namelist()
-                        if f.startswith('xl/worksheets/sheet') and f.endswith('.xml')
-                    ]
-                    sheet_files.sort()
-                    logger.info(f"Найдены листы: {sheet_files}")
+        """
+        Читает xlsx как zip-архив, извлекая данные напрямую из XML,
+        минуя повреждённые стили.
+        """
+        try:
+            with zipfile.ZipFile(self.file_path, "r") as zf:
+                target_sheet = self._find_target_sheet(zf)
+                if not target_sheet:
+                    return None
 
-                    # Ищем лист с заголовками SKU и Статус
-                    target_sheet = None
-                    for sf in sheet_files:
-                        try:
-                            content = zf.read(sf).decode('utf-8', errors='ignore')
-                            if 'SKU' in content and 'Статус' in content:
-                                target_sheet = sf
-                                logger.info(f"Найден лист с данными: {sf}")
-                                break
-                        except Exception:
-                            continue
+                shared_strings = self._read_shared_strings(zf)
+                rows = self._read_sheet_data(zf, target_sheet, shared_strings)
+                if len(rows) < MIN_ROWS_REQUIRED:
+                    logger.error("Недостаточно данных в листе")
+                    return None
 
-                    if not target_sheet:
-                        # Если не нашли, берём второй лист (индекс 1)
-                        if len(sheet_files) > MIN_SHEET_INDEX:
-                            target_sheet = sheet_files[MIN_SHEET_INDEX]
-                            logger.info(f"Используем второй лист: {target_sheet}")
-                        else:
-                            logger.error("Не найден лист с данными")
-                            return None
+                df = self._build_dataframe(rows)
+                logger.info(f"Из zip-архива получено {len(df)} строк")
+                return df
 
-                    # Читаем shared strings
-                    shared_strings = []
-                    try:
-                        ss_xml = zf.read('xl/sharedStrings.xml')
-                        ss_root = ET.fromstring(ss_xml)
-                        for si in ss_root.findall(
-                            './/{http://schemas.openxmlformats.org/spreadsheetml/2006/main}si'
-                        ):
-                            texts = [
-                                t.text or ''
-                                for t in si.findall(
-                                    './/{http://schemas.openxmlformats.org/spreadsheetml/2006/main}t'
-                                )
-                            ]
-                            shared_strings.append(''.join(texts))
-                        logger.info(f"Загружено {len(shared_strings)} общих строк")
-                    except Exception as e:
-                        logger.warning(f"Не удалось прочитать sharedStrings: {e}")
-
-                    # Читаем сам лист
-                    sheet_xml = zf.read(target_sheet)
-                    root = ET.fromstring(sheet_xml)
-                    ns = {'main': 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
-
-                    rows = []
-                    for row_elem in root.findall('.//main:row', ns):
-                        row_data = []
-                        for cell in row_elem.findall('.//main:c', ns):
-                            cell_type = cell.get('t')
-                            value_elem = cell.find('.//main:v', ns)
-                            if value_elem is not None:
-                                value = value_elem.text
-                                if cell_type == 's' and value is not None:
-                                    idx = int(value)
-                                    value = (
-                                        shared_strings[idx]
-                                        if idx < len(shared_strings)
-                                        else ''
-                                    )
-                            else:
-                                value = ''
-                            row_data.append(value)
-                        if any(row_data):  # пропускаем пустые строки
-                            rows.append(row_data)
-
-                    if len(rows) < MIN_ROWS_REQUIRED:
-                        logger.error("Недостаточно данных в листе")
-                        return None
-
-                    headers = rows[1]  # вторая строка
-                    # Удаляем пустые заголовки справа
-                    while headers and not headers[-1]:
-                        headers.pop()
-
-                    data = rows[2:]  # данные начиная с третьей строки
-                    data = [row[:len(headers)] for row in data]  # обрезаем до длины заголовков
-
-                    df = pd.DataFrame(data, columns=headers)
-                    logger.info(f"Из zip-архива получено {len(df)} строк")
-                    return df
-
-            except Exception as e:
-                logger.error(f"Ошибка при чтении через zip: {e}")
-                return None
+        except Exception as e:
+            logger.error(f"Ошибка при чтении через zip: {e}")
+            return None
 
     def load(self) -> bool:
-            """
-            Загружает Excel-файл, сначала через openpyxl, при ошибке через zip.
-            """
-            # Попытка через openpyxl
-            try:
-                wb = load_workbook(
-                    self.file_path, data_only=True, read_only=True, keep_links=False
-                )
-                if "Товары и цены" not in wb.sheetnames:
-                    logger.error("Лист 'Товары и цены' не найден")
-                    wb.close()
-                    return False
-                ws = wb["Товары и цены"]
-                data = []
-                headers = []
-                for i, row in enumerate(ws.iter_rows(values_only=True)):
-                    if i == 0:
-                        continue  # первая строка служебная
-                    if i == 1:
-                        headers = [
-                            str(cell).strip() if cell is not None else '' for cell in row
-                        ]
-                        while headers and not headers[-1]:
-                            headers.pop()
-                        continue
-                    if any(cell is not None for cell in row):
-                        data.append(row[:len(headers)])
-                wb.close()
-                self.df = pd.DataFrame(data, columns=headers)
-                logger.info(f"Загружен через openpyxl, строк: {len(self.df)}")
-            except Exception as e:
-                logger.error(f"Ошибка openpyxl: {e}")
-                logger.info("Пробуем прямой разбор zip-архива...")
-                self.df = self._read_xlsx_via_zip()
-                if self.df is None:
-                    logger.error("Не удалось прочитать файл")
-                    return False
-                logger.info(f"Загружен через zip, строк: {len(self.df)}")
+        """
+        Загружает Excel-файл, сначала через openpyxl, при ошибке через zip.
+        """
+        # Попытка через openpyxl
+        try:
+            if self._load_via_openpyxl() and self._validate_and_prepare_data():
+                logger.info("✅ Файл успешно загружен и подготовлен")
+                return True
+        except Exception as e:
+            logger.error(f"Ошибка openpyxl: {e}")
+            logger.info("Пробуем прямой разбор zip-архива...")
 
-            # Проверка наличия всех необходимых столбцов
-            missing = []
-            for _key, col_name in self.COLUMN_NAMES.items():
-                if col_name not in self.df.columns:
-                    missing.append(col_name)
-            if missing:
-                logger.error(f"Не найдены столбцы: {missing}")
-                return False
-
-            # Преобразование числовых столбцов
-            numeric_cols = [
-                "stock_ozon",
-                "stock_my",
-                "price_before_discount",
-                "price_with_discount",
-                "discount_with_action",
-                "acquiring",
-                "fbo_reward_percent",
-                "fbo_logistics_min",
-                "fbo_logistics_max",
-                "fbo_delivery",
-                "fbo_handling",
-                "fbs_reward_percent",
-                "fbs_handling_min",
-                "fbs_handling_max",
-                "fbs_handling_nonstandard",
-                "fbs_logistics_min",
-                "fbs_logistics_max",
-                "fbs_delivery",
-            ]
-            for col in numeric_cols:
-                if col in self.COLUMN_NAMES:
-                    col_name = self.COLUMN_NAMES[col]
-                    self.df[col_name] = pd.to_numeric(self.df[col_name], errors='coerce')
-
+        # Fallback на zip-архив
+        self.df = self._read_xlsx_via_zip()
+        if self.df is None:
+            logger.error("Не удалось прочитать файл")
+            return False
+        if self._validate_and_prepare_data():
+            logger.info(f"Загружен через zip, строк: {len(self.df)}")
             logger.info("✅ Файл успешно загружен и подготовлен")
             return True
+        return False
 
     def get_relevant_products(self) -> list[dict]:
         if self.df is None:
@@ -237,8 +175,7 @@ class TemplateParser:
         status_col = self.COLUMN_NAMES["status"]
         visibility_col = self.COLUMN_NAMES["visibility"]
 
-        mask = (self.df[status_col] == "Продается") & \
-               (self.df[visibility_col].str.lower() == "да")
+        mask = (self.df[status_col] == "Продается") & (self.df[visibility_col].str.lower() == "да")
         filtered = self.df[mask].copy()
 
         if filtered.empty:
@@ -302,18 +239,18 @@ class TemplateParser:
             fbs_delivery = product.get("fbs_delivery", 0)
 
             numerator = (
-                acquiring +
-                (fbo_reward * price_with_discount) +
-                ((fbo_log_min + fbo_log_max) / 2) +
-                fbo_delivery +
-                fbo_handling
+                acquiring
+                + (fbo_reward * price_with_discount)
+                + ((fbo_log_min + fbo_log_max) / 2)
+                + fbo_delivery
+                + fbo_handling
             )
             denominator = (
-                (fbs_reward * price_with_discount) +
-                ((fbs_hand_min + fbs_hand_max) / 2) +
-                fbs_hand_nonstd +
-                ((fbs_log_min + fbs_log_max) / 2) +
-                fbs_delivery
+                (fbs_reward * price_with_discount)
+                + ((fbs_hand_min + fbs_hand_max) / 2)
+                + fbs_hand_nonstd
+                + ((fbs_log_min + fbs_log_max) / 2)
+                + fbs_delivery
             )
 
             if denominator == 0:
@@ -334,3 +271,96 @@ class TemplateParser:
             real_price = self.calculate_real_price(p)
             results.append((p, real_price, sales_type))
         return results
+
+    # ------------------------------------------------------------------
+    # Вспомогательные методы для _read_xlsx_via_zip
+    # ------------------------------------------------------------------
+
+    def _find_target_sheet(self, zf: zipfile.ZipFile) -> str | None:
+        """Находит лист с данными SKU и Статус."""
+        sheet_files = [
+            f for f in zf.namelist() if f.startswith("xl/worksheets/sheet") and f.endswith(".xml")
+        ]
+        sheet_files.sort()
+        logger.info(f"Найдены листы: {sheet_files}")
+
+        # Ищем лист с заголовками SKU и Статус
+        target_sheet = None
+        for sf in sheet_files:
+            try:
+                content = zf.read(sf).decode("utf-8", errors="ignore")
+                if "SKU" in content and "Статус" in content:
+                    target_sheet = sf
+                    logger.info(f"Найден лист с данными: {sf}")
+                    break
+            except Exception:
+                continue
+
+        if not target_sheet:
+            # Если не нашли, берём второй лист (индекс 1)
+            if len(sheet_files) > MIN_SHEET_INDEX:
+                target_sheet = sheet_files[MIN_SHEET_INDEX]
+                logger.info(f"Используем второй лист: {target_sheet}")
+            else:
+                logger.error("Не найден лист с данными")
+                return None
+        return target_sheet
+
+    def _read_shared_strings(self, zf: zipfile.ZipFile) -> list[str]:
+        """Читает shared strings из zip-архива."""
+        shared_strings = []
+        try:
+            ss_xml = zf.read("xl/sharedStrings.xml")
+            ss_root = ElementTree.fromstring(ss_xml)
+            for si in ss_root.findall(
+                ".//{http://schemas.openxmlformats.org/spreadsheetml/2006/main}si"
+            ):
+                texts = [
+                    t.text or ""
+                    for t in si.findall(
+                        ".//{http://schemas.openxmlformats.org/spreadsheetml/2006/main}t"
+                    )
+                ]
+                shared_strings.append("".join(texts))
+            logger.info(f"Загружено {len(shared_strings)} общих строк")
+        except Exception as e:
+            logger.warning(f"Не удалось прочитать sharedStrings: {e}")
+        return shared_strings
+
+    def _read_sheet_data(
+        self, zf: zipfile.ZipFile, target_sheet: str, shared_strings: list[str]
+    ) -> list[list[str]]:
+        """Читает данные листа из zip-архива."""
+        sheet_xml = zf.read(target_sheet)
+        root = ElementTree.fromstring(sheet_xml)
+        ns = {"main": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+
+        rows = []
+        for row_elem in root.findall(".//main:row", ns):
+            row_data = []
+            for cell in row_elem.findall(".//main:c", ns):
+                cell_type = cell.get("t")
+                value_elem = cell.find(".//main:v", ns)
+                if value_elem is not None:
+                    value = value_elem.text
+                    if cell_type == "s" and value is not None:
+                        idx = int(value)
+                        value = shared_strings[idx] if idx < len(shared_strings) else ""
+                else:
+                    value = ""
+                row_data.append(value)
+            if any(row_data):  # пропускаем пустые строки
+                rows.append(row_data)
+        return rows
+
+    def _build_dataframe(self, rows: list[list[str]]) -> pd.DataFrame:
+        """Создает DataFrame из строк данных."""
+        headers = rows[1]  # вторая строка
+        # Удаляем пустые заголовки справа
+        while headers and not headers[-1]:
+            headers.pop()
+
+        data = rows[2:]  # данные начиная с третьей строки
+        data = [row[: len(headers)] for row in data]  # обрезаем до длины заголовков
+
+        return pd.DataFrame(data, columns=headers)

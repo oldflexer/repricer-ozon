@@ -99,4 +99,3 @@ def _is_display_available(display: str) -> bool:
             except (subprocess.TimeoutExpired, FileNotFoundError):
                 pass
         return False
-

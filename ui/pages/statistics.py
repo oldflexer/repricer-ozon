@@ -35,7 +35,8 @@ def render_statistics_page() -> None:
     med_margin = margins.median()
     min_margin = margins.min()
     max_margin = margins.max()
-    low_margin_count = (margins < 10).sum()
+    low_margin_threshold = 10.0
+    low_margin_count = (margins < low_margin_threshold).sum()
 
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Средняя маржинальность", f"{avg_margin:.2f}%")
