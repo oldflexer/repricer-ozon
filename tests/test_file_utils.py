@@ -8,7 +8,11 @@ from unittest.mock import MagicMock, mock_open, patch
 
 import pytest
 
-from infrastructure.file_utils import LOCK_WAIT_TIMEOUT, save_safely, wait_for_excel_available
+from infrastructure.file_utils import (
+    LOCK_WAIT_TIMEOUT,
+    save_safely,
+    wait_for_excel_available,
+)
 
 
 class TestFileUtils:

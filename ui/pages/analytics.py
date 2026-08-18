@@ -130,11 +130,9 @@ def render_dynamics() -> None:
         if fig_price.data:
             fig_price.update_layout(
                 legend={"orientation": "h", "y": -0.2},
-                legend={"orientation": "h", "y": -0.2},
                 yaxis_title="Цена (₽)",
             )
             fig_margin.update_layout(
-                legend={"orientation": "h", "y": -0.2},
                 legend={"orientation": "h", "y": -0.2},
                 yaxis_title="Маржинальность (%)",
             )
@@ -322,7 +320,6 @@ def _render_forecast_charts(forecast_data: dict, degree: int) -> None:
             mode="markers",
             name="Факт",
             marker={"color": "blue", "size": 6},
-            marker={"color": "blue", "size": 6},
         )
     )
     fig_price.add_trace(
@@ -332,14 +329,12 @@ def _render_forecast_charts(forecast_data: dict, degree: int) -> None:
             mode="lines",
             name="Тренд + прогноз",
             line={"color": "red", "width": 2, "dash": "solid"},
-            line={"color": "red", "width": 2, "dash": "solid"},
         )
     )
     fig_price.update_layout(
         title="Средняя цена (факт и тренд)",
         xaxis_title="Дата",
         yaxis_title="Цена (₽)",
-        legend={"orientation": "h", "y": -0.2},
         legend={"orientation": "h", "y": -0.2},
     )
     st.plotly_chart(fig_price, width="stretch")
@@ -353,7 +348,6 @@ def _render_forecast_charts(forecast_data: dict, degree: int) -> None:
             mode="markers",
             name="Факт",
             marker={"color": "blue", "size": 6},
-            marker={"color": "blue", "size": 6},
         )
     )
     fig_margin.add_trace(
@@ -363,14 +357,12 @@ def _render_forecast_charts(forecast_data: dict, degree: int) -> None:
             mode="lines",
             name="Тренд + прогноз",
             line={"color": "red", "width": 2, "dash": "solid"},
-            line={"color": "red", "width": 2, "dash": "solid"},
         )
     )
     fig_margin.update_layout(
         title="Средняя маржинальность (факт и тренд)",
         xaxis_title="Дата",
         yaxis_title="Маржинальность (%)",
-        legend={"orientation": "h", "y": -0.2},
         legend={"orientation": "h", "y": -0.2},
     )
     st.plotly_chart(fig_margin, width="stretch")

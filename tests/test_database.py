@@ -6,34 +6,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from core.entities import PriceCalculationResult, PricingData, ProductInfo, StrategyInterval
+from core.entities import (
+    PriceCalculationResult,
+    PricingData,
+    ProductInfo,
+    StrategyInterval,
+)
 from core.enums import StrategyType
 from infrastructure.db import SQLiteRepository
-
-
-def test_database_operations() -> None:  # noqa: PLR0915
-    tmp_dir = tempfile.mkdtemp()
-    db_path = Path(tmp_dir) / "test.db"
-
-    try:
-        repo = SQLiteRepository(db_path)
-
-        # Проверка таблиц (в product есть real_customer_price)
-        with repo._get_connection() as conn:
-            tables = [
-                row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
-            ]
-            assert "product" in tables
-            assert "product_strategy" in tables
-            assert "product_price_history" in tables
-            assert "product_marginality_history" in tables
-            # Проверка колонок в product
-            cols = [row[1] for row in conn.execute("PRAGMA table_info(product)")]
-            assert "real_customer_price" in cols
-            # Проверка колонок в product_price_history
-            cols = [row[1] for row in conn.execute("PRAGMA table_info(product_price_history)")]
-            assert "real_price" in cols
-        print(" ✅ Таблицы созданы корректно с новыми колонками")
 
 
 def _test_product_with_real_customer_price(repo):
@@ -149,6 +129,32 @@ def _test_marginality_and_last_run(repo):
 
     last_run = repo.get_last_run_time()
     assert isinstance(last_run, datetime)
+def _test_tables_and_columns(repo):
+    """Проверяет наличие ожидаемых таблиц и что у них есть колонки."""
+    # Таблицы, которые должны существовать после инициализации схемы
+    expected_tables = {
+        "product",
+        "strategy",
+        "product_strategy",
+        "product_price_history",
+        "product_marginality_history",
+        "maintenance",
+        "product_price_daily",
+        "price_calculation_logs",
+    }
+    with repo._get_connection() as conn:
+        cursor = conn.cursor()
+        # Получить список всех таблиц
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        tables = {row[0].lower() for row in cursor.fetchall()}
+        # Проверить, что все ожидаемые таблицы присутствуют
+        missing = expected_tables - tables
+        assert not missing, f"Missing tables: {missing}"
+        # Для каждой таблицы проверить, что есть хотя бы одна колонка
+        for table in expected_tables:
+            cursor.execute(f"PRAGMA table_info({table})")
+            columns = cursor.fetchall()
+            assert len(columns) > 0, f"Table {table} has no columns"
 
 
 def test_database_operations():

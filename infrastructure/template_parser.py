@@ -5,7 +5,7 @@
 
 import zipfile
 from pathlib import Path
-from xml.etree import ElementTree
+from xml.etree import ElementTree as ET
 
 import pandas as pd
 from openpyxl import load_workbook
@@ -44,7 +44,6 @@ class TemplateParser:
         "fbs_logistics_min": "Логистика Ozon, минимум, FBS",
         "fbs_logistics_max": "Логистика Ozon, максимум, FBS",
         "fbs_delivery": "Доставка до места выдачи, FBS",
-    }
     }
 
     def __init__(self, file_path: Path):
@@ -222,6 +221,9 @@ class TemplateParser:
 
     def _validate_columns(self) -> bool:
         """Проверяет наличие всех необходимых столбцов."""
+        if self.df is None:
+            logger.error("DataFrame не загружен")
+            return False
         missing = []
         for _key, col_name in self.COLUMN_NAMES.items():
             if col_name not in self.df.columns:
@@ -233,6 +235,10 @@ class TemplateParser:
 
     def _convert_numeric_columns(self) -> None:
         """Преобразует числовые столбцы."""
+        if self.df is None:
+            logger.error("DataFrame не загружен")
+            return
+
         numeric_cols = [
             "stock_ozon",
             "stock_my",
@@ -367,63 +373,12 @@ class TemplateParser:
     # Вспомогательные методы для _read_xlsx_via_zip
     # ------------------------------------------------------------------
 
-    def _find_target_sheet(self, zf: zipfile.ZipFile) -> str | None:
-        """Находит лист с данными SKU и Статус."""
-        sheet_files = [
-            f for f in zf.namelist() if f.startswith("xl/worksheets/sheet") and f.endswith(".xml")
-        ]
-        sheet_files.sort()
-        logger.info(f"Найдены листы: {sheet_files}")
-
-        # Ищем лист с заголовками SKU и Статус
-        target_sheet = None
-        for sf in sheet_files:
-            try:
-                content = zf.read(sf).decode("utf-8", errors="ignore")
-                if "SKU" in content and "Статус" in content:
-                    target_sheet = sf
-                    logger.info(f"Найден лист с данными: {sf}")
-                    break
-            except Exception:
-                continue
-
-        if not target_sheet:
-            # Если не нашли, берём второй лист (индекс 1)
-            if len(sheet_files) > MIN_SHEET_INDEX:
-                target_sheet = sheet_files[MIN_SHEET_INDEX]
-                logger.info(f"Используем второй лист: {target_sheet}")
-            else:
-                logger.error("Не найден лист с данными")
-                return None
-        return target_sheet
-
-    def _read_shared_strings(self, zf: zipfile.ZipFile) -> list[str]:
-        """Читает shared strings из zip-архива."""
-        shared_strings = []
-        try:
-            ss_xml = zf.read("xl/sharedStrings.xml")
-            ss_root = ElementTree.fromstring(ss_xml)
-            for si in ss_root.findall(
-                ".//{http://schemas.openxmlformats.org/spreadsheetml/2006/main}si"
-            ):
-                texts = [
-                    t.text or ""
-                    for t in si.findall(
-                        ".//{http://schemas.openxmlformats.org/spreadsheetml/2006/main}t"
-                    )
-                ]
-                shared_strings.append("".join(texts))
-            logger.info(f"Загружено {len(shared_strings)} общих строк")
-        except Exception as e:
-            logger.warning(f"Не удалось прочитать sharedStrings: {e}")
-        return shared_strings
-
     def _read_sheet_data(
         self, zf: zipfile.ZipFile, target_sheet: str, shared_strings: list[str]
     ) -> list[list[str]]:
         """Читает данные листа из zip-архива."""
         sheet_xml = zf.read(target_sheet)
-        root = ElementTree.fromstring(sheet_xml)
+        root = ET.fromstring(sheet_xml)
         ns = {"main": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
 
         rows = []
@@ -455,3 +410,4 @@ class TemplateParser:
         data = [row[: len(headers)] for row in data]  # обрезаем до длины заголовков
 
         return pd.DataFrame(data, columns=headers)
+

@@ -47,10 +47,8 @@ where = ["."]
 include = ["core*", "infrastructure*", "config*", "scripts*", "ui*", "migrations*"]
 
 [tool.ruff]
-line-length = 100
-target-version = "py311"
-
-[tool.ruff.lint]
+line-length = 79
+target-version = "py312"
 
 [tool.ruff.lint]
 select = [
@@ -70,10 +68,10 @@ select = [
     "ARG", # flake8-unused-arguments
     "ERA", # eradicate
     "LOG", # flake8-logging-format
+    "B008",  # do not perform function calls in argument defaults
 ]
 ignore = [
     "E501",  # line too long (handled by formatter)
-    "B008",  # do not perform function calls in argument defaults
     "PLW0603", # global variable used
     "T201", # print (allowed in scripts)
 ]
@@ -87,18 +85,18 @@ line-ending = "lf"
 
 [tool.mypy]
 python_version = "3.12"
-warn_return_any = false
+warn_return_any = true
 warn_unused_configs = false
-disallow_untyped_defs = false
-disallow_incomplete_defs = false
-check_untyped_defs = false
-no_implicit_optional = false
-strict_optional = false
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+no_implicit_optional = true
+strict_optional = true
 show_error_codes = true
 pretty = true
 namespace_packages = true
 explicit_package_bases = true
-ignore_missing_imports = true
+ignore_missing_imports = false
 
 # Exclude pre-commit cache and virtual environment directories
 exclude = [
@@ -112,7 +110,6 @@ exclude = [
 [[tool.mypy.overrides]]
 module = "numpy.*"
 ignore_missing_imports = true
-python_version = "3.11"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

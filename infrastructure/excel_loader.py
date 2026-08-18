@@ -11,7 +11,7 @@ from typing import Any
 import pandas as pd
 from openpyxl import load_workbook
 
-from config.settings import PERCENT_MAX, TIME_FORMAT_LENGTH, settings
+from config.settings import TIME_FORMAT_LENGTH, settings
 from core.entities import PriceCalculationResult, ProductInfo, StrategyInterval
 from core.enums import StrategyType, parse_strategy_value
 from core.repository import ILoader
@@ -374,10 +374,6 @@ class ExcelLoader(ILoader):
                 and start[2] == ":"
                 and start[:2].isdigit()
                 and start[3:].isdigit()
-                len(start) == TIME_FORMAT_LENGTH
-                and start[TIME_COLON_POSITION] == ":"
-                and start[:2].isdigit()
-                and start[3:].isdigit()
             ):
                 warnings.append(f"Интервал {i}: некорректное время начала '{start}'")
             if not (
@@ -477,17 +473,6 @@ class ExcelLoader(ILoader):
         return updates
 
     # Новые приватные методы для разделения сложной функции load()
-    def _validate_file(self) -> tuple[list[ProductInfo], list[str]] | None:
-        """Валидирует Excel-файл перед загрузкой."""
-        if not self.file_path.exists():
-            logger.error(f"Файл {self.file_path} не найден")
-            return [], ["Файл Excel не найден"]
-
-        if self.file_path.suffix.lower() != ".xlsx":
-            logger.error(f"Неподдерживаемый формат: {self.file_path.suffix}. Используйте .xlsx")
-            return [], [f"Неподдерживаемый формат: {self.file_path.suffix}"]
-
-        return None
 
     def _find_column_indices(self, ws) -> dict[str, int]:
         """Находит индексы колонок по заголовкам."""
@@ -535,16 +520,6 @@ class ExcelLoader(ILoader):
                 pass
         return None
 
-    def _update_cells(
-        self, ws, target_row: int, col_map: dict[str, int], updates: dict[str, Any]
-    ) -> None:
-        """Обновляет ячейки в строке."""
-        for field, col_idx in col_map.items():
-            value = updates.get(field)
-            if value is not None:
-                if field.startswith("margin"):
-                    value = round(float(value), 2)
-                ws.cell(target_row, col_idx, value=value)
 
     def _read_excel_data(self) -> pd.DataFrame:
         """Читает и подготавливает данные из Excel-файла."""
@@ -552,12 +527,6 @@ class ExcelLoader(ILoader):
         df.columns = df.columns.str.lower().str.strip()
         return df
 
-    def _find_sku_column(self, columns: pd.Index) -> str | None:
-        """Находит колонку SKU среди возможных вариантов."""
-        for col in ["sku", "артикул", "article", "id", "offer_id"]:
-            if col in columns:
-                return col
-        return None
 
     def _check_sku_duplicates(
         self, df: pd.DataFrame, sku_col: str

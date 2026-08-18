@@ -16,7 +16,9 @@ from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.support.ui import WebDriverWait
 
 try:
-    from webdriver_manager.chrome import ChromeDriverManager as WDMChromeDriverManager
+    from webdriver_manager.chrome import (
+        ChromeDriverManager as WDMChromeDriverManager,
+    )
 except Exception:
     WDMChromeDriverManager = None  # type: ignore[assignment,misc]
 

@@ -76,8 +76,12 @@ def _render_heatmap(repo) -> None:
         pivot = pivot.reindex(columns=correct_order, fill_value=0)
         fig_heatmap = px.imshow(
             pivot,
+
+
+
             labels={"x": "День недели", "y": "Час (МСК)", "color": "Количество обновлений"},
-            labels={"x": "День недели", "y": "Час (МСК)", "color": "Количество обновлений"},
+
+
             title="Тепловая карта обновлений цен (90 дней)",
             aspect="auto",
             color_continuous_scale="Viridis",
@@ -124,7 +128,6 @@ def _render_db_operations(repo) -> None:
                 "Скачать",
                 data=db_data,
                 file_name=settings.database_path_path.name,
-                file_name=settings.database_path_path.name,
                 mime="application/octet-stream",
             )
     with col2:
@@ -165,25 +168,17 @@ def _render_password_change() -> None:
                 env_path = Path(__file__).parent.parent.parent / ".env"
                 if env_path.exists():
                     with env_path.open(encoding="utf-8") as f:
-                    with env_path.open(encoding="utf-8") as f:
                         lines = f.readlines()
-                    with env_path.open("w", encoding="utf-8") as f:
                     with env_path.open("w", encoding="utf-8") as f:
                         for line in lines:
                             if line.startswith("WEB_PASS="):
-                                f.write(f"WEB_PASS={new_password}\n")
+                                f.write(f"WEB_PASS={new_password}\\n")
                             else:
                                 f.write(line)
                     st.success(
                         "Пароль изменён. При следующем входе используйте новый пароль.",
                         icon=":material/check_circle:",
                     )
-                else:
-                    st.error("Файл .env не найден", icon=":material/cancel:")
-            else:
-                st.error("Пароли не совпадают или пусты", icon=":material/cancel:")
-
-
 def _render_diagnostics(repo) -> None:
     """
     Рендерит секцию диагностики.
@@ -195,3 +190,8 @@ def _render_diagnostics(repo) -> None:
             st.success("База данных доступна", icon=":material/check_circle:")
         except Exception as e:
             st.error(f"Ошибка: {e}", icon=":material/cancel:")
+
+
+
+
+

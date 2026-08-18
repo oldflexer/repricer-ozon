@@ -31,12 +31,13 @@ class HistoryService:
             return
 
         # Если не было обновлений (update_results пуст) – просто сохраняем без real_price
+        # Если не было обновлений (update_results пуст) – просто сохраняем без real_price
         if not update_results:
             for product, pricing, result in results_data:
                 self.repo.save_price_history(product.sku, pricing, result, real_price=None)
-                self.repo.save_daily_aggregates(product.sku, result, real_price=None)
-            return
-
+                self.repo.save_daily_aggregates(
+                    product.sku, result, real_price=None
+                )
         # Для каждого товара вычисляем real_price из имеющихся данных
         for product, pricing, result in results_data:
             # Вычисляем real_price как result_target_price * discount_coef
@@ -48,7 +49,7 @@ class HistoryService:
             # Сохраняем историю и агрегаты с вычисленным real_price
             self.repo.save_price_history(product.sku, pricing, result, real_price=real_price_value)
             self.repo.save_daily_aggregates(
-                product.sku, pricing, result, real_price=real_price_value
+                product.sku, result, real_price=real_price_value
             )
 
             # Обновляем поле new_price в отчёте (для email)

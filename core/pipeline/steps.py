@@ -528,7 +528,8 @@ class SendReportStep(PipelineStep):
             if hasattr(self.notifier, "send_detailed_report"):
                 self.notifier.send_detailed_report(updates, errors, dry_run=context.dry_run)
             else:
-                self.notifier.notify_cycle_complete(updates, errors, dry_run=context.dry_run)
+                updated_count = sum(1 for u in updates if u.get("status") == "updated")
+                self.notifier.notify_cycle_complete(updated_count, errors)
             logger.info("Pipeline: Email report sent")
         except Exception as e:
             context.add_error(f"Failed to send email report: {e}")

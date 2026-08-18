@@ -7,7 +7,10 @@ Use‑case для запуска полного цикла репрайсинг�
 from dataclasses import dataclass
 from typing import Any
 
-from core.pipeline.orchestrator import PipelineDependencies, create_repricing_pipeline
+from core.pipeline.orchestrator import (
+    PipelineDependencies,
+    create_repricing_pipeline,
+)
 from core.protocols.api import IApiClient
 from core.protocols.loader import ILoader
 from core.protocols.notifier import INotifier
@@ -80,7 +83,7 @@ class RepricingUseCase:
             marginality_repo=self._deps.marginality_repo,
             maintenance_repo=self._deps.maintenance_repo,
             notifier=self._deps.mail_notifier,
-            calculator=self._deps.calculator,
+            calculator=self._deps.calculator or PriceCalculationService(),
             dry_run=dry_run,
         )
         orchestrator, context = create_repricing_pipeline(pipeline_deps)

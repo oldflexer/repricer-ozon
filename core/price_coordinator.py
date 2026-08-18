@@ -12,7 +12,11 @@ from config.settings import settings
 from core.entities import ProductInfo
 from core.mappers import build_price_update_request
 from core.repository import IRepository
-from core.services import HistoryService, PriceCalculationService, calculate_old_price
+from core.services import (
+    HistoryService,
+    PriceCalculationService,
+    calculate_old_price,
+)
 from infrastructure.logger import logger
 
 

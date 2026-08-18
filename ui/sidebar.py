@@ -30,8 +30,8 @@ from infrastructure.x_display import get_available_display
 from ui.cache import get_api_client, get_excel_loader, get_mail_notifier, get_repo
 
 LOCK_FILE = Path(tempfile.gettempdir()) / "repricer_parser.lock"
-LOCK_FILE = Path(tempfile.gettempdir()) / "repricer_parser.lock"
 
+# Test comment
 
 def get_base64_encoded_image(image_path: Path) -> str:
     """
@@ -43,7 +43,6 @@ def get_base64_encoded_image(image_path: Path) -> str:
     Returns:
         base64-строка.
     """
-    with image_path.open("rb") as f:
     with image_path.open("rb") as f:
         return base64.b64encode(f.read()).decode()
 
@@ -226,10 +225,11 @@ def execute_parsing(dry_run: bool) -> tuple[str, str]:
 def render_sidebar_section_excel(disabled: bool) -> None:
     """
     Отрисовывает секцию работы с Excel (загрузка/скачивание).
-
+    
     Args:
         disabled: Если True, кнопки и загрузка блокируются.
     """
+    
     if disabled:
         st.info(
             "Загрузка Excel недоступна во время выполнения репрайсинга",
@@ -237,12 +237,9 @@ def render_sidebar_section_excel(disabled: bool) -> None:
         )
         if settings.data_file_path.exists():
             with settings.data_file_path.open("rb") as f:
-        if settings.data_file_path.exists():
-            with settings.data_file_path.open("rb") as f:
                 st.download_button(
                     "Скачать текущий Excel",
                     f,
-                    file_name=settings.data_file_path.name,
                     file_name=settings.data_file_path.name,
                     width="stretch",
                     disabled=True,
@@ -258,10 +255,8 @@ def render_sidebar_section_excel(disabled: bool) -> None:
             )
             if uploaded_file is not None:
                 with settings.data_file_path.open("wb") as f:
-                with settings.data_file_path.open("wb") as f:
                     f.write(uploaded_file.getbuffer())
                 st.success(
-                    f"Файл загружен: {settings.data_file_path.name}",
                     f"Файл загружен: {settings.data_file_path.name}",
                     icon=":material/check_circle:",
                 )
@@ -269,18 +264,17 @@ def render_sidebar_section_excel(disabled: bool) -> None:
                 st.cache_resource.clear()
         except Exception as e:
             st.error(f"Ошибка при загрузке файла: {e}", icon=":material/cancel:")
-
-        if settings.data_file_path.exists():
-            with settings.data_file_path.open("rb") as f:
-                st.download_button(
-                    "Скачать текущий Excel",
-                    f,
-                    file_name=settings.data_file_path.name,
-                    width="stretch",
-                )
-        else:
-            st.warning("Файл Excel пока не существует.", icon=":material/warning:")
-
+    
+    if settings.data_file_path.exists():
+        with settings.data_file_path.open("rb") as f:
+            st.download_button(
+                "Скачать текущий Excel",
+                f,
+                file_name=settings.data_file_path.name,
+                width="stretch",
+            )
+    else:
+        st.warning("Файл Excel пока не существует.", icon=":material/warning:")
 
 def _handle_repricing_buttons(is_busy: bool) -> None:
     """Обрабатывает кнопки репрайсинга."""

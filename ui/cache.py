@@ -82,7 +82,7 @@ def get_cached_last_prices():
 # ------ ЭТИ ФУНКЦИИ НЕ КЭШИРУЕМ (создают новые объекты) ------
 def get_excel_loader():
     """Создаёт новый экземпляр ExcelLoader."""
-    return ExcelLoader(settings.DATA_FILE_PATH)
+    return ExcelLoader(settings.data_file_path)
 
 
 def get_api_client():

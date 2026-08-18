@@ -10,7 +10,10 @@ from typing import cast
 from dependency_injector import containers, providers
 
 from config.settings import settings
-from core.pipeline.orchestrator import PipelineDependencies, create_repricing_pipeline
+from core.pipeline.orchestrator import (
+    PipelineDependencies,
+    create_repricing_pipeline,
+)
 from core.protocols.repository import (
     IAnalyticsRepository,
     IMaintenanceRepository,

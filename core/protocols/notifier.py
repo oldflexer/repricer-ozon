@@ -14,7 +14,7 @@ class INotifier(Protocol):
     @abstractmethod
     def send_detailed_report(
         self, updates: list[dict[str, Any]], errors: list[str], dry_run: bool = False
-    ) -> bool:
+    ) -> None:
         """
         Отправляет детальный отчёт по результатам репрайсинга.
 
@@ -22,39 +22,28 @@ class INotifier(Protocol):
             updates: Список обновлений цен.
             errors: Список ошибок.
             dry_run: Флаг тестового режима.
-
-        Returns:
-            True в случае успеха.
         """
         ...
 
     @abstractmethod
     def notify_cycle_complete(
-        self, updates: list[dict[str, Any]], errors: list[str], dry_run: bool = False
-    ) -> bool:
+        self, updated_count: int, errors: list[str] | None = None
+    ) -> None:
         """
         Уведомляет о завершении цикла репрайсинга.
 
         Args:
-            updates: Список обновлений цен.
-            errors: Список ошибок.
-            dry_run: Флаг тестового режима.
-
-        Returns:
-            True в случае успеха.
+            updated_count: Количество обновлённых товаров.
+            errors: Список ошибок (опционально).
         """
         ...
 
     @abstractmethod
-    def notify_critical_event(self, message: str, details: dict[str, Any] | None = None) -> bool:
+    def notify_critical_event(self, event: str) -> None:
         """
         Отправляет уведомление о критическом событии.
 
         Args:
-            message: Текст сообщения.
-            details: Дополнительные детали.
-
-        Returns:
-            True в случае успеха.
+            event: Текст события.
         """
         ...

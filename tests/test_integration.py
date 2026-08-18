@@ -50,6 +50,22 @@ class MockOzonApiClient:
     async def close(self):
         pass
 
+    async def get_actions(self) -> list[dict]:
+        return []
+
+    async def get_auto_add_products(
+        self, action_id: int, auto_add_date: str, limit: int = 100, offset: int = 0
+    ) -> dict:
+        return {"products": []}
+
+    async def delete_auto_add_products(
+        self, action_id: int, auto_add_date: str, product_ids: list[int]
+    ) -> dict:
+        return {"product_ids": []}
+
+    async def update_price_timer(self, product_ids: list[int]) -> dict[int, dict]:
+        return {pid: {"success": True, "error": None} for pid in product_ids}
+
 
 @pytest.mark.asyncio
 async def test_full_cycle_dry_run(tmp_path):

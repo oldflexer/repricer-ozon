@@ -30,7 +30,6 @@ class SQLiteRepository(
     """
 
     def __init__(self, db_path: Path = settings.database_path_path) -> None:
-    def __init__(self, db_path: Path = settings.database_path_path) -> None:
         """
         Инициализирует репозиторий, создавая директорию для БД при необходимости.
 

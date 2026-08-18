@@ -107,3 +107,4 @@ async def test_update_prices_file_not_found(tmp_path):
         use_case = ParseCompetitorPricesUseCase()
         stats = await use_case.execute(dry_run=False)
         assert stats == {"updated": 0, "errors": 0, "skipped": 0}
+

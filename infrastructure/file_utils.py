@@ -1,7 +1,10 @@
+import logging
 import shutil
 import time
 
 from openpyxl import load_workbook
+
+logger = logging.getLogger(__name__)
 
 LOCK_WAIT_TIMEOUT = 60
 
@@ -34,7 +37,9 @@ def save_safely(updates, file_path, max_retries=3):
     Safely updates an Excel file with retry logic.
     Creates a backup, applies updates, saves to temp file, then replaces original.
     """
+    last_error = None
     for attempt in range(max_retries):
+        temp_path = None
         try:
             # Create a backup
             backup_path = file_path.with_suffix(file_path.suffix + ".backup")
@@ -54,15 +59,15 @@ def save_safely(updates, file_path, max_retries=3):
             temp_path = file_path.with_suffix(file_path.suffix + ".tmp")
             wb.save(temp_path)
             wb.close()
-            tmp_path.replace(file_path)
+            temp_path.replace(file_path)
             logger.info(f"Файл {file_path} успешно сохранён (попытка {attempt})")
             return
         except Exception as e:
             last_error = e
             logger.warning(f"Ошибка сохранения (попытка {attempt}/{max_retries}): {e}")
-            if tmp_path.exists():
-                tmp_path.unlink()
-            if attempt < max_retries:
+            if temp_path is not None and temp_path.exists():
+                temp_path.unlink()
+            if attempt < max_retries - 1:
                 time.sleep(1)
     logger.error(f"Не удалось сохранить файл {file_path} после {max_retries} попыток: {last_error}")
     raise last_error or RuntimeError("Ошибка сохранения файла")

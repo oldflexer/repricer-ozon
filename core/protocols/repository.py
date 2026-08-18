@@ -10,7 +10,12 @@ from typing import Any, Protocol
 
 import pandas as pd
 
-from core.entities import PriceCalculationResult, PricingData, ProductInfo, StrategyInterval
+from core.entities import (
+    PriceCalculationResult,
+    PricingData,
+    ProductInfo,
+    StrategyInterval,
+)
 
 
 class IProductRepository(Protocol):

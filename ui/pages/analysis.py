@@ -148,7 +148,6 @@ def render_commissions_analysis() -> None:
                 mode="lines",
                 name="y=x",
                 line={"dash": "dash", "color": "gray"},
-                line={"dash": "dash", "color": "gray"},
             )
         )
         st.plotly_chart(fig_scatter, width="stretch")
@@ -271,7 +270,6 @@ def render_abc_analysis() -> None:
             yaxis="y2",
             mode="lines+markers",
             line={"color": "red", "width": 2},
-            line={"color": "red", "width": 2},
         )
     )
     fig_pareto.update_layout(
@@ -283,12 +281,7 @@ def render_abc_analysis() -> None:
             "overlaying": "y",
             "side": "right",
             "range": [0, 100],
-            "title": "Накопленный процент (%)",
-            "overlaying": "y",
-            "side": "right",
-            "range": [0, 100],
         },
-        legend={"x": 0.01, "y": 0.99},
         legend={"x": 0.01, "y": 0.99},
         width=None,
     )

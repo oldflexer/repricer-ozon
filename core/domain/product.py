@@ -8,7 +8,13 @@ from dataclasses import dataclass, field
 from datetime import time
 
 from core.domain.pricing_rules import OzonPricingRules, get_pricing_rules
-from core.domain.value_objects import SKU, DiscountCoefficient, Money, Percentage, TimeInterval
+from core.domain.value_objects import (
+    SKU,
+    DiscountCoefficient,
+    Money,
+    Percentage,
+    TimeInterval,
+)
 from core.entities import PriceCalculationResult, PricingData, StrategyInterval
 from core.enums import StrategyType
 from core.services.price_calculation import PriceCalculationService
