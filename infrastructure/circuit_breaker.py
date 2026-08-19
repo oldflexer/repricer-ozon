@@ -10,7 +10,7 @@ import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TypeVar
+from typing import Any, TypeVar
 
 from config.settings import settings
 
@@ -64,7 +64,7 @@ class CircuitBreaker:
         self._successes = 0
         self._state = CircuitState.CLOSED
 
-    async def call(self, func: Callable[..., Awaitable[T]], *args, **kwargs) -> T:
+    async def call(self, func: Callable[..., Awaitable[T]], *args: Any, **kwargs: Any) -> T:
         """
         Выполняет функцию с защитой Circuit Breaker.
 

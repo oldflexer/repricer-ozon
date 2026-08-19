@@ -16,6 +16,7 @@ import plotly.express as px
 import streamlit as st
 
 from config.settings import TIMEZONE, settings
+from core.protocols.repository import IRepository
 from ui.cache import get_repo
 
 
@@ -58,7 +59,7 @@ def render_service() -> None:
     _render_diagnostics(repo)
 
 
-def _render_heatmap(repo) -> None:
+def _render_heatmap(repo: IRepository) -> None:
     """
     Рендерит тепловую карту обновлений.
     """
@@ -91,7 +92,7 @@ def _render_heatmap(repo) -> None:
         st.info("Недостаточно данных для тепловой карты", icon=":material/info:")
 
 
-def _render_last_run(repo) -> None:
+def _render_last_run(repo: IRepository) -> None:
     """
     Рендерит информацию о последнем запуске.
     """
@@ -111,7 +112,7 @@ def _render_last_run(repo) -> None:
         )
 
 
-def _render_db_operations(repo) -> None:
+def _render_db_operations(repo: IRepository) -> None:
     """
     Рендерит секцию работы с БД.
     """
@@ -163,23 +164,24 @@ def _render_password_change() -> None:
     with st.expander("Изменить пароль", icon=":material/lock:"):
         new_password = st.text_input("Новый пароль", type="password", key="new_pass")
         confirm_password = st.text_input("Подтвердите пароль", type="password", key="confirm_pass")
-        if st.button("Сохранить пароль", use_container_width=True, icon=":material/save:"):
-            if new_password and new_password == confirm_password:
-                env_path = Path(__file__).parent.parent.parent / ".env"
-                if env_path.exists():
-                    with env_path.open(encoding="utf-8") as f:
-                        lines = f.readlines()
-                    with env_path.open("w", encoding="utf-8") as f:
-                        for line in lines:
-                            if line.startswith("WEB_PASS="):
-                                f.write(f"WEB_PASS={new_password}\\n")
-                            else:
-                                f.write(line)
-                    st.success(
-                        "Пароль изменён. При следующем входе используйте новый пароль.",
-                        icon=":material/check_circle:",
-                    )
-def _render_diagnostics(repo) -> None:
+        if st.button("Сохранить пароль", use_container_width=True, icon=":material/save:") and new_password and new_password == confirm_password:
+            env_path = Path(__file__).parent.parent.parent / ".env"
+            if env_path.exists():
+                with env_path.open(encoding="utf-8") as f:
+                    lines = f.readlines()
+                with env_path.open("w", encoding="utf-8") as f:
+                    for line in lines:
+                        if line.startswith("WEB_PASS="):
+                            f.write(f"WEB_PASS={new_password}\\n")
+                        else:
+                            f.write(line)
+                st.success(
+                    "Пароль изменён. При следующем входе используйте новый пароль.",
+                    icon=":material/check_circle:",
+                )
+
+
+def _render_diagnostics(repo: IRepository) -> None:
     """
     Рендерит секцию диагностики.
     """

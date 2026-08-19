@@ -6,12 +6,14 @@ Pipeline шаги для процесса репрайсинга (Pipeline Patte
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import time
-from typing import Any, Generic, TypeVar
+from datetime import datetime, time
+from typing import Any, TypeVar
 
+from config.settings import TIMEZONE
+from core.domain.pricing_rules import get_pricing_rules
 from core.domain.product import PricingStrategy, Product
-from core.domain.value_objects import SKU, Money
-from core.entities import PriceCalculationResult, PricingData
+from core.domain.value_objects import SKU, Money, Percentage, TimeInterval
+from core.entities import PriceCalculationResult, PricingData, ProductInfo
 from core.protocols.api import IApiClient
 from core.protocols.loader import ILoader
 from core.protocols.notifier import INotifier
@@ -53,7 +55,7 @@ class PipelineContext:
         logger.warning(message)
 
 
-class PipelineStep(ABC, Generic[T]):
+class PipelineStep[T](ABC):
     """Базовый класс шага pipeline."""
 
     @abstractmethod
@@ -113,12 +115,8 @@ class LoadProductsStep(PipelineStep):
             strategies = []
             for interval in intervals:
                 # Конвертируем из StrategyInterval (core.entities) в TimeInterval (domain)
-                from core.domain.value_objects import TimeInterval
-
                 time_interval = TimeInterval.from_string(interval.start, interval.end)
                 # percent в StrategyInterval - это float в процентах (10.0 = 10%)
-                from core.domain.value_objects import Percentage
-
                 percent = Percentage.from_percent(interval.percent)
                 strategies.append(
                     PricingStrategy(
@@ -212,8 +210,6 @@ class CalculatePricesStep(PipelineStep):
 
     async def execute(self, context: PipelineContext) -> None:
         logger.info("Pipeline: Calculating target prices")
-        from core.domain.pricing_rules import get_pricing_rules
-
         rules = get_pricing_rules()
 
         for product in context.products:
@@ -231,10 +227,6 @@ class CalculatePricesStep(PipelineStep):
             # Определяем текущее время для стратегии
             current_time = context.current_time
             if current_time is None:
-                from datetime import datetime
-
-                from config.settings import TIMEZONE
-
                 current_time = datetime.now(TIMEZONE).time()
 
             try:
@@ -258,8 +250,6 @@ class PersistToExcelStep(PipelineStep):
 
     async def execute(self, context: PipelineContext) -> None:
         logger.info("Pipeline: Persisting results to Excel")
-        from core.domain.pricing_rules import get_pricing_rules
-
         rules = get_pricing_rules()
 
         for product in context.products:
@@ -318,8 +308,6 @@ class SubmitPricesToOzonStep(PipelineStep):
             return
 
         logger.info("Pipeline: Submitting prices to Ozon API")
-        from core.domain.pricing_rules import get_pricing_rules
-
         rules = get_pricing_rules()
 
         # Формируем payload для API
@@ -421,8 +409,6 @@ class SaveHistoryStep(PipelineStep):
 
             # Всегда сохраняем/обновляем товар в БД (даже в dry_run)
             try:
-                from core.entities import ProductInfo
-
                 product_info = ProductInfo(
                     sku=str(product.sku),
                     product_id=product.product_id,

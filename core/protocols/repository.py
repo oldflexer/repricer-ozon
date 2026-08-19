@@ -121,6 +121,16 @@ class IAnalyticsRepository(Protocol):
         ...
 
     @abstractmethod
+    def get_daily_trends(self, days: int = 7) -> pd.DataFrame:
+        """Возвращает дневные тренды с fallback."""
+        ...
+
+    @abstractmethod
+    def get_update_heatmap(self, days: int = 90) -> pd.DataFrame:
+        """Возвращает данные для тепловой карты обновлений."""
+        ...
+
+    @abstractmethod
     def get_daily_deviation(self, days: int = 30) -> pd.DataFrame:
         """Возвращает среднее отношение цены к индексу Ozon по дням."""
         ...

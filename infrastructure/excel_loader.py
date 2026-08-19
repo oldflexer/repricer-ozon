@@ -18,7 +18,6 @@ from core.repository import ILoader
 from infrastructure.logger import logger
 
 # Константы для валидации времени
-TIME_FORMAT_LENGTH = 5
 TIME_COLON_POSITION = 2
 MAX_PERCENT = 100
 MIN_PERCENT = 0

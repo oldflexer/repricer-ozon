@@ -7,8 +7,13 @@
 
 from dataclasses import dataclass
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
+from config.settings import settings
 from core.domain.value_objects import DiscountCoefficient, Money, Percentage
+
+if TYPE_CHECKING:
+    from config.settings import Settings
 
 
 @dataclass(frozen=True, slots=True)
@@ -128,7 +133,7 @@ class OzonPricingRules:
         return target_min_price
 
     @classmethod
-    def from_settings(cls, settings) -> "OzonPricingRules":
+    def from_settings(cls, settings: "Settings") -> "OzonPricingRules":
         """Создаёт экземпляр из объекта настроек приложения."""
         return cls(
             min_price_ratio=Decimal(str(settings.COEFFICIENT_OZON))
@@ -170,8 +175,6 @@ def get_pricing_rules() -> OzonPricingRules:
     """Возвращает глобальный экземпляр правил (ленивая инициализация)."""
     global _pricing_rules
     if _pricing_rules is None:
-        from config.settings import settings
-
         _pricing_rules = OzonPricingRules.from_settings(settings)
     return _pricing_rules
 

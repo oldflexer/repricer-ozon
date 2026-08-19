@@ -4,7 +4,19 @@ Pipeline Orchestrator - управляет выполнением последо
 
 from dataclasses import dataclass
 
-from core.pipeline.steps import PipelineContext, PipelineStep
+from core.pipeline.steps import (
+    CalculatePricesStep,
+    CleanupDatabaseStep,
+    EnrichProductIdsStep,
+    FetchPricingDataStep,
+    LoadProductsStep,
+    PersistToExcelStep,
+    PipelineContext,
+    PipelineStep,
+    SaveHistoryStep,
+    SendReportStep,
+    SubmitPricesToOzonStep,
+)
 from core.protocols.api import IApiClient
 from core.protocols.loader import ILoader
 from core.protocols.notifier import INotifier
@@ -121,17 +133,6 @@ def create_repricing_pipeline(
     Returns:
         Tuple (orchestrator, context)
     """
-    from core.pipeline.steps import (
-        CalculatePricesStep,
-        CleanupDatabaseStep,
-        EnrichProductIdsStep,
-        FetchPricingDataStep,
-        LoadProductsStep,
-        PersistToExcelStep,
-        SaveHistoryStep,
-        SendReportStep,
-        SubmitPricesToOzonStep,
-    )
 
     steps = [
         LoadProductsStep(deps.loader),

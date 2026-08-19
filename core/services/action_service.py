@@ -7,13 +7,14 @@
 import asyncio
 
 from config.settings import settings
+from core.protocols.api import IApiClient
 from infrastructure.logger import logger
 
 
 class ActionService:
     """Сервис для управления автодобавлением товаров в акции Ozon."""
 
-    def __init__(self, api_client) -> None:
+    def __init__(self, api_client: IApiClient) -> None:
         """
         Инициализирует сервис.
 

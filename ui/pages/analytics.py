@@ -14,6 +14,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from config.settings import DEFAULT_TOP_N, TIMEZONE
+from core.protocols.repository import IRepository
 from ui.cache import get_cached_products, get_repo
 
 
@@ -81,7 +82,6 @@ def render_dynamics() -> None:
     sku_options = [f"{p.sku} – {p.product_name}" for p in products]
     sku_to_sku = {opt: p.sku for opt, p in zip(sku_options, products, strict=False)}
 
-    default_products_count = 2
     selected = st.multiselect(
         "Выберите товары для отображения",
         sku_options,
@@ -213,7 +213,7 @@ def _get_forecast_params() -> tuple[int, int, int]:
     return history_days, degree, forecast_days
 
 
-def _prepare_forecast_data(repo, history_days: int) -> pd.DataFrame | None:
+def _prepare_forecast_data(repo: IRepository, history_days: int) -> pd.DataFrame | None:
     """Подготавливает данные для прогнозирования."""
     daily_df = repo.get_daily_trends(days=history_days)
     if daily_df.empty:
