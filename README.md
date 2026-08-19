@@ -5,9 +5,9 @@
 ## 🚀 Возможности
 
 - Работа **только через Ozon Seller API** (v3, v5, v1)
-- Автоматическое получение product_id, offer_id, названия товара через /v3/product/info/list.
-- Получение цен, индексов и комиссий FBS через /v5/product/info/prices.
-- Расчёт целевой цены с использованием динамического discount_coef на основе индексов (external, ozon, self_marketplaces) или коэффициента из .env.
+- Автоматическое получение product_id, offer_id, названия товара через `/v3/product/info/list`.
+- Получение цен, индексов и комиссий FBS через `/v5/product/info/prices`.
+- Расчёт целевой цены с использованием динамического `discount_coef` на основе индексов (external, ozon, self_marketplaces) или коэффициента из `.env`.
 - Гибкие временные стратегии: ниже/выше/равна индексу Ozon с настраиваемым процентом.
 - Расчёт **маржинальности с учётом всех комиссий Ozon FBS**:
     sales_commission = result_target_price * (sales_percent_fbs/100)
@@ -15,113 +15,169 @@
     direct_flow_avg = (min + max)/2
     total_cost = sales_commission + first_mile_avg + direct_flow_avg + fbs_deliv_to_customer + net_price
     marginality = (result_target_price - total_cost) / result_target_price
-- Отправка цен в Ozon через /v1/product/import/prices (с поправкой min_price = РИЦ / discount_coef).
+- Отправка цен в Ozon через `/v1/product/import/prices` (с поправкой min_price = РИЦ / discount_coef).
 - Автоматическое обновление Excel-файла (реальная цена покупателя, маржа) и запись истории в SQLite.
 - Email-уведомления о завершении цикла с детализацией и CSV-вложением.
 - **Парсинг цен конкурентов** через undetected-chromedriver (обход блокировок, поддержка профиля Chrome).
 - **Отключение автодобавления в акции** Ozon (mass-delete через API).
+- **Обновление таймера актуальности минимальной цены** через API.
+- **Синхронизация реальных цен из шаблона Ozon** (ДО и ПОСЛЕ репрайсинга).
 - Веб-интерфейс на **Streamlit** (7 страниц: Сводка, Статистика, Аналитика, Анализ, Таблицы, Запросы, Сервис).
-- Поддержка --dry-run (расчёт без отправки) для всех операций.
-- **Alembic-миграции** БД (автозапуск run_migrations_once при старте).
+- Поддержка `--dry-run` (расчёт без отправки) для всех операций.
+- **Alembic-миграции** БД (автозапуск `run_migrations_once` при старте).
 - **SQLite WAL mode + busy_timeout=30s** для конкурентного доступа.
 - Готов к развёртыванию на сервере через systemd и cron.
-- **Контейнер зависимостей** (core/container.py) для управления жизненным циклом сервисов.
+- **Контейнер зависимостей** (`core/container.py`) на базе `dependency-injector` с lifecycle management.
+- **Pipeline Pattern** для репрайсинга (9 изолированных шагов, легко тестируемые и заменяемые).
+- **Rich Domain Model** (`core/domain/`): Product, PricingStrategy, Value Objects (Money, SKU, Percentage), PricingRules.
+- **Protocol-based DI** (`core/protocols/`): IApiClient, ILoader, INotifier, 5 репозиториев.
 - **Линтинг и типизация**: ruff 0.16+, mypy 2.3+, современные type hints (list[dict], float | None).
 
 ## 🧱 Архитектура
 
-Проект чётко разделён на слои (Clean Architecture):
+Проект построен на **Clean Architecture** с разделением на слои:
 
 ```
 repricer-ozon/
-├── config/
-│   ├── settings.py              # Pydantic-настройки, .env, пути, константы
-│   ├── api.py                   # API-настройки (batch size, retries, timeout)
-│   ├── ui.py                    # UI-настройки (web user/pass)
-│   └── instance.py              # Instance-специфичные пути
-├── core/                        # Доменный слой (бизнес-логика)
-│   ├── entities.py              # ProductInfo, PricingData, StrategyInterval, PriceCalculationResult
-│   ├── dto.py                   # Data Transfer Objects (API-контракты)
-│   ├── mappers.py               # Мапперы entities ↔ DTO, build_price_update_request
-│   ├── repository.py            # Абстракции: IProductRepository, ILoader
-│   ├── orchestrator.py          # PricingOrchestrator (legacy, делегирует в Coordinator)
-│   ├── price_coordinator.py     # PriceUpdateCoordinator — основной оркестратор репрайсинга
-│   ├── container.py             # DI-контейнер (singletons для инфраструктуры)
-│   ├── enums.py                 # StrategyType (IntEnum), parse_strategy_value
-│   ├── services/
-│   │   ├── price_calculation.py # PriceCalculationService, calculate_old_price
-│   │   ├── action_service.py    # ActionService — работа с акциями Ozon
-│   │   ├── history_service.py   # HistoryService — сохранение истории и агрегатов
-│   │   ├── migration_service.py # MigrationService — запуск Alembic
-│   │   └── real_price_sync.py   # RealPriceSyncService — синхронизация реальных цен из шаблона Ozon
-│   └── use_cases/
-│       ├── repricing.py         # RepricingUseCase — вход в цикл репрайсинга
-│       ├── disable_auto_add.py  # DisableAutoAddUseCase — отключение автодобавления
+├── config/                         # Слой конфигурации (Pydantic Settings)
+│   ├── settings.py                 # Композиция всех настроек, .env, пути
+│   ├── api.py                      # API-настройки (batch size, retries, timeout)
+│   ├── db.py                       # DB-настройки (путь, WAL mode)
+│   ├── email.py                    # SMTP-настройки
+│   ├── instance.py                 # Instance-специфичные пути (data, logs)
+│   ├── parser.py                   # Парсер-настройки (lock timeout, retries)
+│   ├── pricing.py                  # Ценообразование (коэффициенты, стратегии)
+│   └── ui.py                       # UI-настройки (web user/pass)
+├── core/                           # Доменный слой (бизнес-логика)
+│   ├── container.py                # DI-контейнер (dependency-injector, singletons/factories)
+│   ├── entities.py                 # Dataclass-модели: ProductInfo, PricingData, StrategyInterval, PriceCalculationResult
+│   ├── dto.py                      # Data Transfer Objects (API-контракты)
+│   ├── mappers.py                  # Мапперы entities ↔ DTO, build_price_update_request
+│   ├── enums.py                    # StrategyType (IntEnum), parse_strategy_value
+│   ├── repository.py               # Legacy абстракции: IProductRepository, ILoader
+│   ├── price_coordinator.py        # Legacy оркестратор (оставлен для совместимости)
+│   ├── orchestrator.py             # Legacy оркестратор (оставлен для совместимости)
+│   ├── domain/                     # 🆕 Rich Domain Model
+│   │   ├── product.py              # Product, PricingStrategy — инкапсуляция бизнес-логики
+│   │   ├── pricing_rules.py        # OzonPricingRules — все правила Ozon в одном месте
+│   │   └── value_objects.py        # SKU, Money, Percentage, DiscountCoefficient, TimeInterval
+│   ├── pipeline/                   # 🆕 Pipeline Pattern (основной поток репрайсинга)
+│   │   ├── orchestrator.py         # PipelineOrchestrator — выполнение последовательности шагов
+│   │   └── steps.py                # 9 шагов: LoadProducts → EnrichProductIds → FetchPricingData → CalculatePrices → PersistToExcel → SubmitPricesToOzon → SaveHistory → SendReport → CleanupDatabase
+│   ├── protocols/                  # 🆕 Protocol Interfaces (для DI и тестирования)
+│   │   ├── api.py                  # IApiClient
+│   │   ├── loader.py               # ILoader
+│   │   ├── notifier.py             # INotifier
+│   │   └── repository.py           # IProductRepository, IPriceHistoryRepository, IAnalyticsRepository, IMarginalityRepository, IMaintenanceRepository
+│   ├── services/                   # Бизнес-сервисы
+│   │   ├── price_calculation.py    # PriceCalculationService — алгоритм расчёта цены и маржи
+│   │   ├── action_service.py       # ActionService — работа с акциями Ozon
+│   │   ├── history_service.py      # HistoryService — сохранение истории и агрегатов
+│   │   ├── migration_service.py    # MigrationService — запуск Alembic
+│   │   └── real_price_sync.py      # RealPriceSyncService — синхронизация реальных цен из шаблона Ozon
+│   └── use_cases/                  # Use Cases (точки входа в бизнес-логику)
+│       ├── repricing.py            # RepricingUseCase — обёртка над Pipeline
+│       ├── disable_auto_add.py     # DisableAutoAddUseCase — отключение автодобавления в акции
 │       ├── parse_competitor_prices.py # ParseCompetitorPricesUseCase — парсинг конкурентов
-│       └── base_parser.py       # BaseParserUseCase — базовый класс для парсеров
-├── infrastructure/              # Инфраструктура (реализации)
-│   ├── db/                      # SQLite репозиторий (разбит на миксины)
-│   │   ├── repository.py        # SQLiteRepository + run_migrations_once()
-│   │   ├── connection.py        # DBConnectionMixin (PRAGMA, WAL)
-│   │   ├── crud.py              # CRUDMixin
-│   │   ├── strategies.py        # StrategyMixin
-│   │   ├── history.py           # HistoryMixin
-│   │   ├── marginality.py       # MarginalityMixin
-│   │   ├── analytics.py         # AnalyticsMixin
-│   │   └── maintenance.py       # MaintenanceMixin
-│   ├── excel_loader.py          # ExcelLoader (чтение/запись, валидация)
-│   ├── ozon_api.py              # OzonApiClient (v3/v5/v1, retry, батчи)
-│   ├── ozon_seller.py           # OzonSellerClient (Selenium для шаблона цен)
-│   ├── ozon_competitor.py       # OzonPriceParser (undetected-chromedriver)
-│   ├── mail_notifier.py         # MailNotifier (plain + CSV attachment)
-│   ├── logger.py                # structlog + TimedRotatingFileHandler
-│   ├── file_utils.py            # Блокировка Excel, безопасное сохранение (pathlib)
-│   ├── chrome_driver.py         # ChromeDriverManager (undetected-chromedriver + fallback)
-│   ├── circuit_breaker.py       # CircuitBreaker для API/парсера
-│   ├── template_parser.py       # TemplateParser (zip XML + openpyxl fallback)
-│   └── x_display.py             # Поиск X-сервера для headless (Linux, pathlib)
-├── scripts/                     # CLI-точки входа
-│   ├── common.py                # Общие утилиты (сигналы, логирование)
-│   ├── repricer.py              # Репрайсинг (--dry-run)
-│   ├── competitors_parser.py    # Парсинг конкурентов (--dry-run, FileLock)
-│   ├── actions_disable_auto_add.py # Отключение автодобавления (--dry-run)
-│   ├── health_check.py          # Проверка здоровья (диск, БД, Excel)
-│   └── actions_update_price_timer.py # Таймер обновления цен
-├── ui/                          # Streamlit UI
-│   ├── app.py                   # Точка входа, роутинг
-│   ├── auth.py                  # Аутентификация
-│   ├── sidebar.py               # Управление запусками, Excel
-│   ├── cache.py                 # @st.cache_resource / @st.cache_data (TTL 1h)
-│   └── pages/
-│       ├── summary.py           # KPI, динамика 7 дней, топ-3/худшие-3
-│       ├── statistics.py        # Распределение маржи, стратегии, ROI
-│       ├── analytics.py         # Динамика, прогноз (numpy.polyfit), отклонения индексов
-│       ├── analysis.py          # Комиссии FBS, индексы, ABC-анализ, Парето
-│       ├── tables.py            # Просмотр сырых таблиц БД
-│       ├── requests.py          # История цен товара, удаление
-│       └── service.py           # Heatmap, очистка БД, диагностика, смена пароля
-├── static/
-│   └── styles.css               # Кастомные стили
-├── migrations/                  # Alembic
-│   ├── env.py
-│   ├── script.py.mako
+│       ├── base_parser.py          # BaseParserUseCase — базовый класс для парсеров
+│       └── update_price_timer.py   # UpdatePriceTimerUseCase — обновление таймера актуальности цены
+├── infrastructure/                 # Слой инфраструктуры (реализация протоколов)
+│   ├── db/                         # SQLiteRepository (разбит на миксины)
+│   │   ├── repository.py           # SQLiteRepository + run_migrations_once()
+│   │   ├── connection.py           # DBConnectionMixin (PRAGMA, WAL)
+│   │   ├── crud.py                 # CRUDMixin
+│   │   ├── strategies.py           # StrategyMixin
+│   │   ├── history.py              # HistoryMixin
+│   │   ├── marginality.py          # MarginalityMixin
+│   │   ├── analytics.py            # AnalyticsMixin
+│   │   └── maintenance.py          # MaintenanceMixin
+│   ├── excel_loader.py             # ExcelLoader — реализация ILoader (чтение/запись Excel)
+│   ├── ozon_api.py                 # OzonApiClient — реализация IApiClient (v3, v5, v1)
+│   ├── ozon_seller.py              # OzonSellerClient — Selenium для шаблона цен
+│   ├── ozon_competitor.py          # OzonPriceParser — парсер цен конкурентов
+│   ├── mail_notifier.py            # MailNotifier — реализация INotifier (email + CSV)
+│   ├── logger.py                   # Structlog + TimedRotatingFileHandler
+│   ├── file_utils.py               # Утилиты: блокировка Excel, безопасное сохранение
+│   ├── chrome_driver.py            # ChromeDriverManager (undetected-chromedriver + fallback)
+│   ├── circuit_breaker.py          # CircuitBreaker для API/парсера
+│   ├── template_parser.py          # TemplateParser (zip XML + openpyxl fallback)
+│   └── x_display.py                # Поиск доступного X-сервера для headless-браузера (Linux)
+├── scripts/                        # CLI-точки входа (исполняемые скрипты)
+│   ├── common.py                   # Общие утилиты (сигналы, логирование)
+│   ├── repricer.py                 # Запуск репрайсинга → синхронизация → Pipeline → синхронизация
+│   ├── competitors_parser.py       # Запуск парсера цен конкурентов
+│   ├── actions_disable_auto_add.py # Запуск отключения автодобавления (CLI, --dry-run)
+│   ├── actions_update_price_timer.py # Запуск обновления таймера актуальности цены
+│   ├── health_check.py             # Проверка здоровья (диск, БД, Excel)
+│   └── upgrade_db.py               # Ручной запуск миграций
+├── ui/                             # Слой представления (Streamlit UI)
+│   ├── app.py                      # Точка входа Streamlit, роутинг по страницам
+│   ├── auth.py                     # Аутентификация в дашборде
+│   ├── sidebar.py                  # Боковая панель: запуск репрайсинга/парсинга, загрузка/скачивание Excel
+│   ├── cache.py                    # Кэширование Streamlit (TTL 3600с) + фабрики объектов
+│   └── pages/                      # Страницы дашборда
+│       ├── summary.py              # Сводка (KPI, графики за 7 дней, топ-3/худшие-3)
+│       ├── statistics.py           # Статистика (распределение маржи, анализ стратегий, ROI)
+│       ├── analytics.py            # Аналитика (динамика, прогноз полиномиальной регрессией, отклонения индексов)
+│       ├── analysis.py             # Анализ (комиссии FBS, индексы Ozon, ABC-анализ, диаграмма Парето)
+│       ├── tables.py               # Просмотр всех таблиц БД в интерактивном dataframe
+│       ├── requests.py             # Управление товарами (история цен, удаление)
+│       └── service.py              # Сервис (heatmap, работа с БД, диагностика, смена пароля)
+├── static/                         # Статические ресурсы
+│   ├── favicon.ico
+│   └── styles.css                  # CSS-стили для Streamlit
+├── migrations/                     # Миграции Alembic
+│   ├── env.py                      # Конфигурация окружения Alembic
+│   ├── script.py.mako              # Шаблон файла миграции
 │   └── versions/
-│       ├── 001_initial_schema.py           # 6 таблиц + seed
-│       └── 002_add_daily_aggregates_and_logs.py  # daily aggregates + logs
-├── data/                        # Runtime (создаётся автоматически)
-│   ├── products_{{INSTANCE_NAME}}.xlsx            # Входной Excel
-│   └── repricer_{{INSTANCE_NAME}}.db              # SQLite
-├── logs/                        # Логи (ротация по дням, 7 бэкапов)
-│   ├── repricer-{INSTANCE}.log
-│   └── parser-{INSTANCE}.log
-├── tests/                       # 9 тест-модулей (pytest + pytest-asyncio)
-├── .env                         # Секреты (не в git)
-├── .env.example                 # Пример переменных
-├── alembic.ini                  # Конфигурация Alembic
-├── pyproject.toml               # Конфигурация проекта (ruff, mypy, pytest)
-├── requirements.txt
-└── README.md
+│       ├── 001_initial_schema.py   # Схема БД: product, strategy, product_strategy, *_history, maintenance
+│       └── 002_add_daily_aggregates_and_logs.py  # Таблицы product_price_daily, price_calculation_logs
+├── data/                           # runtime-данные (создаётся автоматически)
+│   ├── products_{{INSTANCE_NAME}}.xlsx               # Входной Excel-файл с товарами
+│   └── repricer_{{INSTANCE_NAME}}.db                 # SQLite база данных
+├── logs/                           # Лог-файлы (создаётся автоматически)
+│   ├── repricer-{INSTANCE}.log     # Логи репрайсера (ротация по дням, 7 бэкапов)
+│   └── parser-{INSTANCE}.log       # Логи парсера (ротация по дням, 7 бэкапов)
+├── tests/                          # Unit- и интеграционные тесты
+│   ├── test_api_client.py
+│   ├── test_database.py
+│   ├── test_entities.py
+│   ├── test_excel_loader.py
+│   ├── test_file_utils.py
+│   ├── test_integration.py
+│   ├── test_loader.py
+│   ├── test_mail_notifier.py
+│   ├── test_ozon_parser.py
+│   ├── test_services.py
+│   ├── test_update_competitor_prices.py
+│   ├── test_update_price_timer.py
+│   └── test_use_cases.py
+└── .streamlit/
+    └── config.toml                 # Конфигурация Streamlit-сервер
 ```
+
+### Pipeline репрайсинга (9 шагов)
+
+```
+LoadProductsStep       → Загрузка товаров из Excel (ExcelLoader)
+EnrichProductIdsStep   → Обогащение product_id, offer_id, name через /v3/product/info/list
+FetchPricingDataStep   → Получение цен, индексов, комиссий через /v5/product/info/prices
+CalculatePricesStep    → Расчёт целевых цен через PriceCalculationService + Domain Model
+PersistToExcelStep     → Запись результатов в Excel (реальная цена, маржа)
+SubmitPricesToOzonStep → Отправка цен в Ozon через /v1/product/import/prices
+SaveHistoryStep        → Сохранение в БД: история цен, дневные агрегаты, маржинальность, логи расчётов
+SendReportStep         → Email-отчёт с детализацией и CSV-вложением
+CleanupDatabaseStep    → Автоочистка старых записей (>3 месяцев)
+```
+
+Каждый шаг — изолированный класс с интерфейсом `PipelineStep`, легко тестируется и заменяется.
+
+### Domain Model (core/domain/)
+
+- **Product** — агрегат: SKU, product_id, offer_id, cost_price, min_price (RIP), current_price, strategies[], competitor_min_price, real_customer_price
+- **PricingStrategy** — Value Object: interval (TimeInterval), strategy_type (StrategyType), percent (Percentage)
+- **Value Objects** — Money (копейки, точность), SKU, Percentage, DiscountCoefficient, TimeInterval
+- **OzonPricingRules** — все бизнес-правила Ozon: min_price_ratio (0.5), old_price_multiplier (1.5), default_discount_coef, manage_elastic_boosting, etc.
 
 ## ⚙️ Переменные окружения (`.env`)
 
@@ -261,7 +317,7 @@ repricer-ozon/
 **Особенности:**
 - WAL mode + busy_timeout=30000 для конкурентного доступа
 - Индексы на product_id+timestamp, sku, marginality
-- Автоочистка через uto_cleanup_if_needed(months=3)
+- Автоочистка через auto_cleanup_if_needed(months=3)
 
 ## 📦 Установка и запуск
 
@@ -290,7 +346,10 @@ python scripts/competitors_parser.py [--dry-run]
 # 7. Отключение автодобавления
 python scripts/actions_disable_auto_add.py [--dry-run]
 
-# 8. Веб-дашборд
+# 8. Обновление таймера актуальности цены
+python scripts/actions_update_price_timer.py [--dry-run]
+
+# 9. Веб-дашборд
 streamlit run app.py
 `
 
@@ -299,7 +358,7 @@ streamlit run app.py
 `ash
 pytest -v
 # или с покрытием
-pytest --cov=core --cov=infrastructure --cov=scripts
+pytest --cov=core --cov=infrastructure --cov=scripts --cov=config --cov=ui
 `
 
 ## 📄 Лицензия
