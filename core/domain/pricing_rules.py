@@ -72,19 +72,22 @@ class OzonPricingRules:
 
     def validate_min_price(self, price: Money, min_price: Money) -> Money:
         """
-        Валидирует и при необходимости корректирует min_price согласно правилу Ozon.
+        Валидирует и при необходимости корректирует min_price согласно правилам Ozon.
 
-        Правило: min_price >= price * min_price_ratio
+        Правила:
+        1. min_price >= price * min_price_ratio (нижняя граница)
+        2. min_price <= price (верхняя граница - обязательное требование Ozon API)
 
         Args:
             price: Устанавливаемая цена
             min_price: Минимальная цена из Excel/стратегии
 
         Returns:
-            Скорректированная min_price (если была ниже допустимого минимума)
+            Скорректированная min_price в допустимом диапазоне [price * ratio, price]
         """
         min_allowed = price * self.min_price_ratio
-        return min_price.max(min_allowed)
+        max_allowed = price
+        return min_price.max(min_allowed).min(max_allowed)
 
     def calculate_old_price(self, price: Money, manual_old_price: Money | None = None) -> Money:
         """
