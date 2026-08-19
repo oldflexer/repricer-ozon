@@ -335,10 +335,10 @@ class SubmitPricesToOzonStep(PipelineStep):
                 {
                     "product_id": product.product_id,
                     "offer_id": product.offer_id or "",
-                    "price": int(round(target_price.rubles_float)),
-                    "min_price": int(round(min_price_for_api.rubles_float)),
-                    "net_price": int(round(product.cost_price.rubles_float)),
-                    "old_price": int(round(old_price.rubles_float)),
+                    "price": str(int(round(target_price.rubles_float))),
+                    "min_price": str(int(round(min_price_for_api.rubles_float))),
+                    "net_price": str(int(round(product.cost_price.rubles_float))),
+                    "old_price": str(int(round(old_price.rubles_float))),
                     "manage_elastic_boosting_through_price": rules.manage_elastic_boosting,
                 }
             )

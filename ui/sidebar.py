@@ -25,6 +25,7 @@ from core.use_cases import (
     RepricingUseCase,
     RepricingUseCaseDependencies,
 )
+from core.services.real_price_sync import RealPriceSyncService
 from infrastructure.logger import setup_logging, setup_parser_logging
 from infrastructure.x_display import get_available_display
 from ui.cache import (
@@ -52,12 +53,13 @@ def get_base64_encoded_image(image_path: Path) -> str:
         return base64.b64encode(f.read()).decode()
 
 
-def run_repricing(dry_run: bool = False) -> dict[str, Any]:
+def run_repricing(dry_run: bool = False, no_sync: bool = False) -> dict[str, Any]:
     """
     Запускает репрайсинг в синхронном контексте (из Streamlit).
 
     Args:
         dry_run: Если True, цены не отправляются в Ozon.
+        no_sync: Если True, пропускает синхронизацию шаблона.
 
     Returns:
         Словарь со статистикой выполнения.
@@ -67,6 +69,24 @@ def run_repricing(dry_run: bool = False) -> dict[str, Any]:
     logger.info("=== Запуск репрайсинга из дашборда ===")
 
     async def _run() -> dict[str, Any]:
+        # 1. Синхронизация реальных цен из шаблона (ДО репрайсинга)
+        if not no_sync:
+            logger.info("Выполняем синхронизацию реальных цен из шаблона...")
+            sync_service = RealPriceSyncService(output_dir="download", headless=False)
+            stats = await sync_service.sync_real_prices_async(
+                dry_run=dry_run,
+                keep_file=dry_run,
+                force_delete=False,
+                use_lock=True,
+            )
+            if stats:
+                logger.info(f"Синхронизация завершена: {stats}")
+            else:
+                logger.warning("Синхронизация не выполнена (возможно, занят lock или ошибка)")
+        else:
+            logger.info("Синхронизация пропущена (no_sync=True)")
+
+        # 2. Запуск репрайсинга
         loader = get_excel_loader()
         api = get_api_client()
         notifier = get_mail_notifier()
@@ -105,7 +125,7 @@ def execute_repricing(dry_run: bool) -> tuple[str, str]:
     with st.status("Выполняется репрайсинг...", expanded=True) as status:
         st.write("Загрузка данных из Excel...")
         try:
-            stats = run_repricing(dry_run=dry_run)
+            stats = run_repricing(dry_run=dry_run, no_sync=False)
             st.cache_data.clear()
             st.cache_resource.clear()
             status.update(label="Готово!", state="complete")

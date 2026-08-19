@@ -27,7 +27,7 @@ async def main() -> None:
     parser.add_argument(
         "--no-sync",
         action="store_true",
-        help="Не выполнять синхронизацию цен из шаблона перед запуском",
+        help="Не выполнять синхронизацию цен из шаблона",
     )
     args = parser.parse_args()
 
@@ -35,7 +35,7 @@ async def main() -> None:
 
     # 1. Синхронизация ДО репрайсинга
     if not args.no_sync:
-        logger.info("Выполняем синхронизацию реальных цен из шаблона (перед)...")
+        logger.info("Выполняем синхронизацию реальных цен из шаблона...")
         stats = await sync_service.sync_real_prices_async(
             dry_run=args.dry_run,
             keep_file=args.dry_run,
@@ -43,34 +43,18 @@ async def main() -> None:
             use_lock=True,
         )
         if stats:
-            logger.info(f"Синхронизация (перед) завершена: {stats}")
+            logger.info(f"Синхронизация завершена: {stats}")
         else:
-            logger.warning("Синхронизация (перед) не выполнена (возможно, занят lock или ошибка)")
+            logger.warning("Синхронизация не выполнена (возможно, занят lock или ошибка)")
     else:
-        logger.info("Синхронизация перед репрайсингом пропущена (--no-sync)")
+        logger.info("Синхронизация пропущена (--no-sync)")
 
     # 2. Запуск репрайсинга
     use_case = container.repricing_use_case()
     stats = await use_case.execute(dry_run=args.dry_run)
     logger.info("main_finished", result=stats)
 
-    # 3. Синхронизация ПОСЛЕ репрайсинга (если не dry-run и не отключена)
-    if not args.no_sync and not args.dry_run:
-        logger.info("Выполняем синхронизацию реальных цен из шаблона (после)...")
-        stats_after = await sync_service.sync_real_prices_async(
-            dry_run=False,
-            keep_file=False,
-            force_delete=False,
-            use_lock=True,
-        )
-        if stats_after:
-            logger.info(f"Синхронизация (после) завершена: {stats_after}")
-        else:
-            logger.warning("Синхронизация (после) не выполнена (возможно, занят lock или ошибка)")
-    elif args.dry_run:
-        logger.info("Синхронизация после репрайсинга пропущена (dry-run)")
-
-    # 4. Закрытие API
+    # 3. Закрытие API
     api = container.api_client()
     await api.close()
 
