@@ -135,7 +135,7 @@ def create_repricing_pipeline(
     """
 
     steps = [
-        LoadProductsStep(deps.loader),
+        LoadProductsStep(deps.loader, deps.product_repo),
         EnrichProductIdsStep(deps.api_client),
         FetchPricingDataStep(deps.api_client),
         CalculatePricesStep(deps.calculator),

@@ -5,6 +5,7 @@ Provides a declarative container for all dependencies with proper scoping.
 """
 
 from collections.abc import AsyncGenerator
+from pathlib import Path
 from typing import cast
 
 from dependency_injector import containers, providers
@@ -24,7 +25,7 @@ from core.protocols.repository import (
 from core.services.price_calculation import PriceCalculationService
 from core.use_cases.disable_auto_add import DisableAutoAddUseCase
 from core.use_cases.parse_competitor_prices import ParseCompetitorPricesUseCase
-from core.use_cases.repricing import RepricingUseCase
+from core.use_cases.repricing import RepricingUseCase, RepricingUseCaseDependencies
 from infrastructure.db import SQLiteRepository
 from infrastructure.excel_loader import ExcelLoader
 from infrastructure.mail_notifier import MailNotifier
@@ -44,7 +45,7 @@ class Container(containers.DeclarativeContainer):
 
     repository = providers.Singleton(
         SQLiteRepository,
-        db_path=config.db.path,
+        db_path=providers.Callable(Path, config.database_path),
     )
 
     api_client = providers.Singleton(
@@ -53,7 +54,7 @@ class Container(containers.DeclarativeContainer):
 
     loader = providers.Singleton(
         ExcelLoader,
-        file_path=config.data.path,
+        file_path=config.data_file_path,
     )
 
     notifier = providers.Singleton(
@@ -93,14 +94,18 @@ class Container(containers.DeclarativeContainer):
 
     repricing_use_case = providers.Factory(
         RepricingUseCase,
-        product_repo=product_repo,
-        history_repo=history_repo,
-        analytics_repo=analytics_repo,
-        marginality_repo=marginality_repo,
-        maintenance_repo=maintenance_repo,
-        api_client=api_client,
-        mail_notifier=notifier,
-        loader=loader,
+        deps=providers.Factory(
+            RepricingUseCaseDependencies,
+            product_repo=product_repo,
+            history_repo=history_repo,
+            analytics_repo=analytics_repo,
+            marginality_repo=marginality_repo,
+            maintenance_repo=maintenance_repo,
+            api_client=api_client,
+            mail_notifier=notifier,
+            loader=loader,
+            calculator=price_calculation_service,
+        ),
     )
 
     disable_auto_add_use_case = providers.Factory(
@@ -149,6 +154,9 @@ class Container(containers.DeclarativeContainer):
 # Create container instance and wire configuration
 container = Container()
 container.config.from_pydantic(settings)
+# Explicitly set database_path and data_file_path (properties not picked up by from_pydantic)
+container.config.database_path.from_value(settings.database_path)
+container.config.data_file_path.from_value(settings.data_file_path)
 
 # Export for backward compatibility
 __all__ = ["container"]

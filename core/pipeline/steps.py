@@ -73,8 +73,9 @@ class PipelineStep[T](ABC):
 class LoadProductsStep(PipelineStep):
     """Шаг 1: Загрузка товаров из Excel."""
 
-    def __init__(self, loader: ILoader):
+    def __init__(self, loader: ILoader, product_repo: IProductRepository):
         self.loader = loader
+        self.product_repo = product_repo
 
     @property
     def name(self) -> str:
@@ -91,6 +92,11 @@ class LoadProductsStep(PipelineStep):
             context.add_warning("No products loaded from Excel")
             # Не останавливаем pipeline - пусть продолжает для отправки отчёта
             return
+
+        # Загружаем real_customer_price из БД для всех SKU
+        db_products = self.product_repo.get_all_products()
+        real_price_map = {p.sku: p.real_customer_price for p in db_products if p.real_customer_price is not None}
+        logger.info(f"Loaded real_customer_price from DB for {len(real_price_map)} SKUs")
 
         # Конвертируем в доменные объекты
         for p in products_data:
@@ -109,6 +115,12 @@ class LoadProductsStep(PipelineStep):
                 if p.competitor_min_price
                 else None,
             )
+
+            # Устанавливаем real_customer_price из БД, если есть
+            sku_str = str(p.sku)
+            if sku_str in real_price_map:
+                product.update_real_customer_price(Money.from_rubles(real_price_map[sku_str]))
+                logger.debug(f"SKU {sku_str}: real_customer_price = {real_price_map[sku_str]}")
 
             # Загружаем стратегии из Excel
             intervals = self.loader.get_strategy_intervals(p)
@@ -416,6 +428,9 @@ class SaveHistoryStep(PipelineStep):
                     product_name=product.product_name,
                     min_price=product.min_price.rubles_float,
                     cost_price=product.cost_price.rubles_float,
+                    real_customer_price=product.real_customer_price.rubles_float
+                    if product.real_customer_price
+                    else None,
                 )
                 self.product_repo.upsert_product(product_info)
             except Exception as e:

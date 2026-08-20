@@ -46,6 +46,8 @@ class RealPriceSyncService:
     def __init__(self, output_dir: str = "download", headless: bool = False):
         # Преобразуем в абсолютный путь сразу при инициализации
         self.output_dir = str(Path(output_dir).resolve())
+        # Абсолютный путь к БД для корректной работы из любой рабочей директории
+        self.db_path = str(settings.database_path_path.resolve())
         self.headless = headless
 
     async def _download_template(self) -> Path | None:
@@ -77,7 +79,9 @@ class RealPriceSyncService:
             logger.warning("Нет результатов для обновления")
             return {}
 
-        repo = SQLiteRepository(settings.database_path_path)
+        # Используем абсолютный путь к БД
+        logger.info(f"Подключение к БД: {self.db_path}")
+        repo = SQLiteRepository(Path(self.db_path))
         db_products = repo.get_all_products()
         sku_to_product = {p.sku: p for p in db_products}
         logger.info(f"Загружено {len(sku_to_product)} товаров из БД")
@@ -149,6 +153,17 @@ class RealPriceSyncService:
         else:
             return await self._sync_real_prices_impl(dry_run, keep_file, force_delete)
 
+    def _cleanup_old_templates(self, output_path: Path) -> None:
+        """Удаляет старые файлы шаблонов из папки скачивания."""
+        try:
+            for file in output_path.glob("Шаблон для обновления цен_*.xlsx"):
+                if delete_file_with_retry(file, max_attempts=3, delay=0.5):
+                    logger.info(f"Удалён старый файл шаблона: {file}")
+                else:
+                    logger.warning(f"Не удалось удалить старый файл: {file}")
+        except Exception as e:
+            logger.warning(f"Ошибка при очистке старых файлов: {e}")
+
     async def _sync_real_prices_impl(
         self,
         dry_run: bool,
@@ -158,6 +173,9 @@ class RealPriceSyncService:
         """Реализация синхронизации (без блокировки)."""
         output_path = Path(self.output_dir)
         output_path.mkdir(parents=True, exist_ok=True)
+
+        # Очистка старых файлов шаблонов перед началом
+        self._cleanup_old_templates(output_path)
 
         logger.info("=== Запуск синхронизации цен из шаблона ===")
 
