@@ -72,7 +72,9 @@ def run_repricing(dry_run: bool = False, no_sync: bool = False) -> dict[str, Any
         # 1. Синхронизация реальных цен из шаблона (ДО репрайсинга)
         if not no_sync:
             logger.info("Выполняем синхронизацию реальных цен из шаблона...")
-            sync_service = RealPriceSyncService(output_dir="download", headless=False)
+            sync_service = RealPriceSyncService(
+                output_dir=str(Path("download").resolve()), headless=False
+            )
             stats = await sync_service.sync_real_prices_async(
                 dry_run=dry_run,
                 keep_file=dry_run,

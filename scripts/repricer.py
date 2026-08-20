@@ -31,7 +31,9 @@ async def main() -> None:
     )
     args = parser.parse_args()
 
-    sync_service = RealPriceSyncService(output_dir="download", headless=False)
+    sync_service = RealPriceSyncService(
+        output_dir=str(Path("download").resolve()), headless=False
+    )
 
     # 1. Синхронизация ДО репрайсинга
     if not args.no_sync:

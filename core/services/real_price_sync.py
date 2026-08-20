@@ -44,7 +44,8 @@ class RealPriceSyncService:
     """
 
     def __init__(self, output_dir: str = "download", headless: bool = False):
-        self.output_dir = output_dir
+        # Преобразуем в абсолютный путь сразу при инициализации
+        self.output_dir = str(Path(output_dir).resolve())
         self.headless = headless
 
     async def _download_template(self) -> Path | None:

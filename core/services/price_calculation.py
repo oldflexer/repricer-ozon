@@ -82,10 +82,11 @@ class PriceCalculationService:
             ):
                 discount_coef = approx_real_price / pricing.marketing_seller_price
                 discount_coef_source = "indexes"
+                logger.info(f"SKU {sku}: discount_coef из индексов = {discount_coef:.4f}")
             else:
                 discount_coef = self.default_coefficient
                 discount_coef_source = "default"
-            logger.info(f"SKU {sku}: discount_coef из индексов = {discount_coef:.4f}")
+                logger.info(f"SKU {sku}: discount_coef из env = {discount_coef:.4f}")
 
         target_min_price = rip / discount_coef if discount_coef else rip
 
@@ -122,6 +123,9 @@ class PriceCalculationService:
             )
 
         # --- 3. Применение стратегии ---
+        base_price = None
+        source = None
+
         if strategy_type == StrategyType.EQUAL:
             result_target_price = target_min_price
             strategy_price = None
@@ -129,14 +133,19 @@ class PriceCalculationService:
             reason = "стратегия 'Равная'"
             logger.info(f"SKU {sku}: стратегия 'Равная', результат = {result_target_price:.0f}")
         else:
-            base_price = None
-            source = None
             if competitor_min_price is not None and competitor_min_price > 0:
                 base_price = competitor_min_price
                 source = "цена конкурента"
             elif pricing.ozon_index_data_price and pricing.ozon_index_data_price != 0:
                 base_price = pricing.ozon_index_data_price
                 source = "индекс Ozon"
+            elif pricing.marketing_seller_price and pricing.marketing_seller_price > 0:
+                # Fallback на текущую маркетинговую цену в Ozon
+                base_price = pricing.marketing_seller_price
+                source = "marketing_seller_price (текущая цена в Ozon)"
+                logger.info(
+                    f"SKU {sku}: base_price = marketing_seller_price ({base_price:.0f})"
+                )
 
             if base_price is not None:
                 if strategy_type == StrategyType.BELOW:
@@ -161,13 +170,15 @@ class PriceCalculationService:
                     f"result_target_price = {result_target_price:.0f}"
                 )
             else:
+                # Защитный fallback: если базовая цена не найдена, используем target_min_price
                 result_target_price = target_min_price
                 strategy_price = None
                 target_strategy_price = None
-                reason = "базовая цена не найдена, стратегия проигнорирована"
+                reason = "базовая цена не найдена, стратегия проигнорирована (использован target_min_price)"
                 logger.warning(
                     f"SKU {sku}: базовая цена не найдена "
-                    "(competitor_min_price и ozon_index_data_price отсутствуют), используется РИЦ"
+                    "(competitor_min_price, ozon_index_data_price, marketing_seller_price отсутствуют), "
+                    "использован target_min_price"
                 )
 
         result_target_price = round(result_target_price)
@@ -224,6 +235,8 @@ class PriceCalculationService:
             "real_price": real_price,
             "ozon_index_data_price": pricing.ozon_index_data_price,
             "competitor_min_price": competitor_min_price,
+            "base_price": base_price,
+            "base_price_source": source,
             "intervals_used": len(intervals),
             "index_prices_count": len(index_prices),
             "reason": reason,
