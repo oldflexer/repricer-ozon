@@ -31,8 +31,11 @@ class OzonPricePageParser:
 
     def __init__(self, driver_manager: ChromeDriverManager):
         self.driver_manager = driver_manager
-        self.driver = driver_manager.driver
-        self.wait = driver_manager.wait
+        # Ensure driver is initialized (same pattern as OzonSellerClient)
+        if not self.driver_manager.ensure_initialized():
+            raise RuntimeError("Failed to initialize Chrome driver")
+        self.driver = self.driver_manager.driver
+        self.wait = self.driver_manager.wait
         assert self.driver is not None, "Driver must be initialized"
         assert self.wait is not None, "Wait must be initialized"
 
@@ -69,7 +72,9 @@ class OzonPricePageParser:
         Returns:
             Список PriceData для товаров на текущей странице.
         """
-        assert self.driver is not None and self.wait is not None
+        # Type narrowing for Pylance - driver and wait are guaranteed non-None after __init__
+        assert self.driver is not None
+        assert self.wait is not None
         # Ждём загрузку ячеек цен
         self.wait.until(
             EC.presence_of_element_located((By.CSS_SELECTOR, 'td[id$="-pdpPrice"]'))
@@ -124,6 +129,9 @@ class OzonPricePageParser:
         Returns:
             True если переход успешен, False если следующей страницы нет.
         """
+        # Type narrowing for Pylance - driver and wait are guaranteed non-None after __init__
+        assert self.driver is not None
+        assert self.wait is not None
         try:
             # Ищем кнопку следующей страницы (не disabled, не selected)
             next_button = self.driver.find_element(
