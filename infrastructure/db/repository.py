@@ -79,7 +79,8 @@ class SQLiteRepository(
         """Возвращает список всех товаров из таблицы product."""
         with self._get_connection() as conn:
             rows = conn.execute("""
-                SELECT product_id, offer_id, sku, product_name, rip, net_price, real_customer_price
+                SELECT product_id, offer_id, sku, product_name, rip, net_price, 
+                       real_customer_price
                 FROM product
             """).fetchall()
             return [
@@ -94,6 +95,26 @@ class SQLiteRepository(
                 )
                 for r in rows
             ]
+
+    def get_product_by_product_id(self, product_id: int) -> ProductInfo | None:
+        """Возвращает товар по product_id."""
+        with self._get_connection() as conn:
+            row = conn.execute("""
+                SELECT product_id, offer_id, sku, product_name, rip, net_price,
+                       real_customer_price
+                FROM product WHERE product_id = ?
+            """, (product_id,)).fetchone()
+            if row:
+                return ProductInfo(
+                    sku=row["sku"],
+                    product_name=row["product_name"],
+                    product_id=row["product_id"],
+                    offer_id=row["offer_id"],
+                    min_price=row["rip"] or 0.0,
+                    cost_price=row["net_price"] or 0.0,
+                    real_customer_price=row["real_customer_price"],
+                )
+            return None
 
     def upsert_product(self, product: ProductInfo) -> bool:
         """

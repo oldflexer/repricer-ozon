@@ -17,11 +17,11 @@ def wait_for_excel_available(file_path, timeout=60):
     start = time.time()
     while time.time() - start < timeout:
         try:
-            # Try to open the file in write mode to check if it's locked
-            with file_path.open("w") as _:
+            # Try to open the file in read mode to check if it's locked
+            # Using 'r' mode to avoid truncating the file
+            with file_path.open("r") as _:
                 pass
-            # If we can open it, delete the test file and return True
-            file_path.unlink()
+            # If we can open it, file is available
             return True
         except PermissionError:
             # File is locked, wait and retry

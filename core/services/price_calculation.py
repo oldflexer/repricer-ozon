@@ -28,7 +28,7 @@ class PriceCalculationService:
         approx_real_price: float | None = None
         discount_coef = self.default_coefficient
 
-        # Приоритет: реальная цена покупателя из БД (актуальная из шаблона)
+        # Приоритет: реальная цена покупателя из БД (актуальная из шаблона/страницы цен)
         if (
             real_customer_price is not None
             and real_customer_price > 0
@@ -219,7 +219,10 @@ class PriceCalculationService:
 
         real_price = result_target_price * discount_coef
 
-        marginality = (real_price - total_costs) / real_price if real_price > 0 else 0.0
+        # Для расчёта маржинальности используем реальную цену покупателя, если есть
+        marginality_real_price = real_customer_price if real_customer_price is not None else real_price
+
+        marginality = (marginality_real_price - total_costs) / marginality_real_price if marginality_real_price > 0 else 0.0
 
         log_details = {
             "approx_real_price": approx_real_price,
@@ -233,6 +236,8 @@ class PriceCalculationService:
             "target_strategy_price": target_strategy_price,
             "result_target_price": result_target_price,
             "real_price": real_price,
+            "marginality_real_price": marginality_real_price,
+            "real_customer_price": real_customer_price,
             "ozon_index_data_price": pricing.ozon_index_data_price,
             "competitor_min_price": competitor_min_price,
             "base_price": base_price,

@@ -114,13 +114,8 @@ class LoadProductsStep(PipelineStep):
                 competitor_min_price=Money.from_rubles(p.competitor_min_price)
                 if p.competitor_min_price
                 else None,
+                real_customer_price=Money.from_rubles(real_price_map[p.sku]) if p.sku in real_price_map else None,
             )
-
-            # Устанавливаем real_customer_price из БД, если есть
-            sku_str = str(p.sku)
-            if sku_str in real_price_map:
-                product.update_real_customer_price(Money.from_rubles(real_price_map[sku_str]))
-                logger.debug(f"SKU {sku_str}: real_customer_price = {real_price_map[sku_str]}")
 
             # Загружаем стратегии из Excel
             intervals = self.loader.get_strategy_intervals(p)

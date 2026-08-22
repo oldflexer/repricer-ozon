@@ -71,7 +71,7 @@ class Product:
     - Ценовые параметры (себестоимость, РИЦ, текущая цена)
     - Стратегии ценообразования по времени
     - Данные конкурентов
-    - Реальную цену покупателя (из шаблона Ozon)
+    - Реальную цену покупателя (из шаблона Ozon / страницы управления ценами)
     """
 
     sku: SKU
@@ -83,7 +83,7 @@ class Product:
     current_price: Money = field(default_factory=lambda: Money.from_rubles(0))
     old_price: Money | None = None
     competitor_min_price: Money | None = None
-    real_customer_price: Money | None = None
+    real_customer_price: Money | None = None      # Реальная цена покупателя
     strategies: list[PricingStrategy] = field(default_factory=list)
 
     # Кэш для расчётов
@@ -235,7 +235,7 @@ class Product:
     # --- Методы обновления состояния ---
 
     def update_real_customer_price(self, price: Money) -> None:
-        """Обновляет реальную цену покупателя (из шаблона Ozon)."""
+        """Обновляет реальную цену покупателя (из шаблона Ozon / страницы управления ценами)."""
         self.real_customer_price = price
 
     def update_ozon_ids(self, product_id: int, offer_id: str, name: str | None = None) -> None:
