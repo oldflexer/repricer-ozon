@@ -22,6 +22,7 @@ from core.protocols.repository import (
     IProductRepository,
 )
 from core.services.price_calculation import PriceCalculationService
+from core.services.real_price_sync import RealPriceSyncService
 
 
 @dataclass(slots=True)
@@ -37,6 +38,7 @@ class RepricingUseCaseDependencies:
     mail_notifier: INotifier
     loader: ILoader
     calculator: PriceCalculationService | None = None
+    sync_service: RealPriceSyncService | None = None
 
 
 class RepricingUseCase:
@@ -73,7 +75,7 @@ class RepricingUseCase:
                 - errors: список ошибок.
                 - warnings: список предупреждений.
         """
-        # Создаём pipeline с зависимостями
+        # Создаём pipeline с переданными зависимостями
         pipeline_deps = PipelineDependencies(
             loader=self._deps.loader,
             api_client=self._deps.api_client,
@@ -84,6 +86,7 @@ class RepricingUseCase:
             maintenance_repo=self._deps.maintenance_repo,
             notifier=self._deps.mail_notifier,
             calculator=self._deps.calculator or PriceCalculationService(),
+            sync_service=self._deps.sync_service or RealPriceSyncService(),
             dry_run=dry_run,
         )
         orchestrator, context = create_repricing_pipeline(pipeline_deps)

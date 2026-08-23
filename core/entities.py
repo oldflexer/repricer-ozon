@@ -25,7 +25,7 @@ class ProductInfo:
         old_price: Старая цена (до скидки).
         product_id: Идентификатор товара в Ozon.
         offer_id: Offer ID товара.
-        real_customer_price: Реальная цена покупателя (из индексов).
+        real_customer_price: Реальная цена покупателя (FBS).
         competitor_min_price: Минимальная цена конкурента.
     """
 

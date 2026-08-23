@@ -56,7 +56,9 @@ class TemplateParser:
         минуя повреждённые стили.
         """
         try:
-            with zipfile.ZipFile(self.file_path, "r") as zf:
+            # Используем абсолютный путь для надёжности
+            file_path = self.file_path.resolve()
+            with zipfile.ZipFile(file_path, "r") as zf:
                 sheet_files = self._get_sheet_files(zf)
                 target_sheet = self._find_target_sheet(zf, sheet_files)
                 if not target_sheet:
@@ -162,21 +164,40 @@ class TemplateParser:
     def load(self) -> bool:
         """
         Загружает Excel-файл, сначала через openpyxl, при ошибке через zip.
+        С повторными попытками для обработки временных блокировок файла.
         """
-        if self._load_via_openpyxl():
-            return self._post_load_processing()
+        import time
+        max_attempts = 3
+        for attempt in range(1, max_attempts + 1):
+            try:
+                if self._load_via_openpyxl():
+                    return self._post_load_processing()
 
-        logger.info("Пробуем прямой разбор zip-архива...")
-        if self._load_via_zip():
-            return self._post_load_processing()
+                logger.info("Пробуем прямой разбор zip-архива...")
+                if self._load_via_zip():
+                    return self._post_load_processing()
 
-        logger.error("Не удалось прочитать файл")
+                logger.error("Не удалось прочитать файл")
+                return False
+            except (PermissionError, OSError) as e:
+                if attempt < max_attempts:
+                    logger.warning(f"Попытка {attempt}/{max_attempts}: файл заблокирован ({e}), ждём 1с...")
+                    time.sleep(1)
+                else:
+                    logger.error(f"Не удалось прочитать файл после {max_attempts} попыток: {e}")
+                    return False
+            except Exception as e:
+                logger.error(f"Неожиданная ошибка при чтении файла: {e}")
+                return False
         return False
 
     def _load_via_openpyxl(self) -> bool:
         """Пытается загрузить файл через openpyxl."""
         try:
-            wb = load_workbook(self.file_path, data_only=True, read_only=True, keep_links=False)
+            # Используем абсолютный путь, явно преобразуем в строку
+            file_path = str(self.file_path.resolve())
+            logger.debug(f"Открываем файл через openpyxl: {file_path}")
+            wb = load_workbook(file_path, data_only=True, read_only=True, keep_links=False)
             if "Товары и цены" not in wb.sheetnames:
                 logger.error("Лист 'Товары и цены' не найден")
                 wb.close()
@@ -204,12 +225,19 @@ class TemplateParser:
 
     def _load_via_zip(self) -> bool:
         """Пытается загрузить файл через zip-парсинг."""
-        self.df = self._read_xlsx_via_zip()
-        if self.df is None:
-            logger.error("Не удалось прочитать файл")
+        try:
+            # Используем абсолютный путь, явно преобразуем в строку
+            file_path = str(self.file_path.resolve())
+            logger.debug(f"Открываем файл через zip: {file_path}")
+            self.df = self._read_xlsx_via_zip()
+            if self.df is None:
+                logger.error("Не удалось прочитать файл")
+                return False
+            logger.info(f"Загружен через zip, строк: {len(self.df)}")
+            return True
+        except Exception as e:
+            logger.error(f"Ошибка при чтении через zip: {e}")
             return False
-        logger.info(f"Загружен через zip, строк: {len(self.df)}")
-        return True
 
     def _post_load_processing(self) -> bool:
         """Выполняет пост-обработку после загрузки: валидация и конвертация."""

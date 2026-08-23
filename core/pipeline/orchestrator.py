@@ -16,6 +16,7 @@ from core.pipeline.steps import (
     SaveHistoryStep,
     SendReportStep,
     SubmitPricesToOzonStep,
+    SyncRealPricesStep,
 )
 from core.protocols.api import IApiClient
 from core.protocols.loader import ILoader
@@ -28,6 +29,7 @@ from core.protocols.repository import (
     IProductRepository,
 )
 from core.services.price_calculation import PriceCalculationService
+from core.services.real_price_sync import RealPriceSyncService
 from infrastructure.logger import logger
 
 
@@ -113,6 +115,7 @@ class PipelineDependencies:
     maintenance_repo: IMaintenanceRepository
     notifier: INotifier
     calculator: PriceCalculationService
+    sync_service: RealPriceSyncService
     dry_run: bool = False
 
 
@@ -135,7 +138,8 @@ def create_repricing_pipeline(
     """
 
     steps = [
-        LoadProductsStep(deps.loader),
+        SyncRealPricesStep(deps.sync_service, deps.product_repo, deps.dry_run),
+        LoadProductsStep(deps.loader, deps.product_repo),
         EnrichProductIdsStep(deps.api_client),
         FetchPricingDataStep(deps.api_client),
         CalculatePricesStep(deps.calculator),

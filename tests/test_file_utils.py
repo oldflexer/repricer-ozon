@@ -31,10 +31,10 @@ class TestFileUtils:
                 result = wait_for_excel_available(file_path, timeout=1)
 
                 assert result is True
-                # Verify Path.open was called on the .lock_test file
-                mock_file_open.assert_called_once_with("w")
-                # Verify unlink was called on the .lock_test file
-                mock_unlink.assert_called_once()
+                # Verify Path.open was called on the file in read mode
+                mock_file_open.assert_called_once_with("r")
+                # Verify unlink was NOT called (we no longer delete the test file)
+                mock_unlink.assert_not_called()
         finally:
             if file_path.exists():
                 file_path.unlink()

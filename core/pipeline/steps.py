@@ -25,6 +25,7 @@ from core.protocols.repository import (
     IProductRepository,
 )
 from core.services.price_calculation import PriceCalculationService
+from core.services.real_price_sync import RealPriceSyncService
 from infrastructure.logger import logger
 
 T = TypeVar("T")
@@ -70,11 +71,58 @@ class PipelineStep[T](ABC):
         pass
 
 
+class SyncRealPricesStep(PipelineStep):
+    """Шаг 1: Синхронизация реальных цен покупателя с панели управления Ozon."""
+
+    def __init__(
+        self,
+        sync_service: RealPriceSyncService,
+        product_repo: IProductRepository,
+        dry_run: bool = False,
+    ):
+        self.sync_service = sync_service
+        self.product_repo = product_repo
+        self.dry_run = dry_run
+
+    @property
+    def name(self) -> str:
+        return "SyncRealPrices"
+
+    async def execute(self, context: PipelineContext) -> None:
+        logger.info("Pipeline: Syncing real prices from Ozon price management page")
+
+        try:
+            # Запускаем синхронизацию
+            stats = await self.sync_service.sync_real_prices_async(
+                dry_run=context.dry_run,
+                keep_file=context.dry_run,  # в dry-run не удаляем файл
+                force_delete=False,
+                use_lock=True,
+            )
+
+            if stats:
+                context.add_warning(
+                    f"Real prices sync: total={stats.get('total', 0)}, "
+                    f"updated={stats.get('updated', 0)}, "
+                    f"not_found={stats.get('not_found', 0)}, "
+                    f"errors={stats.get('errors', 0)}"
+                )
+                logger.info(f"Real prices synced: {stats}")
+            else:
+                context.add_warning("Real prices sync returned no stats (lock timeout or error)")
+
+        except Exception as e:
+            # Не останавливаем pipeline — fallback сработает на шаге CalculatePrices
+            context.add_warning(f"Real prices sync failed, will use fallback: {e}")
+            logger.warning(f"SyncRealPricesStep failed: {e}")
+
+
 class LoadProductsStep(PipelineStep):
     """Шаг 1: Загрузка товаров из Excel."""
 
-    def __init__(self, loader: ILoader):
+    def __init__(self, loader: ILoader, product_repo: IProductRepository):
         self.loader = loader
+        self.product_repo = product_repo
 
     @property
     def name(self) -> str:
@@ -92,6 +140,11 @@ class LoadProductsStep(PipelineStep):
             # Не останавливаем pipeline - пусть продолжает для отправки отчёта
             return
 
+        # Загружаем real_customer_price из БД для всех SKU
+        db_products = self.product_repo.get_all_products()
+        real_price_map = {p.sku: p.real_customer_price for p in db_products if p.real_customer_price is not None}
+        logger.info(f"Loaded real_customer_price from DB for {len(real_price_map)} SKUs")
+
         # Конвертируем в доменные объекты
         for p in products_data:
             product = Product(
@@ -108,6 +161,7 @@ class LoadProductsStep(PipelineStep):
                 competitor_min_price=Money.from_rubles(p.competitor_min_price)
                 if p.competitor_min_price
                 else None,
+                real_customer_price=Money.from_rubles(real_price_map[p.sku]) if p.sku in real_price_map else None,
             )
 
             # Загружаем стратегии из Excel
@@ -335,10 +389,10 @@ class SubmitPricesToOzonStep(PipelineStep):
                 {
                     "product_id": product.product_id,
                     "offer_id": product.offer_id or "",
-                    "price": int(round(target_price.rubles_float)),
-                    "min_price": int(round(min_price_for_api.rubles_float)),
-                    "net_price": int(round(product.cost_price.rubles_float)),
-                    "old_price": int(round(old_price.rubles_float)),
+                    "price": str(int(round(target_price.rubles_float))),
+                    "min_price": str(int(round(min_price_for_api.rubles_float))),
+                    "net_price": str(int(round(product.cost_price.rubles_float))),
+                    "old_price": str(int(round(old_price.rubles_float))),
                     "manage_elastic_boosting_through_price": rules.manage_elastic_boosting,
                 }
             )
@@ -416,6 +470,9 @@ class SaveHistoryStep(PipelineStep):
                     product_name=product.product_name,
                     min_price=product.min_price.rubles_float,
                     cost_price=product.cost_price.rubles_float,
+                    real_customer_price=product.real_customer_price.rubles_float
+                    if product.real_customer_price
+                    else None,
                 )
                 self.product_repo.upsert_product(product_info)
             except Exception as e:

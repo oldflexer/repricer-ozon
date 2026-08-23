@@ -1,6 +1,15 @@
 """
-Сервис для синхронизации реальных цен из шаблона Ozon.
-Скачивает шаблон, парсит, вычисляет real_price и обновляет БД.
+Сервис для синхронизации реальных цен покупателя (FBS/FBO) со страницы управления ценами Ozon.
+
+Новый алгоритм:
+1. Авторизация через OzonSellerClient (профиль Chrome)
+2. Переход на страницу управления ценами
+3. Парсинг цен через OzonPricePageParser (Selenium/UC) - получаем product_id -> fbs_price
+4. Парсинг шаблона через TemplateParser - получаем product_id -> SKU, RIP, комиссии, склад
+5. Объединение по product_id
+6. Сохранение в БД: real_customer_price (FBS), fbo_customer_price (FBO)
+
+Fallback: если парсинг страницы цен не удался, используем старый метод через TemplateParser.calculate_real_price()
 """
 
 import asyncio
@@ -13,8 +22,10 @@ from typing import Any
 from filelock import FileLock, Timeout
 
 from config.settings import settings
+from core.entities import ProductInfo
 from infrastructure.db import SQLiteRepository
 from infrastructure.logger import logger
+from infrastructure.ozon_price_page_parser import OzonPricePageParser, PriceData
 from infrastructure.ozon_seller import OzonSellerClient
 from infrastructure.template_parser import TemplateParser
 
@@ -40,15 +51,15 @@ def delete_file_with_retry(file_path: Path, max_attempts: int = 5, delay: float 
 
 class RealPriceSyncService:
     """
-    Сервис для синхронизации реальных цен из шаблона Ozon.
+    Сервис для синхронизации реальных цен покупателя (FBS/FBO).
     """
 
     def __init__(self, output_dir: str = "download", headless: bool = False):
-        self.output_dir = output_dir
+        self.output_dir = str(Path(output_dir).resolve())
+        self.db_path = str(settings.database_path_path.resolve())
         self.headless = headless
 
     async def _download_template(self) -> Path | None:
-        """Скачивает шаблон цен из панели Ozon."""
         client = OzonSellerClient(headless=self.headless, download_dir=self.output_dir)
         try:
             logger.info("Начинаем скачивание шаблона...")
@@ -64,19 +75,121 @@ class RealPriceSyncService:
         finally:
             client.close()
 
-    def _process_template(self, file_path: Path, dry_run: bool = False) -> dict:
-        """Обрабатывает шаблон: парсинг, расчёт, обновление БД."""
+    def _parse_price_page(self, client: OzonSellerClient) -> list[PriceData] | None:
+        try:
+            logger.info("Запуск парсера страницы управления ценами...")
+            parser = OzonPricePageParser(client.driver_manager)
+            prices = parser.parse_all_prices()
+            logger.info(f"Парсер вернул {len(prices)} цен")
+            return prices
+        except Exception as e:
+            logger.error(f"Ошибка парсинга страницы цен: {e}")
+            return None
+
+    def _process_template(self, file_path: Path) -> dict:
         parser = TemplateParser(file_path)
         if not parser.load():
-            logger.error("Не удалось загрузить файл")
+            logger.error("Не удалось загрузить файл шаблона")
             return {}
 
         results = parser.process()
         if not results:
-            logger.warning("Нет результатов для обновления")
+            logger.warning("Шаблон не содержит данных")
             return {}
 
-        repo = SQLiteRepository(settings.database_path_path)
+        product_map = {}
+        for row in results:
+            product_dict = row[0]  # results содержит tuples: (product_dict, real_price, sales_type)
+            product_id = product_dict.get("product_id")
+            if product_id:
+                product_map[product_id] = {
+                    "sku": product_dict.get("sku"),
+                    "product_name": product_dict.get("product_name"),
+                    "rip": product_dict.get("rip", 0.0),
+                    "net_price": product_dict.get("net_price", 0.0),
+                    "stock_fbs": product_dict.get("stock_fbs", 0),
+                    "stock_fbo": product_dict.get("stock_fbo", 0),
+                    "warehouse_id": product_dict.get("warehouse_id"),
+                    "warehouse_name": product_dict.get("warehouse_name"),
+                    "status": product_dict.get("status"),
+                }
+
+        logger.info(f"Из шаблона получено {len(product_map)} товаров с product_id")
+        return product_map
+
+    def _merge_and_save(
+        self,
+        price_page_data: list[PriceData],
+        template_data: dict,
+        dry_run: bool = False,
+    ) -> dict:
+        logger.info(f"Подключение к БД: {self.db_path}")
+        repo = SQLiteRepository(Path(self.db_path))
+        db_products = repo.get_all_products()
+        sku_to_product = {p.sku: p for p in db_products}
+        logger.info(f"Загружено {len(sku_to_product)} товаров из БД")
+
+        stats = {
+            "total": len(price_page_data),
+            "updated": 0,
+            "not_found": 0,
+            "skipped": 0,
+            "errors": 0,
+        }
+
+        for price_data in price_page_data:
+            product_id = price_data.product_id
+
+            template_info = template_data.get(product_id)
+            if not template_info:
+                logger.warning(f"Product ID {product_id} не найден в шаблоне")
+                stats["not_found"] += 1
+                continue
+
+            sku = template_info["sku"]
+            if not sku:
+                logger.warning(f"Product ID {product_id} не имеет SKU в шаблоне")
+                stats["not_found"] += 1
+                continue
+
+            db_product = sku_to_product.get(sku)
+            if not db_product:
+                logger.warning(f"SKU {sku} (product_id={product_id}) не найден в БД")
+                stats["not_found"] += 1
+                continue
+
+            if dry_run:
+                logger.info(
+                    f"[DRY-RUN] SKU={sku}, product_id={product_id}, "
+                    f"real_price={price_data.real_price}"
+                )
+                stats["updated"] += 1
+                continue
+
+            try:
+                repo.update_real_customer_price(sku, price_data.real_price)
+                stats["updated"] += 1
+                logger.debug(f"Обновлён SKU={sku}: real_price={price_data.real_price}")
+            except Exception as e:
+                logger.error(f"Ошибка обновления SKU {sku}: {e}")
+                stats["errors"] += 1
+
+        return stats
+
+    def _fallback_sync(self, file_path: Path, dry_run: bool = False) -> dict:
+        logger.warning("Используется FALLBACK: синхронизация через TemplateParser")
+        parser = TemplateParser(file_path)
+        if not parser.load():
+            logger.error("Не удалось загрузить файл для fallback")
+            return {}
+
+        results = parser.process()
+        if not results:
+            logger.warning("Нет результатов для fallback")
+            return {}
+
+        logger.info(f"Подключение к БД: {self.db_path}")
+        repo = SQLiteRepository(Path(self.db_path))
         db_products = repo.get_all_products()
         sku_to_product = {p.sku: p for p in db_products}
         logger.info(f"Загружено {len(sku_to_product)} товаров из БД")
@@ -89,64 +202,43 @@ class RealPriceSyncService:
             "errors": 0,
         }
 
-        for product_data, real_price, sales_type in results:
-            sku = product_data.get("sku")
-            if not sku:
+        for row in results:
+            product_dict = row[0]  # results содержит tuples: (product_dict, real_price, sales_type)
+            sku = product_dict.get("sku")
+            real_price = row[1]  # Второй элемент - real_price
+
+            if not sku or real_price is None:
                 stats["skipped"] += 1
                 continue
 
-            if real_price is None:
-                logger.warning(f"SKU {sku}: цена не рассчитана, пропускаем")
-                stats["skipped"] += 1
-                continue
-
-            if sku not in sku_to_product:
-                logger.warning(f"SKU {sku} не найден в БД, пропускаем")
+            db_product = sku_to_product.get(sku)
+            if not db_product:
                 stats["not_found"] += 1
                 continue
 
             if dry_run:
-                logger.info(
-                    f"DRY-RUN: SKU {sku} -> real_price = {real_price:.2f} (тип: {sales_type})"
-                )
+                logger.info(f"[DRY-RUN] SKU={sku}, real_price={real_price}")
                 stats["updated"] += 1
                 continue
 
             try:
                 repo.update_real_customer_price(sku, real_price)
-                logger.info(f"✅ SKU {sku}: обновлена real_price = {real_price:.2f}")
                 stats["updated"] += 1
             except Exception as e:
-                logger.error(f"❌ SKU {sku}: ошибка обновления: {e}")
+                logger.error(f"Ошибка обновления SKU {sku}: {e}")
                 stats["errors"] += 1
 
         return stats
 
-    async def sync_real_prices_async(
-        self,
-        dry_run: bool = False,
-        keep_file: bool = False,
-        force_delete: bool = False,
-        use_lock: bool = True,
-    ) -> dict[str, Any]:
-        """
-        Асинхронная синхронизация реальных цен из шаблона Ozon.
-        Возвращает статистику.
-        """
-        if use_lock:
-            lock = FileLock(LOCK_FILE, timeout=settings.PARSER_LOCK_TIMEOUT)
-            try:
-                with lock.acquire(timeout=settings.PARSER_LOCK_TIMEOUT):
-                    return await self._sync_real_prices_impl(dry_run, keep_file, force_delete)
-            except Timeout:
-                logger.error(
-                    f"Не удалось получить блокировку за "
-                    f"{settings.PARSER_LOCK_TIMEOUT} секунд. "
-                    "Синхронизация пропущена."
-                )
-                return {}
-        else:
-            return await self._sync_real_prices_impl(dry_run, keep_file, force_delete)
+    def _cleanup_old_templates(self, output_path: Path) -> None:
+        try:
+            for file in output_path.glob("Шаблон для обновления цен_*.xlsx"):
+                if delete_file_with_retry(file, max_attempts=3, delay=0.5):
+                    logger.info(f"Удалён старый файл шаблона: {file}")
+                else:
+                    logger.warning(f"Не удалось удалить старый файл: {file}")
+        except Exception as e:
+            logger.warning(f"Ошибка при очистке старых файлов: {e}")
 
     async def _sync_real_prices_impl(
         self,
@@ -154,28 +246,43 @@ class RealPriceSyncService:
         keep_file: bool,
         force_delete: bool,
     ) -> dict[str, Any]:
-        """Реализация синхронизации (без блокировки)."""
         output_path = Path(self.output_dir)
         output_path.mkdir(parents=True, exist_ok=True)
 
-        logger.info("=== Запуск синхронизации цен из шаблона ===")
+        self._cleanup_old_templates(output_path)
 
-        # 1. Скачивание
+        logger.info("=== Запуск синхронизации реальных цен (новый метод) ===")
+
         downloaded_file = await self._download_template()
         if not downloaded_file:
-            logger.error("Скачивание не удалось")
+            logger.error("Скачивание шаблона не удалось")
             return {}
 
-        # 2. Обработка
-        stats = self._process_template(downloaded_file, dry_run=dry_run)
+        template_data = self._process_template(downloaded_file)
+        if not template_data:
+            logger.warning("Шаблон пуст, пробуем fallback")
+            return self._fallback_sync(downloaded_file, dry_run)
+
+        client = OzonSellerClient(headless=self.headless, download_dir=self.output_dir)
+        try:
+            if not client.navigate_to_prices():
+                logger.error("Не удалось перейти на страницу цен для парсинга")
+                return self._fallback_sync(downloaded_file, dry_run)
+
+            price_page_data = self._parse_price_page(client)
+        finally:
+            client.close()
+
+        if not price_page_data:
+            logger.warning("Парсинг страницы цен не дал результатов, пробуем fallback")
+            return self._fallback_sync(downloaded_file, dry_run)
+
+        stats = self._merge_and_save(price_page_data, template_data, dry_run)
 
         if not stats:
-            logger.warning("Статистика пуста, возможно, файл не содержит данных")
-            if force_delete and not keep_file and delete_file_with_retry(downloaded_file):
-                logger.info("Файл удалён принудительно (нет данных)")
-            return stats
+            logger.warning("Статистика пуста, пробуем fallback")
+            return self._fallback_sync(downloaded_file, dry_run)
 
-        # 3. Вывод статистики в лог
         logger.info(
             f"Статистика: всего={stats['total']}, "
             f"обновлено={stats['updated']}, "
@@ -184,11 +291,9 @@ class RealPriceSyncService:
             f"ошибок={stats['errors']}"
         )
 
-        # 4. Освобождение ресурсов перед удалением
         gc.collect()
         time.sleep(0.5)
 
-        # 5. Удаление файла
         if dry_run:
             logger.info("Dry-run: файл не удалён")
             return stats
@@ -227,7 +332,6 @@ class RealPriceSyncService:
         force_delete: bool = False,
         use_lock: bool = True,
     ) -> dict[str, Any]:
-        """Синхронная обёртка."""
         return asyncio.run(
             self.sync_real_prices_async(
                 dry_run=dry_run,
@@ -236,3 +340,29 @@ class RealPriceSyncService:
                 use_lock=use_lock,
             )
         )
+
+    async def sync_real_prices_async(
+        self,
+        dry_run: bool = False,
+        keep_file: bool = False,
+        force_delete: bool = False,
+        use_lock: bool = True,
+    ) -> dict[str, Any]:
+        if use_lock:
+            lock = FileLock(LOCK_FILE, timeout=300)
+            try:
+                with lock:
+                    return await self._sync_real_prices_impl(
+                        dry_run=dry_run,
+                        keep_file=keep_file,
+                        force_delete=force_delete,
+                    )
+            except Timeout:
+                logger.error("Не удалось получить лок для синхронизации (таймаут 5 мин)")
+                return {}
+        else:
+            return await self._sync_real_prices_impl(
+                dry_run=dry_run,
+                keep_file=keep_file,
+                force_delete=force_delete,
+            )

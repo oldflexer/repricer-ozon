@@ -54,12 +54,17 @@ class Settings(
     )
 
     @property
-    def database_path_path(self) -> Path:
-        """Returns Path to database file with INSTANCE_NAME substitution."""
+    def database_path(self) -> str:
+        """Returns resolved database path with INSTANCE_NAME substitution."""
         path = self.DATABASE_PATH
         if "{{INSTANCE_NAME}}" in path:
             path = path.replace("{{INSTANCE_NAME}}", self.INSTANCE_NAME)
-        return Path(path)
+        return path
+
+    @property
+    def database_path_path(self) -> Path:
+        """Returns Path to database file with INSTANCE_NAME substitution."""
+        return Path(self.database_path)
 
     @property
     def data_file_path(self) -> Path:

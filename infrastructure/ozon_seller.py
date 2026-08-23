@@ -109,7 +109,9 @@ class OzonSellerClient:
                 downloaded = max(new_files, key=lambda f: f.stat().st_mtime)
                 if downloaded.suffix == ".xlsx" and not downloaded.name.endswith(".crdownload"):
                     logger.info(f"Файл скачан: {downloaded}")
-                    return downloaded
+                    # Небольшая пауза, чтобы файл освободился после скачивания
+                    time.sleep(1)
+                    return downloaded.resolve()
             time.sleep(1)
 
         logger.error("Время ожидания загрузки истекло")
