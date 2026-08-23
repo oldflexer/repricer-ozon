@@ -25,6 +25,7 @@ from core.protocols.repository import (
     IProductRepository,
 )
 from core.services.price_calculation import PriceCalculationService
+from core.services.real_price_sync import RealPriceSyncService
 from infrastructure.logger import logger
 
 T = TypeVar("T")
@@ -68,6 +69,52 @@ class PipelineStep[T](ABC):
     def name(self) -> str:
         """Название шага для логирования."""
         pass
+
+
+class SyncRealPricesStep(PipelineStep):
+    """Шаг 1: Синхронизация реальных цен покупателя с панели управления Ozon."""
+
+    def __init__(
+        self,
+        sync_service: RealPriceSyncService,
+        product_repo: IProductRepository,
+        dry_run: bool = False,
+    ):
+        self.sync_service = sync_service
+        self.product_repo = product_repo
+        self.dry_run = dry_run
+
+    @property
+    def name(self) -> str:
+        return "SyncRealPrices"
+
+    async def execute(self, context: PipelineContext) -> None:
+        logger.info("Pipeline: Syncing real prices from Ozon price management page")
+
+        try:
+            # Запускаем синхронизацию
+            stats = await self.sync_service.sync_real_prices_async(
+                dry_run=context.dry_run,
+                keep_file=context.dry_run,  # в dry-run не удаляем файл
+                force_delete=False,
+                use_lock=True,
+            )
+
+            if stats:
+                context.add_warning(
+                    f"Real prices sync: total={stats.get('total', 0)}, "
+                    f"updated={stats.get('updated', 0)}, "
+                    f"not_found={stats.get('not_found', 0)}, "
+                    f"errors={stats.get('errors', 0)}"
+                )
+                logger.info(f"Real prices synced: {stats}")
+            else:
+                context.add_warning("Real prices sync returned no stats (lock timeout or error)")
+
+        except Exception as e:
+            # Не останавливаем pipeline — fallback сработает на шаге CalculatePrices
+            context.add_warning(f"Real prices sync failed, will use fallback: {e}")
+            logger.warning(f"SyncRealPricesStep failed: {e}")
 
 
 class LoadProductsStep(PipelineStep):

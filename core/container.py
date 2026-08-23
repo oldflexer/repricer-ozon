@@ -23,6 +23,7 @@ from core.protocols.repository import (
     IProductRepository,
 )
 from core.services.price_calculation import PriceCalculationService
+from core.services.real_price_sync import RealPriceSyncService
 from core.use_cases.disable_auto_add import DisableAutoAddUseCase
 from core.use_cases.parse_competitor_prices import ParseCompetitorPricesUseCase
 from core.use_cases.repricing import RepricingUseCase, RepricingUseCaseDependencies
@@ -78,6 +79,12 @@ class Container(containers.DeclarativeContainer):
         default_coefficient=config.pricing.coefficient_ozon,
     )
 
+    real_price_sync_service = providers.Singleton(
+        RealPriceSyncService,
+        output_dir=str(Path("download").resolve()),
+        headless=not config.debug,
+    )
+
     # ------------------------------------------------------------------
     # Repository protocols (extracted from the main repository)
     # ------------------------------------------------------------------
@@ -105,6 +112,7 @@ class Container(containers.DeclarativeContainer):
             mail_notifier=notifier,
             loader=loader,
             calculator=price_calculation_service,
+            sync_service=real_price_sync_service,
         ),
     )
 
@@ -135,6 +143,7 @@ class Container(containers.DeclarativeContainer):
             maintenance_repo=maintenance_repo,
             notifier=notifier,
             calculator=price_calculation_service,
+            sync_service=real_price_sync_service,
             dry_run=False,  # Will be overridden per call
         ),
     )
