@@ -22,10 +22,12 @@ from typing import Any
 from filelock import FileLock, Timeout
 
 from config.settings import settings
-from core.entities import ProductInfo
 from infrastructure.db import SQLiteRepository
 from infrastructure.logger import logger
-from infrastructure.ozon_price_page_parser import OzonPricePageParser, PriceData
+from infrastructure.ozon_price_page_parser import (
+    OzonPricePageParser,
+    PriceData,
+)
 from infrastructure.ozon_seller import OzonSellerClient
 from infrastructure.template_parser import TemplateParser
 

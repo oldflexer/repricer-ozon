@@ -26,7 +26,10 @@ from core.services.price_calculation import PriceCalculationService
 from core.services.real_price_sync import RealPriceSyncService
 from core.use_cases.disable_auto_add import DisableAutoAddUseCase
 from core.use_cases.parse_competitor_prices import ParseCompetitorPricesUseCase
-from core.use_cases.repricing import RepricingUseCase, RepricingUseCaseDependencies
+from core.use_cases.repricing import (
+    RepricingUseCase,
+    RepricingUseCaseDependencies,
+)
 from infrastructure.db import SQLiteRepository
 from infrastructure.excel_loader import ExcelLoader
 from infrastructure.mail_notifier import MailNotifier

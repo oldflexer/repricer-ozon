@@ -5,6 +5,7 @@ Pipeline шаги для процесса репрайсинга (Pipeline Patte
 """
 
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, time
 from typing import Any, TypeVar
@@ -46,6 +47,9 @@ class PipelineContext:
     dry_run: bool = False
     current_time: time | None = None
     should_stop: bool = False
+    progress_callback: Callable[[int, int, str], None] | None = None
+    _current_step: int = field(default=0, init=False, repr=False)
+    _total_steps: int = field(default=0, init=False, repr=False)
 
     def add_error(self, message: str) -> None:
         self.errors.append(message)
@@ -54,6 +58,17 @@ class PipelineContext:
     def add_warning(self, message: str) -> None:
         self.warnings.append(message)
         logger.warning(message)
+
+    def set_total_steps(self, total: int) -> None:
+        """Устанавливает общее количество шагов для прогресса."""
+        self._total_steps = total
+
+    def report_progress(self, step: int, message: str) -> None:
+        """Вызывает callback прогресса, если задан."""
+        self._current_step = step
+        if self.progress_callback:
+            self.progress_callback(step, self._total_steps, message)
+        logger.info(f"Pipeline progress: step {step}/{self._total_steps} - {message}")
 
 
 class PipelineStep[T](ABC):

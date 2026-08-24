@@ -20,12 +20,12 @@ import streamlit as st
 from filelock import FileLock, Timeout
 
 from config.settings import settings
+from core.services.real_price_sync import RealPriceSyncService
 from core.use_cases import (
     ParseCompetitorPricesUseCase,
     RepricingUseCase,
     RepricingUseCaseDependencies,
 )
-from core.services.real_price_sync import RealPriceSyncService
 from infrastructure.logger import setup_logging, setup_parser_logging
 from infrastructure.x_display import get_available_display
 from ui.cache import (
@@ -53,13 +53,14 @@ def get_base64_encoded_image(image_path: Path) -> str:
         return base64.b64encode(f.read()).decode()
 
 
-def run_repricing(dry_run: bool = False, no_sync: bool = False) -> dict[str, Any]:
+def run_repricing(dry_run: bool = False, no_sync: bool = False, progress_callback=None) -> dict[str, Any]:
     """
     Запускает репрайсинг в синхронном контексте (из Streamlit).
 
     Args:
         dry_run: Если True, цены не отправляются в Ozon.
         no_sync: Если True, пропускает синхронизацию шаблона.
+        progress_callback: Опциональный колбэк для отображения прогресса (current, total, message).
 
     Returns:
         Словарь со статистикой выполнения.
@@ -103,6 +104,7 @@ def run_repricing(dry_run: bool = False, no_sync: bool = False) -> dict[str, Any
             mail_notifier=notifier,
             loader=loader,
             calculator=None,
+            progress_callback=progress_callback,
         )
         use_case = RepricingUseCase(deps)
         try:
@@ -126,8 +128,14 @@ def execute_repricing(dry_run: bool) -> tuple[str, str]:
     """
     with st.status("Выполняется репрайсинг...", expanded=True) as status:
         st.write("Загрузка данных из Excel...")
+
+        def progress_callback(current: int, total: int, message: str) -> None:
+            """Callback для обновления прогресса в Streamlit status."""
+            status.update(label=f"Шаг {current}/{total}: {message}", state="running")
+            st.write(f"Шаг {current}/{total}: {message}")
+
         try:
-            stats = run_repricing(dry_run=dry_run, no_sync=False)
+            stats = run_repricing(dry_run=dry_run, no_sync=False, progress_callback=progress_callback)
             st.cache_data.clear()
             st.cache_resource.clear()
             status.update(label="Готово!", state="complete")

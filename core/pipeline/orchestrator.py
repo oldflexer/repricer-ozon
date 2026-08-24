@@ -2,6 +2,7 @@
 Pipeline Orchestrator - управляет выполнением последовательности шагов.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from core.pipeline.steps import (
@@ -66,11 +67,12 @@ class PipelineOrchestrator:
         """
         logger.info(f"Starting pipeline with {len(self.steps)} steps")
 
-        for step in self.steps:
+        for i, step in enumerate(self.steps, start=1):
             if context.should_stop:
                 logger.warning(f"Pipeline stopped before step {step.name} due to critical error")
                 break
 
+            context.report_progress(i, f"Executing: {step.name}")
             logger.info(f"Executing pipeline step: {step.name}")
             try:
                 await step.execute(context)
@@ -117,6 +119,7 @@ class PipelineDependencies:
     calculator: PriceCalculationService
     sync_service: RealPriceSyncService
     dry_run: bool = False
+    progress_callback: Callable[[int, int, str], None] | None = None
 
 
 def create_repricing_pipeline(
@@ -132,6 +135,7 @@ def create_repricing_pipeline(
         notifier: INotifier - сервис уведомлений
         calculator: PriceCalculationService - сервис расчёта цен
         dry_run: Режим тестового запуска
+        progress_callback: Опциональный колбэк для отображения прогресса (current, total, message)
 
     Returns:
         Tuple (orchestrator, context)
@@ -152,6 +156,10 @@ def create_repricing_pipeline(
         CleanupDatabaseStep(deps.maintenance_repo),
     ]
 
-    context = PipelineContext(dry_run=deps.dry_run)
+    context = PipelineContext(
+        dry_run=deps.dry_run,
+        progress_callback=deps.progress_callback,
+    )
+    context.set_total_steps(len(steps))
 
     return PipelineOrchestrator(steps), context

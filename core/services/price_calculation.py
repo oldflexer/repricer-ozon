@@ -2,7 +2,7 @@
 Сервис расчёта целевой цены и маржинальности товара.
 """
 
-from datetime import datetime, time
+from datetime import datetime
 
 from config.settings import TIMEZONE
 from core.entities import PriceCalculationResult, PricingData, StrategyInterval
@@ -61,10 +61,9 @@ class PriceCalculationService:
                 if start_min <= now_min < end_min:
                     active_interval = interval
                     break
-            else:
-                if now_min >= start_min or now_min < end_min:
-                    active_interval = interval
-                    break
+            elif now_min >= start_min or now_min < end_min:
+                active_interval = interval
+                break
         if active_interval is None:
             logger.warning(f"SKU {sku}: нет активного интервала стратегии, используем RIP")
             strategy_type = StrategyType.EQUAL

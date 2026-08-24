@@ -4,6 +4,7 @@ Use‑case для запуска полного цикла репрайсинг�
 Использует Pipeline Pattern вместо монолитного координатора.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -39,6 +40,7 @@ class RepricingUseCaseDependencies:
     loader: ILoader
     calculator: PriceCalculationService | None = None
     sync_service: RealPriceSyncService | None = None
+    progress_callback: Callable[[int, int, str], None] | None = None
 
 
 class RepricingUseCase:
@@ -88,6 +90,7 @@ class RepricingUseCase:
             calculator=self._deps.calculator or PriceCalculationService(),
             sync_service=self._deps.sync_service or RealPriceSyncService(),
             dry_run=dry_run,
+            progress_callback=self._deps.progress_callback,
         )
         orchestrator, context = create_repricing_pipeline(pipeline_deps)
 

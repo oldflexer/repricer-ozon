@@ -7,12 +7,10 @@ https://seller.ozon.ru/app/prices/control
 
 import time
 from dataclasses import dataclass
-from typing import Optional
 
 from selenium.common.exceptions import NoSuchElementException, TimeoutException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.support.ui import WebDriverWait
 
 from infrastructure.chrome_driver import ChromeDriverManager
 from infrastructure.logger import logger
