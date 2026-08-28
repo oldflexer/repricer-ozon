@@ -137,6 +137,7 @@ def _render_db_operations(repo: IRepository) -> None:
                 data=db_data,
                 file_name=settings.database_path_path.name,
                 mime="application/octet-stream",
+                key="download_db_backup",
             )
     with col2:
         if st.button("Удалить записи старше 1 месяца", icon=":material/cleaning_services:"):

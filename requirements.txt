@@ -5,6 +5,7 @@ alembic==1.18.5
 # utils
 filelock==3.32.2
 pytz==2026.3.post1
+bcrypt==5.0.0
 # api
 httpx==0.28.1
 # excel

@@ -65,6 +65,7 @@ def _run_async_in_thread(
 ) -> None:
     """Запускает асинхронную корутину в отдельном потоке."""
     def run() -> None:
+        loop = None
         try:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
@@ -80,7 +81,8 @@ def _run_async_in_thread(
         except Exception as e:
             _task_results[task_id] = (f"Ошибка: {e}", "error")
         finally:
-            loop.close()
+            if loop is not None:
+                loop.close()
             # Clean up thread reference
             _background_threads.pop(task_id, None)
     
@@ -375,6 +377,7 @@ def render_sidebar_section_excel(disabled: bool) -> None:
                 f,
                 file_name=settings.data_file_path.name,
                 width="stretch",
+                key="download_excel_sidebar",
             )
     else:
         st.warning("Файл Excel пока не существует.", icon=":material/warning:")
