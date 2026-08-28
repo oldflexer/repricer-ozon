@@ -117,5 +117,5 @@ class OzonSellerClient:
         logger.error("Время ожидания загрузки истекло")
         return None
 
-    def close(self):
+    def close(self) -> None:
         self.driver_manager.close()

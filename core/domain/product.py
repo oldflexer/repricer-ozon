@@ -7,17 +7,14 @@
 from dataclasses import dataclass, field
 from datetime import time
 
-from core.domain.pricing_rules import OzonPricingRules, get_pricing_rules
+from core.domain.pricing_rules import OzonPricingRules
 from core.domain.value_objects import (
     SKU,
-    DiscountCoefficient,
     Money,
     Percentage,
     TimeInterval,
 )
-from core.entities import PriceCalculationResult, PricingData, StrategyInterval
 from core.enums import StrategyType
-from core.services.price_calculation import PriceCalculationService
 
 
 @dataclass(slots=True)
@@ -86,9 +83,6 @@ class Product:
     real_customer_price: Money | None = None      # Реальная цена покупателя
     strategies: list[PricingStrategy] = field(default_factory=list)
 
-    # Кэш для расчётов
-    _discount_coef: DiscountCoefficient | None = field(default=None, init=False, repr=False)
-
     def __post_init__(self) -> None:
         """Валидация инвариантов после инициализации."""
         if self.cost_price._kopecks < 0:
@@ -124,113 +118,13 @@ class Product:
             percent=Percentage.from_percent(0),
         )
 
-    # --- Методы для расчёта цен ---
+    def validate_min_price(self, price: Money, rules: OzonPricingRules) -> Money:
+        """Валидирует min_price через доменные правила."""
+        return rules.validate_min_price(price, self.min_price)
 
-    def set_discount_coefficient(self, discount_coef: DiscountCoefficient) -> None:
-        """Устанавливает коэффициент дисконта (вычисляется из индексов/реальной цены)."""
-        self._discount_coef = discount_coef
-
-    @property
-    def discount_coefficient(self) -> DiscountCoefficient:
-        """Возвращает коэффициент дисконта (или дефолтный)."""
-        return self._discount_coef or get_pricing_rules().default_discount_coef
-
-    def calculate_target_min_price(self, rules: OzonPricingRules) -> Money:
-        """
-        Рассчитывает целевую минимальную цену: RIP / discount_coef.
-
-        Это цена, которую нужно установить как маркетинговую,
-        чтобы после скидки реальная цена была >= RIP.
-        """
-        return rules.calculate_target_min_price(self.min_price, self.discount_coefficient)
-
-    def select_base_price(
-        self, ozon_index_price: Money | None, _rules: OzonPricingRules
-    ) -> Money | None:
-        """
-        Выбирает базовую цену для стратегий BELOW/ABOVE.
-
-        Приоритет:
-        1. Цена конкурента (есть и > 0)
-        2. Индекс Ozon (есть и > 0)
-        3. None (стратегия игнорируется, используется RIP)
-        """
-        if self.competitor_min_price is not None and self.competitor_min_price._kopecks > 0:
-            return self.competitor_min_price
-        if ozon_index_price is not None and ozon_index_price._kopecks > 0:
-            return ozon_index_price
-        return None
-
-    def calculate_target_price(
-        self, pricing_data: PricingData, rules: OzonPricingRules, _current_time: time
-    ) -> PriceCalculationResult:
-        """
-        Основной метод расчёта целевой цены.
-
-        Args:
-            pricing_data: Данные из Ozon API (цены, индексы, комиссии)
-            rules: Бизнес-правила Ozon
-            current_time: Текущее время для выбора стратегии
-
-        Returns:
-            PriceCalculationResult с целевой ценой, маржинальностью и деталями
-        """
-        # Используем существующий сервис расчёта для совместимости
-        # Но готовим данные через доменную модель
-        service = PriceCalculationService(
-            default_coefficient=rules.default_discount_coef.value_float
-        )
-
-        # Конвертируем доменные объекты в формат сервиса (StrategyInterval entities)
-        intervals = [
-            StrategyInterval(
-                start=f"{s.interval.start_hour:02d}:{s.interval.start_minute:02d}",
-                end=f"{s.interval.end_hour:02d}:{s.interval.end_minute:02d}",
-                strategy_type=s.strategy_type,
-                percent=s.percent.percent_float,
-            )
-            for s in self.strategies
-        ]
-
-        result = service.calculate(
-            sku=str(self.sku),
-            pricing=pricing_data,
-            rip=self.min_price.rubles_float,
-            intervals=intervals,
-            competitor_min_price=self.competitor_min_price.rubles_float
-            if self.competitor_min_price
-            else None,
-            real_customer_price=self.real_customer_price.rubles_float
-            if self.real_customer_price
-            else None,
-        )
-
-        # Добавляем доменную логику валидации min_price
-        target_price = Money.from_rubles(result.result_target_price)
-        min_price_for_api = Money.from_rubles(
-            self.min_price.rubles_float / self.discount_coefficient.value_float
-        )
-        validated_min_price = rules.validate_min_price(target_price, min_price_for_api)
-
-        # Пересчитываем old_price через доменное правило
-        old_price = rules.calculate_old_price(
-            target_price, Money.from_rubles(self.old_price.rubles_float) if self.old_price else None
-        )
-
-        # Возвращаем результат с доменными корректировками
-        return PriceCalculationResult(
-            sku=result.sku,
-            target_min_price=result.target_min_price,
-            strategy_price=result.strategy_price,
-            target_strategy_price=result.target_strategy_price,
-            result_target_price=result.result_target_price,
-            marginality=result.marginality,
-            log_details={
-                **result.log_details,
-                "domain_validated_min_price": validated_min_price.rubles_float,
-                "domain_old_price": old_price.rubles_float,
-            },
-        )
+    def calculate_old_price(self, price: Money, rules: OzonPricingRules) -> Money:
+        """Рассчитывает старую цену через доменные правила."""
+        return rules.calculate_old_price(price, self.old_price)
 
     # --- Методы обновления состояния ---
 

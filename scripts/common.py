@@ -7,6 +7,8 @@
 """
 
 import signal
+import types
+from typing import Any
 
 from config.settings import settings
 from infrastructure.logger import logger, setup_logging
@@ -16,7 +18,7 @@ from infrastructure.logger import setup_parser_logging as _setup_parser_logging
 _shutdown_requested = False
 
 
-def _signal_handler(signum: int, _frame) -> None:
+def _signal_handler(signum: int, _frame: types.FrameType | None) -> None:
     """Стандартный обработчик сигналов для graceful shutdown."""
     global _shutdown_requested
     logger.warning(f"Received signal {signum}, initiating graceful shutdown...")
@@ -40,7 +42,7 @@ def is_shutdown_requested() -> bool:
     return _shutdown_requested
 
 
-def setup_script_logging(script_name: str, mode: str = "a"):
+def setup_script_logging(script_name: str, mode: str = "a") -> Any:
     """
     Настраивает логирование для скрипта с учётом INSTANCE_NAME.
 
@@ -54,7 +56,7 @@ def setup_script_logging(script_name: str, mode: str = "a"):
     return setup_logging(f"{script_name}-{settings.INSTANCE_NAME}.log", mode=mode)
 
 
-def setup_parser_logging(script_name: str, mode: str = "a"):
+def setup_parser_logging(script_name: str, mode: str = "a") -> Any:
     """
     Настраивает логирование для парсера с учётом INSTANCE_NAME.
 

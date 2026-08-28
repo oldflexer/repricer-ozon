@@ -6,6 +6,7 @@
 """
 
 import streamlit as st
+from typing import Any
 
 from config.settings import settings
 from infrastructure.db import SQLiteRepository
@@ -21,11 +22,11 @@ def get_repo() -> SQLiteRepository:
     Returns:
         SQLiteRepository: Экземпляр репозитория.
     """
-    return st.session_state.repo
+    return st.session_state.repo  # type: ignore[no-any-return]
 
 
 @st.cache_resource(ttl=3600, show_spinner=False)
-def get_cached_products():
+def get_cached_products() -> list:
     """
     Возвращает закэшированный список всех товаров.
 
@@ -36,7 +37,7 @@ def get_cached_products():
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def get_cached_kpi():
+def get_cached_kpi() -> dict:
     """
     Возвращает закэшированные KPI-метрики.
 
@@ -47,7 +48,7 @@ def get_cached_kpi():
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def get_cached_strategy_roi():
+def get_cached_strategy_roi() -> Any:
     """
     Возвращает закэшированные данные ROI по стратегиям.
 
@@ -58,7 +59,7 @@ def get_cached_strategy_roi():
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def get_cached_ozon_price_df():
+def get_cached_ozon_price_df() -> Any:
     """
     Возвращает закэшированные данные сравнения цены и индекса Ozon.
 
@@ -69,7 +70,7 @@ def get_cached_ozon_price_df():
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def get_cached_last_prices():
+def get_cached_last_prices() -> Any:
     """
     Возвращает закэшированные последние цены и маржинальность для всех товаров.
 
@@ -80,16 +81,16 @@ def get_cached_last_prices():
 
 
 # ------ ЭТИ ФУНКЦИИ НЕ КЭШИРУЕМ (создают новые объекты) ------
-def get_excel_loader():
+def get_excel_loader() -> ExcelLoader:
     """Создаёт новый экземпляр ExcelLoader."""
     return ExcelLoader(settings.data_file_path)
 
 
-def get_api_client():
+def get_api_client() -> OzonApiClient:
     """Создаёт новый экземпляр OzonApiClient."""
     return OzonApiClient()
 
 
-def get_mail_notifier():
+def get_mail_notifier() -> MailNotifier:
     """Создаёт новый экземпляр MailNotifier."""
     return MailNotifier()

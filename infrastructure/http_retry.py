@@ -5,12 +5,14 @@
 import asyncio
 from collections.abc import Callable
 from functools import wraps
-from typing import Any
+from typing import Any, TypeVar
 
 from infrastructure.logger import logger
 
+F = TypeVar("F", bound=Callable[..., Any])
 
-def retry_on_error(max_retries: int = 3, backoff_base: float = 2.0):
+
+def retry_on_error(max_retries: int = 3, backoff_base: float = 2.0) -> Callable[[F], F]:
     """
     Декоратор для повторных попыток при ошибках HTTP-запросов.
 
@@ -22,9 +24,9 @@ def retry_on_error(max_retries: int = 3, backoff_base: float = 2.0):
         Декорированная асинхронная функция.
     """
 
-    def decorator(func: Callable) -> Callable:
+    def decorator(func: F) -> F:
         @wraps(func)
-        async def wrapper(*args, **kwargs) -> Any | None:
+        async def wrapper(*args: Any, **kwargs: Any) -> Any | None:
             last_exception = None
             for attempt in range(1, max_retries + 1):
                 try:
@@ -38,6 +40,6 @@ def retry_on_error(max_retries: int = 3, backoff_base: float = 2.0):
             logger.error(f"All {max_retries} attempts failed: {last_exception}")
             return None
 
-        return wrapper
+        return wrapper  # type: ignore[return-value]
 
     return decorator

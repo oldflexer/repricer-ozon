@@ -186,12 +186,17 @@ class IMaintenanceRepository(Protocol):
 
     @abstractmethod
     def auto_cleanup_if_needed(self, months: int = 3, days_threshold: int = 1) -> int:
-        """
-        Запускает очистку БД, если с последней очистки прошло больше days_threshold дней.
+        """Запускает очистку БД, если с последней очистки прошло больше days_threshold дней."""
+        ...
 
-        Returns:
-            Количество удалённых записей (0, если очистка не выполнялась).
-        """
+    @abstractmethod
+    def get_last_repricing_run(self) -> datetime | None:
+        """Возвращает дату последнего запуска репрайсинга."""
+        ...
+
+    @abstractmethod
+    def set_last_repricing_run(self, dt: datetime) -> None:
+        """Устанавливает дату последнего запуска репрайсинга."""
         ...
 
 

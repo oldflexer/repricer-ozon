@@ -1,6 +1,8 @@
 import logging
 import shutil
 import time
+from pathlib import Path
+from typing import Any, Dict, Tuple
 
 from openpyxl import load_workbook
 
@@ -9,7 +11,7 @@ logger = logging.getLogger(__name__)
 LOCK_WAIT_TIMEOUT = 60
 
 
-def wait_for_excel_available(file_path, timeout=60):
+def wait_for_excel_available(file_path: Path, timeout: int = 60) -> bool:
     """
     Wait until the Excel file becomes available (can be opened for writing).
     Returns True if file becomes available within timeout, False otherwise.
@@ -32,14 +34,16 @@ def wait_for_excel_available(file_path, timeout=60):
     return False
 
 
-def save_safely(updates, file_path, max_retries=3):
+def save_safely(
+    updates: Dict[Tuple[int, int], Any], file_path: Path, max_retries: int = 3
+) -> None:
     """
     Safely updates an Excel file with retry logic.
     Creates a backup, applies updates, saves to temp file, then replaces original.
     """
-    last_error = None
+    last_error: Exception | None = None
     for attempt in range(max_retries):
-        temp_path = None
+        temp_path: Path | None = None
         try:
             # Create a backup
             backup_path = file_path.with_suffix(file_path.suffix + ".backup")

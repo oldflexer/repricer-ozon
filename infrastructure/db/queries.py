@@ -13,6 +13,13 @@ SQL_SELECT_PRODUCT_ID_BY_SKU = """
     SELECT product_id FROM product WHERE sku = ?
 """
 
+SQL_SELECT_PRODUCT_BY_SKU = """
+    SELECT product_id, offer_id, sku, product_name, rip, net_price,
+           real_customer_price
+    FROM product
+    WHERE sku = ?
+"""
+
 SQL_INSERT_PRODUCT = """
     INSERT INTO product (product_id, sku, product_name, rip, net_price, real_customer_price)
     VALUES (?, ?, ?, ?, ?, ?)
@@ -21,6 +28,12 @@ SQL_INSERT_PRODUCT = """
 SQL_UPDATE_PRODUCT = """
     UPDATE product SET product_name = ?, rip = ?, net_price = ?, real_customer_price = ?
     WHERE product_id = ?
+"""
+
+SQL_UPDATE_PRODUCT_REAL_PRICE = """
+    UPDATE product
+    SET real_customer_price = ?, last_updated = CURRENT_TIMESTAMP
+    WHERE sku = ?
 """
 
 SQL_SELECT_ALL_PRODUCTS = """
@@ -56,8 +69,20 @@ SQL_SELECT_PRODUCT_STRATEGIES = """
     WHERE ps.product_id = ?
 """
 
+SQL_SELECT_STRATEGY_COUNTS = """
+    SELECT s.name as strategy_name, COUNT(*) as count
+    FROM product_strategy ps
+    JOIN strategy s ON ps.strategy_id = s.id
+    GROUP BY s.name
+"""
+
 SQL_DELETE_PRODUCT_STRATEGIES = """
     DELETE FROM product_strategy WHERE product_id = ?
+"""
+
+SQL_UPDATE_PRODUCT_STRATEGIES = """
+    UPDATE product_strategy SET strategy_id = ?, time_start = ?, time_end = ?, percent = ?
+    WHERE product_id = ? AND strategy_id = ?
 """
 
 # =========================================================================
@@ -195,6 +220,16 @@ SQL_SELECT_LAST_CLEANUP = """
 
 SQL_UPDATE_LAST_CLEANUP = """
     UPDATE maintenance SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE key = 'last_cleanup'
+"""
+
+# Repricing run tracking
+SQL_SELECT_LAST_RUN = """
+    SELECT value FROM maintenance WHERE key = 'last_repricing_run'
+"""
+
+SQL_UPDATE_LAST_RUN = """
+    INSERT OR REPLACE INTO maintenance (key, value, updated_at)
+    VALUES ('last_repricing_run', ?, CURRENT_TIMESTAMP)
 """
 
 # =========================================================================

@@ -134,7 +134,7 @@ def render_commissions_analysis() -> None:
                 "real_price": "Реальная цена покупателя (₽)",
                 "marginality": "Маржинальность",
             },
-            color_continuous_scale="RdYlGn",
+            color_continuous_scale=["RdYlGn"],
             range_color=[-0.2, 0.4],
         )
         max_val = max(

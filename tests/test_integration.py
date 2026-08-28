@@ -5,6 +5,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from core.domain.pricing_rules import OzonPricingRules
 from core.entities import PricingData
 from core.use_cases import RepricingUseCase, RepricingUseCaseDependencies
 from infrastructure.db import SQLiteRepository
@@ -124,6 +125,7 @@ async def test_full_cycle_dry_run(tmp_path):
         api_client=mock_api,
         mail_notifier=notifier,
         loader=loader,
+        pricing_rules=OzonPricingRules(),
     )
     use_case = RepricingUseCase(deps)
     stats = await use_case.execute(dry_run=True)

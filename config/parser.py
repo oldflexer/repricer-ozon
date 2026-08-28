@@ -92,3 +92,8 @@ class ParserSettings(BaseSettings):
     COMPETITOR_PRICE_COLUMN_PREFIX: str = Field(
         default="цена", description="Prefix for competitor price column names (e.g., 'Цена 1')"
     )
+
+    # Feature flag for new parser (httpx + selectolax)
+    USE_NEW_PARSER: bool = Field(
+        default=False, description="Use new httpx+selectolax parser instead of Selenium"
+    )

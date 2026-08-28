@@ -3,6 +3,7 @@
 Извлекает данные из листа "Товары и цены", рассчитывает реальную цену.
 """
 
+import time
 import zipfile
 from pathlib import Path
 from xml.etree import ElementTree as ET
@@ -166,7 +167,7 @@ class TemplateParser:
         Загружает Excel-файл, сначала через openpyxl, при ошибке через zip.
         С повторными попытками для обработки временных блокировок файла.
         """
-        import time
+
         max_attempts = 3
         for attempt in range(1, max_attempts + 1):
             try:
@@ -344,7 +345,7 @@ class TemplateParser:
         base_price = price_before - discount_with_action
 
         if sales_type in ("fbo", "fbs"):
-            return base_price
+            return base_price  # type: ignore[no-any-return]
 
         if sales_type == "mixed":
             price_with_discount = product.get("price_with_discount", 0)
@@ -383,7 +384,7 @@ class TemplateParser:
                 return None
 
             real_price = base_price * (numerator / denominator)
-            return round(real_price)
+            return round(real_price)  # type: ignore[no-any-return]
         return None
 
     def process(self) -> list[tuple[dict, float | None, str]]:
@@ -403,7 +404,7 @@ class TemplateParser:
 
     def _read_sheet_data(
         self, zf: zipfile.ZipFile, target_sheet: str, shared_strings: list[str]
-    ) -> list[list[str]]:
+    ) -> list[list[str | None]]:
         """Читает данные листа из zip-архива."""
         sheet_xml = zf.read(target_sheet)
         root = ET.fromstring(sheet_xml)

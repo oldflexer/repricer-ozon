@@ -8,6 +8,7 @@
     - информация о файлах,
     - смена пароля,
     - диагностика БД.
+    - Rate Limit Dashboard (API calls/minute, quota, circuit breaker status)
 """
 
 from pathlib import Path
@@ -17,6 +18,7 @@ import streamlit as st
 
 from config.settings import TIMEZONE, settings
 from core.protocols.repository import IRepository
+from infrastructure.circuit_breaker import ozon_api_circuit_breaker, ozon_parser_circuit_breaker
 from ui.cache import get_repo
 
 
@@ -29,6 +31,11 @@ def render_service() -> None:
         unsafe_allow_html=True,
     )
     repo = get_repo()
+
+    # Rate Limit Dashboard
+    _render_rate_limit_dashboard()
+
+    st.divider()
 
     # Тепловая карта
     _render_heatmap(repo)
@@ -180,6 +187,103 @@ def _render_password_change() -> None:
                     icon=":material/check_circle:",
                 )
 
+
+# Rate Limit Dashboard function
+def _render_rate_limit_dashboard() -> None:
+    """Рендерит Rate Limit Dashboard с метриками API и Circuit Breaker."""
+    st.subheader("📊 Rate Limit Dashboard")
+    
+    # Ozon API Circuit Breaker
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.markdown("**Ozon API Circuit Breaker**")
+        api_cb = ozon_api_circuit_breaker
+        metrics = api_cb.get_metrics()
+        
+        state_colors = {
+            "closed": "🟢",
+            "open": "🔴", 
+            "half_open": "🟡"
+        }
+        state_icon = state_colors.get(metrics["state"], "⚪")
+        st.metric("Состояние", f"{state_icon} {metrics['state'].upper()}")
+        
+        st.metric("Всего вызовов", metrics["total_calls"])
+        st.metric("Успехов / Ошибок", f"{metrics['total_successes']} / {metrics['total_failures']}")
+        
+        if metrics["state"] == "open":
+            st.error("⚠️ Circuit Breaker OPEN - API недоступен")
+        elif metrics["state"] == "half_open":
+            st.warning("⚠️ Circuit Breaker HALF_OPEN - тестовый режим")
+        else:
+            st.success("✅ Circuit Breaker CLOSED - нормальная работа")
+        
+        if st.button("🔄 Сбросить (Reset)", key="reset_api_cb"):
+            api_cb.reset()
+            st.success("Circuit Breaker сброшен")
+            st.rerun()
+        
+        if st.button("🔒 Принудительно открыть", key="force_open_api_cb"):
+            api_cb.force_open()
+            st.warning("Circuit Breaker принудительно открыт")
+            st.rerun()
+    
+    with col2:
+        st.markdown("**Ozon Parser Circuit Breaker**")
+        parser_cb = ozon_parser_circuit_breaker
+        metrics = parser_cb.get_metrics()
+        
+        state_colors = {
+            "closed": "🟢",
+            "open": "🔴", 
+            "half_open": "🟡"
+        }
+        state_icon = state_colors.get(metrics["state"], "⚪")
+        st.metric("Состояние", f"{state_icon} {metrics['state'].upper()}")
+        
+        st.metric("Всего вызовов", metrics["total_calls"])
+        st.metric("Успехов / Ошибок", f"{metrics['total_successes']} / {metrics['total_failures']}")
+        
+        if metrics["state"] == "open":
+            st.error("⚠️ Circuit Breaker OPEN - парсер недоступен")
+        elif metrics["state"] == "half_open":
+            st.warning("⚠️ Circuit Breaker HALF_OPEN - тестовый режим")
+        else:
+            st.success("✅ Circuit Breaker CLOSED - нормальная работа")
+        
+        if st.button("🔄 Сбросить (Reset)", key="reset_parser_cb"):
+            parser_cb.reset()
+            st.success("Circuit Breaker сброшен")
+            st.rerun()
+        
+        if st.button("🔒 Принудительно открыть", key="force_open_parser_cb"):
+            parser_cb.force_open()
+            st.warning("Circuit Breaker принудительно открыт")
+            st.rerun()
+    
+    with col3:
+        st.markdown("**API Rate Limits**")
+        st.info("📋 Лимиты Ozon API:")
+        st.markdown("""
+        - **Product Info**: 100 запросов/мин
+        - **Product Prices**: 100 запросов/мин  
+        - **Product List**: 60 запросов/мин
+        - **Actions/Timer**: 1000 за батч
+        """)
+        
+        st.markdown("**Circuit Breaker Settings**")
+        st.markdown("""
+        - **API Failure Threshold**: 5 ошибок
+        - **API Recovery Timeout**: 30 сек
+        - **API Success Threshold**: 2 успеха
+        - **Parser Failure Threshold**: 3 ошибки
+        - **Parser Recovery Timeout**: 60 сек
+        - **Parser Success Threshold**: 1 успех
+        """)
+        
+        if st.button("🔄 Обновить метрики", key="refresh_metrics"):
+            st.rerun()
 
 def _render_diagnostics(repo: IRepository) -> None:
     """

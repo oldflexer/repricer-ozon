@@ -11,10 +11,15 @@ from datetime import datetime, time
 from typing import Any, TypeVar
 
 from config.settings import TIMEZONE
-from core.domain.pricing_rules import get_pricing_rules
+from core.domain.pricing_rules import OzonPricingRules
 from core.domain.product import PricingStrategy, Product
 from core.domain.value_objects import SKU, Money, Percentage, TimeInterval
-from core.entities import PriceCalculationResult, PricingData, ProductInfo
+from core.entities import (
+    PriceCalculationResult,
+    PricingData,
+    ProductInfo,
+    StrategyInterval,
+)
 from core.protocols.api import IApiClient
 from core.protocols.loader import ILoader
 from core.protocols.notifier import INotifier
@@ -270,8 +275,9 @@ class FetchPricingDataStep(PipelineStep):
 class CalculatePricesStep(PipelineStep):
     """Шаг 4: Расчёт целевых цен и маржинальности."""
 
-    def __init__(self, calculator: PriceCalculationService):
+    def __init__(self, calculator: PriceCalculationService, pricing_rules: OzonPricingRules):
         self.calculator = calculator
+        self.pricing_rules = pricing_rules
 
     @property
     def name(self) -> str:
@@ -279,7 +285,6 @@ class CalculatePricesStep(PipelineStep):
 
     async def execute(self, context: PipelineContext) -> None:
         logger.info("Pipeline: Calculating target prices")
-        rules = get_pricing_rules()
 
         for product in context.products:
             if product.product_id is None:
@@ -299,7 +304,29 @@ class CalculatePricesStep(PipelineStep):
                 current_time = datetime.now(TIMEZONE).time()
 
             try:
-                result = product.calculate_target_price(pricing, rules, current_time)
+                # Convert domain strategies to StrategyInterval entities
+                intervals = [
+                    StrategyInterval(
+                        start=f"{s.interval.start_hour:02d}:{s.interval.start_minute:02d}",
+                        end=f"{s.interval.end_hour:02d}:{s.interval.end_minute:02d}",
+                        strategy_type=s.strategy_type,
+                        percent=s.percent.percent_float,
+                    )
+                    for s in product.strategies
+                ]
+
+                result = self.calculator.calculate(
+                    sku=str(product.sku),
+                    pricing=pricing,
+                    rip=product.min_price.rubles_float,
+                    intervals=intervals,
+                    competitor_min_price=product.competitor_min_price.rubles_float
+                    if product.competitor_min_price
+                    else None,
+                    real_customer_price=product.real_customer_price.rubles_float
+                    if product.real_customer_price
+                    else None,
+                )
                 context.calculation_results[str(product.sku)] = result
             except Exception as e:
                 context.add_error(f"Calculation failed for {product.sku}: {e}")
@@ -310,8 +337,9 @@ class CalculatePricesStep(PipelineStep):
 class PersistToExcelStep(PipelineStep):
     """Шаг 5: Сохранение результатов в Excel."""
 
-    def __init__(self, loader: ILoader):
+    def __init__(self, loader: ILoader, pricing_rules: OzonPricingRules):
         self.loader = loader
+        self.pricing_rules = pricing_rules
 
     @property
     def name(self) -> str:
@@ -319,7 +347,6 @@ class PersistToExcelStep(PipelineStep):
 
     async def execute(self, context: PipelineContext) -> None:
         logger.info("Pipeline: Persisting results to Excel")
-        rules = get_pricing_rules()
 
         for product in context.products:
             result = context.calculation_results.get(str(product.sku))
@@ -334,7 +361,7 @@ class PersistToExcelStep(PipelineStep):
             marginality_month = 0.0  # TODO: получить из репозитория
             old_price_excel = int(
                 round(
-                    rules.calculate_old_price(
+                    self.pricing_rules.calculate_old_price(
                         Money.from_rubles(result.result_target_price), product.old_price
                     ).rubles_float
                 )
@@ -343,7 +370,7 @@ class PersistToExcelStep(PipelineStep):
             updates = {
                 "current_price": real_price,
                 "min_price": int(
-                    round(product.min_price.rubles_float / product.discount_coefficient.value_float)
+                    round(product.min_price.rubles_float / result.log_details.get("discount_coef", 1.0))
                 ),
                 "margin": result.marginality,
                 "margin_week": marginality_week,
@@ -364,8 +391,9 @@ class PersistToExcelStep(PipelineStep):
 class SubmitPricesToOzonStep(PipelineStep):
     """Шаг 6: Отправка новых цен в Ozon API."""
 
-    def __init__(self, api_client: IApiClient):
+    def __init__(self, api_client: IApiClient, pricing_rules: OzonPricingRules):
         self.api_client = api_client
+        self.pricing_rules = pricing_rules
 
     @property
     def name(self) -> str:
@@ -377,7 +405,6 @@ class SubmitPricesToOzonStep(PipelineStep):
             return
 
         logger.info("Pipeline: Submitting prices to Ozon API")
-        rules = get_pricing_rules()
 
         # Формируем payload для API
         price_updates = []
@@ -391,14 +418,14 @@ class SubmitPricesToOzonStep(PipelineStep):
 
             # Валидация min_price по правилам Ozon
             target_price = Money.from_rubles(result.result_target_price)
-            min_price_for_api = rules.validate_min_price(
+            min_price_for_api = self.pricing_rules.validate_min_price(
                 target_price,
                 Money.from_rubles(
-                    product.min_price.rubles_float / product.discount_coefficient.value_float
+                    product.min_price.rubles_float / result.log_details.get("discount_coef", 1.0)
                 ),
             )
 
-            old_price = rules.calculate_old_price(target_price, product.old_price)
+            old_price = self.pricing_rules.calculate_old_price(target_price, product.old_price)
 
             price_updates.append(
                 {
@@ -408,7 +435,7 @@ class SubmitPricesToOzonStep(PipelineStep):
                     "min_price": str(int(round(min_price_for_api.rubles_float))),
                     "net_price": str(int(round(product.cost_price.rubles_float))),
                     "old_price": str(int(round(old_price.rubles_float))),
-                    "manage_elastic_boosting_through_price": rules.manage_elastic_boosting,
+                    "manage_elastic_boosting_through_price": self.pricing_rules.manage_elastic_boosting,
                 }
             )
 
@@ -568,7 +595,7 @@ class SendReportStep(PipelineStep):
                     "min_price": int(
                         round(
                             product.min_price.rubles_float
-                            / product.discount_coefficient.value_float
+                            / result.log_details.get("discount_coef", 1.0)
                         )
                     ),
                     "marginality": result.marginality,

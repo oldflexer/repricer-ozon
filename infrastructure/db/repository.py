@@ -79,7 +79,7 @@ class SQLiteRepository(
         """Возвращает список всех товаров из таблицы product."""
         with self._get_connection() as conn:
             rows = conn.execute("""
-                SELECT product_id, offer_id, sku, product_name, rip, net_price, 
+                SELECT product_id, offer_id, sku, product_name, rip, net_price,
                        real_customer_price
                 FROM product
             """).fetchall()

@@ -3,6 +3,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from core.domain.pricing_rules import OzonPricingRules
 from core.entities import PriceCalculationResult, StrategyInterval
 from core.enums import StrategyType
 from core.services import PriceCalculationService
@@ -10,7 +11,8 @@ from infrastructure.ozon_api import parse_pricing_data
 
 
 def test_calculation_service():
-    service = PriceCalculationService(default_coefficient=0.5)
+    pricing_rules = OzonPricingRules()
+    service = PriceCalculationService(pricing_rules=pricing_rules)
 
     raw_data = {
         "product_id": 1,

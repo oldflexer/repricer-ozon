@@ -28,33 +28,33 @@ from infrastructure.logger import logger
 
 # --- Патчи для Python 3.12+ ---
 class _LooseVersion:
-    def __init__(self, vstring):
+    def __init__(self, vstring: str) -> None:
         self.vstring = str(vstring)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"LooseVersion('{self.vstring}')"
 
-    def __eq__(self, other):
+    def __eq__(self, other: object) -> bool:
         return self.vstring == str(other)
 
     def __hash__(self) -> int:
         return hash(self.vstring)
 
-    def __lt__(self, other):
+    def __lt__(self, other: object) -> bool:
         return self.vstring < str(other)
 
-    def __le__(self, other):
+    def __le__(self, other: object) -> bool:
         return self.vstring <= str(other)
 
-    def __gt__(self, other):
+    def __gt__(self, other: object) -> bool:
         return self.vstring > str(other)
 
-    def __ge__(self, other):
+    def __ge__(self, other: object) -> bool:
         return self.vstring >= str(other)
 
 
 class _DistutilsVersionModule(ModuleType):
-    def __getattr__(self, name):
+    def __getattr__(self, name: str) -> type[_LooseVersion]:
         if name == "LooseVersion":
             return _LooseVersion
         raise AttributeError(name)
@@ -103,7 +103,7 @@ class ChromeDriverManager:
                 except Exception:
                     pass
 
-    def _build_options(self):
+    def _build_options(self) -> ChromeOptions:
         options = ChromeOptions()
         if self.headless:
             options.add_argument("--headless")
@@ -138,7 +138,7 @@ class ChromeDriverManager:
             self._clean_profile_locks(profile_path)
         return options
 
-    def _build_selenium_options(self):
+    def _build_selenium_options(self) -> ChromeOptions:
         options = ChromeOptions()
         if self.headless:
             options.add_argument("--headless")
@@ -207,7 +207,7 @@ class ChromeDriverManager:
                 self.wait = None
                 return False
 
-    def _configure_driver(self):
+    def _configure_driver(self) -> None:
         assert self.driver is not None
         self.driver.set_page_load_timeout(settings.CHROME_PAGE_LOAD_TIMEOUT)
         self.wait = WebDriverWait(self.driver, settings.CHROME_IMPLICIT_WAIT)
@@ -216,7 +216,7 @@ class ChromeDriverManager:
         self.close()
         return self.init_driver()
 
-    def close(self):
+    def close(self) -> None:
         if self.driver:
             with contextlib.suppress(Exception):
                 self.driver.quit()

@@ -113,9 +113,9 @@ class OzonApiClient:
     def __init__(self) -> None:
         """Инициализирует клиент с заголовками и HTTP-клиентом."""
         self.base_url = settings.OZON_API_URL
-        self.headers = {
-            "Client-Id": settings.OZON_CLIENT_ID,
-            "Api-Key": settings.OZON_API_KEY,
+        self.headers: dict[str, str] = {
+            "Client-Id": settings.OZON_CLIENT_ID or "",
+            "Api-Key": settings.OZON_API_KEY or "",
             "Content-Type": "application/json",
         }
         self.client = httpx.AsyncClient(timeout=settings.API_HTTP_TIMEOUT)
@@ -129,7 +129,7 @@ class OzonApiClient:
     # ------------------------------------------------------------------
 
     @retry_on_error(max_retries=settings.API_MAX_RETRIES)
-    async def _get(self, url: str) -> dict | None:
+    async def _get(self, url: str) -> dict[str, Any] | None:
         """
         Выполняет GET-запрос с повторными попытками.
 
@@ -142,12 +142,12 @@ class OzonApiClient:
         """
         resp = await self.client.get(url, headers=self.headers)
         if resp.status_code == httpx.codes.OK:
-            return resp.json()
+            return resp.json()  # type: ignore[no-any-return]
         logger.warning(f"GET {url} returned {resp.status_code}, body: {resp.text[:500]}")
         return None
 
     @retry_on_error(max_retries=settings.API_MAX_RETRIES)
-    async def _post(self, url: str, payload: Any) -> dict | None:
+    async def _post(self, url: str, payload: Any) -> dict[str, Any] | None:
         """
         Выполняет POST-запрос с повторными попытками.
 
@@ -161,7 +161,7 @@ class OzonApiClient:
         """
         resp = await self.client.post(url, headers=self.headers, json=payload)
         if resp.status_code == httpx.codes.OK:
-            return resp.json()
+            return resp.json()  # type: ignore[no-any-return]
         logger.warning(f"POST {url} returned {resp.status_code}, body: {resp.text[:500]}")
         return None
 

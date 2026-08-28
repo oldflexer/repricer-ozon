@@ -8,6 +8,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from core.domain.pricing_rules import OzonPricingRules
 from core.pipeline.orchestrator import (
     PipelineDependencies,
     create_repricing_pipeline,
@@ -38,6 +39,7 @@ class RepricingUseCaseDependencies:
     api_client: IApiClient
     mail_notifier: INotifier
     loader: ILoader
+    pricing_rules: OzonPricingRules
     calculator: PriceCalculationService | None = None
     sync_service: RealPriceSyncService | None = None
     progress_callback: Callable[[int, int, str], None] | None = None
@@ -87,8 +89,9 @@ class RepricingUseCase:
             marginality_repo=self._deps.marginality_repo,
             maintenance_repo=self._deps.maintenance_repo,
             notifier=self._deps.mail_notifier,
-            calculator=self._deps.calculator or PriceCalculationService(),
+            calculator=self._deps.calculator or PriceCalculationService(self._deps.pricing_rules),
             sync_service=self._deps.sync_service or RealPriceSyncService(),
+            pricing_rules=self._deps.pricing_rules,
             dry_run=dry_run,
             progress_callback=self._deps.progress_callback,
         )

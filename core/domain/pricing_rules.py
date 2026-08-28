@@ -7,13 +7,9 @@
 
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import TYPE_CHECKING
 
-from config.settings import settings
+from config.settings import Settings
 from core.domain.value_objects import DiscountCoefficient, Money, Percentage
-
-if TYPE_CHECKING:
-    from config.settings import Settings
 
 
 @dataclass(frozen=True, slots=True)
@@ -168,21 +164,3 @@ class OzonPricingRules:
             cleanup_months=getattr(settings, "CLEANUP_MONTHS", 3),
             cleanup_days_threshold=getattr(settings, "CLEANUP_DAYS_THRESHOLD", 1),
         )
-
-
-# Singleton instance для использования в домене
-_pricing_rules: OzonPricingRules | None = None
-
-
-def get_pricing_rules() -> OzonPricingRules:
-    """Возвращает глобальный экземпляр правил (ленивая инициализация)."""
-    global _pricing_rules
-    if _pricing_rules is None:
-        _pricing_rules = OzonPricingRules.from_settings(settings)
-    return _pricing_rules
-
-
-def set_pricing_rules(rules: OzonPricingRules) -> None:
-    """Устанавливает глобальные правила (для тестов)."""
-    global _pricing_rules
-    _pricing_rules = rules

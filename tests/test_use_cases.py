@@ -6,6 +6,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from core.domain.pricing_rules import OzonPricingRules
 from core.entities import PricingData, ProductInfo, StrategyInterval
 from core.enums import StrategyType
 from core.use_cases import RepricingUseCase, RepricingUseCaseDependencies
@@ -62,6 +63,7 @@ async def test_execute_dry_run():
         api_client=api,
         mail_notifier=notifier,
         loader=loader,
+        pricing_rules=OzonPricingRules(),
     )
     use_case = RepricingUseCase(deps)
     stats = await use_case.execute(dry_run=True)
@@ -92,6 +94,7 @@ async def test_execute_without_products():
         api_client=api,
         mail_notifier=notifier,
         loader=loader,
+        pricing_rules=OzonPricingRules(),
     )
     use_case = RepricingUseCase(deps)
     stats = await use_case.execute(dry_run=False)

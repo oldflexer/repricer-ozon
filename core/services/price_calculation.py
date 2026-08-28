@@ -5,20 +5,21 @@
 from datetime import datetime
 
 from config.settings import TIMEZONE
+from core.domain.pricing_rules import OzonPricingRules
 from core.entities import PriceCalculationResult, PricingData, StrategyInterval
 from core.enums import StrategyType
 from infrastructure.logger import logger
 
 
 class PriceCalculationService:
-    def __init__(self, default_coefficient: float = 0.5) -> None:
-        self.default_coefficient = default_coefficient
+    def __init__(self, pricing_rules: OzonPricingRules) -> None:
+        self.pricing_rules = pricing_rules
 
     def calculate(self, sku: str, pricing: PricingData, rip: float, intervals: list[StrategyInterval], competitor_min_price: float | None = None, real_customer_price: float | None = None) -> PriceCalculationResult:
         index_prices: list[float] = []
         index_data: list[float] = []
         approx_real_price: float | None = None
-        discount_coef = self.default_coefficient
+        discount_coef = self.pricing_rules.default_discount_coef.value_float
         discount_coef_source = "default_env"
 
         if real_customer_price is not None and real_customer_price > 0 and pricing.marketing_seller_price and pricing.marketing_seller_price > 0:
@@ -110,12 +111,6 @@ class PriceCalculationService:
         real_price = result_target_price * discount_coef
         marginality_real_price = real_customer_price if real_customer_price is not None else real_price
         marginality = (marginality_real_price - total_costs) / marginality_real_price if marginality_real_price > 0 else 0.0
-        log_details = {"approx_real_price": approx_real_price, "discount_coef": discount_coef, "discount_coef_source": discount_coef_source, "default_coef_used": discount_coef == self.default_coefficient, "target_min_price": target_min_price, "strategy_type": strategy_type.value, "strategy_type_name": strategy_type.name, "strategy_price": strategy_price, "target_strategy_price": target_strategy_price, "result_target_price": result_target_price, "real_price": real_price, "marginality_real_price": marginality_real_price, "real_customer_price": real_customer_price, "ozon_index_data_price": pricing.ozon_index_data_price, "competitor_min_price": competitor_min_price, "base_price": base_price, "base_price_source": source, "intervals_used": len(intervals), "index_prices_count": len(index_prices), "reason": reason, "marginality_components": {"fbo_sales_commission": fbo_sales_commission, "fbo_deliv_to_customer": fbo_deliv_to_customer_amount, "fbo_direct_flow_avg": fbo_direct_flow_avg, "fbo_return_flow": fbo_return_flow_amount, "fbo_total": fbo_total, "fbs_sales_commission": fbs_sales_commission, "fbs_deliv_to_customer": fbs_deliv_to_customer_amount, "fbs_direct_flow_avg": fbs_direct_flow_avg, "fbs_first_mile_avg": fbs_first_mile_avg, "fbs_return_flow": fbs_return_flow_amount, "fbs_total": fbs_total, "net_price": pricing.net_price, "total_costs": total_costs}}
+        log_details = {"approx_real_price": approx_real_price, "discount_coef": discount_coef, "discount_coef_source": discount_coef_source, "default_coef_used": discount_coef == self.pricing_rules.default_discount_coef.value_float, "target_min_price": target_min_price, "strategy_type": strategy_type.value, "strategy_type_name": strategy_type.name, "strategy_price": strategy_price, "target_strategy_price": target_strategy_price, "result_target_price": result_target_price, "real_price": real_price, "marginality_real_price": marginality_real_price, "real_customer_price": real_customer_price, "ozon_index_data_price": pricing.ozon_index_data_price, "competitor_min_price": competitor_min_price, "base_price": base_price, "base_price_source": source, "intervals_used": len(intervals), "index_prices_count": len(index_prices), "reason": reason, "marginality_components": {"fbo_sales_commission": fbo_sales_commission, "fbo_deliv_to_customer": fbo_deliv_to_customer_amount, "fbo_direct_flow_avg": fbs_direct_flow_avg, "fbo_return_flow": fbo_return_flow_amount, "fbo_total": fbo_total, "fbs_sales_commission": fbs_sales_commission, "fbs_deliv_to_customer": fbs_deliv_to_customer_amount, "fbs_direct_flow_avg": fbs_direct_flow_avg, "fbs_first_mile_avg": fbs_first_mile_avg, "fbs_return_flow": fbs_return_flow_amount, "fbs_total": fbs_total, "net_price": pricing.net_price, "total_costs": total_costs}}
         logger.info(f"SKU {sku}: итоговая цена = {result_target_price} ₽, маржинальность = {marginality:.2%}, причина: {reason}")
         return PriceCalculationResult(sku=sku, target_min_price=target_min_price, strategy_price=strategy_price, target_strategy_price=target_strategy_price, result_target_price=result_target_price, marginality=marginality, log_details=log_details)
-
-def calculate_old_price(price: float, manual_old_price: float | None = None, multiplier: float = 1.5, round_to: int = 100) -> int:
-    if manual_old_price is not None and manual_old_price > price * multiplier:
-        return int(round(manual_old_price))
-    old = price * multiplier
-    return int((old + round_to - 1) // round_to * round_to)

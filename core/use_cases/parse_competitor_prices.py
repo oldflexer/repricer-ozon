@@ -10,7 +10,9 @@ UseCase для парсинга цен конкурентов с Ozon.
 import contextlib
 import random
 import time
+from typing import Any
 
+import numpy as np
 import pandas as pd
 
 from config.settings import settings
@@ -112,9 +114,22 @@ class ParseCompetitorPricesUseCase(BaseParserUseCase):
             url_col_name = f"{url_prefix} {i}"
             price_col_name = f"{price_prefix} {i}"
             if url_col_name in df.columns and price_col_name in df.columns:
+                url_loc = df.columns.get_loc(url_col_name)
+                price_loc = df.columns.get_loc(price_col_name)
+                # get_loc can return int, slice, or ndarray - handle all cases
+                def _to_int(loc: Any) -> int:
+                    if isinstance(loc, int):
+                        return loc
+                    if isinstance(loc, slice):
+                        return loc.start if loc.start is not None else 0
+                    if isinstance(loc, (list, tuple, np.ndarray)):
+                        return int(loc[0]) if len(loc) > 0 else 0
+                    return int(loc)
+                url_idx = _to_int(url_loc)
+                price_idx = _to_int(price_loc)
                 col_indices[i] = {
-                    "url_col": df.columns.get_loc(url_col_name) + 1,  # 1-based для openpyxl
-                    "price_col": df.columns.get_loc(price_col_name) + 1,
+                    "url_col": url_idx + 1,  # 1-based для openpyxl
+                    "price_col": price_idx + 1,
                 }
 
         if not col_indices:
@@ -122,7 +137,7 @@ class ParseCompetitorPricesUseCase(BaseParserUseCase):
             return {"updated": 0, "errors": 0, "skipped": 0}
 
         stats = {"updated": 0, "errors": 0, "skipped": 0}
-        excel_updates = {}
+        excel_updates: dict[tuple[int, int], float] = {}
 
         try:
             for row_num, (_, row) in enumerate(df.iterrows(), start=2):

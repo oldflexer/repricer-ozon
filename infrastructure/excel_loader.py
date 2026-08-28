@@ -255,9 +255,9 @@ class ExcelLoader(ILoader):
             logger.error(f"Ошибка обновления Excel: {e}")
             return False
 
-    def _build_column_map(self, ws, header_row: int) -> dict[str, int]:
+    def _build_column_map(self, ws: Any, header_row: int) -> dict[str, int]:
         """Строит маппинг полей на индексы колонок."""
-        col_map = {}
+        col_map: dict[str, int] = {}
         target_columns = {
             "current_price": ["ваша цена", "current_price", "price"],
             "min_price": ["минимальная цена", "min_price", "min"],
@@ -275,14 +275,14 @@ class ExcelLoader(ILoader):
                     break
         return col_map
 
-    def _find_sku_column_in_sheet(self, ws, header_row: int) -> int | None:
+    def _find_sku_column_in_sheet(self, ws: Any, header_row: int) -> int | None:
         """Находит колонку SKU в листе."""
         for col_idx, cell in enumerate(ws[header_row], start=1):
             if cell.value and str(cell.value).lower().strip() in ["sku", "артикул", "offer_id"]:
                 return col_idx
         return None
 
-    def _find_target_row(self, ws, sku_col: int, sku: str) -> int | None:
+    def _find_target_row(self, ws: Any, sku_col: int, sku: str) -> int | None:
         """Находит строку с заданным SKU."""
         for row_idx in range(2, ws.max_row + 1):
             sku_cell = ws.cell(row_idx, sku_col)
@@ -300,7 +300,7 @@ class ExcelLoader(ILoader):
         return None
 
     def _update_cells(
-        self, ws, target_row: int, col_map: dict[str, int], updates: dict[str, Any]
+        self, ws: Any, target_row: int, col_map: dict[str, int], updates: dict[str, Any]
     ) -> None:
         """Обновляет ячейки в строке."""
         for field, col_idx in col_map.items():
@@ -315,7 +315,7 @@ class ExcelLoader(ILoader):
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _parse_strategy_value(value) -> StrategyType:
+    def _parse_strategy_value(value: Any) -> StrategyType:
         """
         Преобразует значение стратегии из Excel в StrategyType enum.
 
@@ -473,10 +473,10 @@ class ExcelLoader(ILoader):
 
     # Новые приватные методы для разделения сложной функции load()
 
-    def _find_column_indices(self, ws) -> dict[str, int]:
+    def _find_column_indices(self, ws: Any) -> dict[str, int]:
         """Находит индексы колонок по заголовкам."""
         header_row = 1
-        col_map = {}
+        col_map: dict[str, int] = {}
         target_columns = {
             "current_price": ["ваша цена", "current_price", "price"],
             "min_price": ["минимальная цена", "min_price", "min"],
@@ -494,7 +494,7 @@ class ExcelLoader(ILoader):
                     break
         return col_map
 
-    def _find_sku_column_index(self, ws) -> int | None:
+    def _find_sku_column_index(self, ws: Any) -> int | None:
         """Находит колонку SKU."""
         header_row = 1
         for col_idx, cell in enumerate(ws[header_row], start=1):
@@ -502,7 +502,7 @@ class ExcelLoader(ILoader):
                 return col_idx
         return None
 
-    def _find_row_by_sku(self, ws, sku_col: int, sku: str) -> int | None:
+    def _find_row_by_sku(self, ws: Any, sku_col: int, sku: str) -> int | None:
         """Находит строку с нужным SKU."""
         for row_idx in range(2, ws.max_row + 1):
             sku_cell = ws.cell(row_idx, sku_col)
