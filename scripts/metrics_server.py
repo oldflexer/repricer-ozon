@@ -16,7 +16,10 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 
 from config.settings import settings
-from core.metrics import *  # Import to register metrics
+from core.metrics import get_metrics_registry  # Import to register metrics
+
+# Initialize metrics
+get_metrics_registry()
 
 
 class MetricsHandler(BaseHTTPRequestHandler):
@@ -27,7 +30,8 @@ class MetricsHandler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", CONTENT_TYPE_LATEST)
             self.end_headers()
-            self.wfile.write(generate_latest())
+            from core.metrics import get_metrics_registry
+            self.wfile.write(generate_latest(get_metrics_registry()))
         elif self.path == "/health":
             self.send_response(200)
             self.send_header("Content-Type", "application/json")

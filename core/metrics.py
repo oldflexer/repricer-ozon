@@ -1,37 +1,54 @@
-"""
-Prometheus metrics for the repricer application.
-"""
-
 from prometheus_client import Counter, Gauge, Histogram
+
+# Use a custom registry to avoid duplicate registration on Streamlit re-runs
+_metrics_registry = None
+
+
+def _get_metrics_registry():
+    """Get or create a custom metrics registry."""
+    global _metrics_registry
+    if _metrics_registry is None:
+        from prometheus_client import CollectorRegistry
+        _metrics_registry = CollectorRegistry()
+    return _metrics_registry
+
+
+# Initialize metrics at import time with custom registry
+registry = _get_metrics_registry()
 
 # Pipeline metrics
 repricer_cycle_duration_seconds = Histogram(
     "repricer_cycle_duration_seconds",
     "Duration of repricing cycle in seconds",
     buckets=[1, 5, 10, 30, 60, 120, 300, 600],
+    registry=registry,
 )
 
 repricer_products_loaded = Gauge(
     "repricer_products_loaded",
     "Number of products loaded in the last cycle",
+    registry=registry,
 )
 
 repricer_prices_updated = Counter(
     "repricer_prices_updated_total",
     "Total number of prices updated",
     ["status"],  # success, failed, dry_run
+    registry=registry,
 )
 
 repricer_errors_total = Counter(
     "repricer_errors_total",
     "Total number of errors by type",
     ["error_type", "step"],
+    registry=registry,
 )
 
 repricer_marginality = Gauge(
     "repricer_marginality",
     "Marginality by SKU",
     ["sku"],
+    registry=registry,
 )
 
 # Ozon API metrics
@@ -40,18 +57,21 @@ ozon_api_request_duration_seconds = Histogram(
     "Duration of Ozon API requests in seconds",
     ["endpoint"],
     buckets=[0.1, 0.5, 1, 2, 5, 10, 30],
+    registry=registry,
 )
 
 ozon_api_errors_total = Counter(
     "ozon_api_errors_total",
     "Total number of Ozon API errors",
     ["endpoint", "error_code"],
+    registry=registry,
 )
 
 ozon_api_circuit_breaker_state = Gauge(
     "ozon_api_circuit_breaker_state",
     "Circuit breaker state (0=closed, 1=open, 2=half-open)",
     ["endpoint"],
+    registry=registry,
 )
 
 # Generic Circuit Breaker metrics (for any service)
@@ -59,24 +79,28 @@ circuit_breaker_state = Gauge(
     "circuit_breaker_state",
     "Circuit breaker state (0=closed, 1=open, 2=half-open)",
     ["name"],
+    registry=registry,
 )
 
 circuit_breaker_failures_total = Counter(
     "circuit_breaker_failures_total",
     "Total number of circuit breaker failures",
     ["name"],
+    registry=registry,
 )
 
 circuit_breaker_successes_total = Counter(
     "circuit_breaker_successes_total",
     "Total number of circuit breaker successes",
     ["name"],
+    registry=registry,
 )
 
 circuit_breaker_state_changes_total = Counter(
     "circuit_breaker_state_changes_total",
     "Total number of circuit breaker state changes",
     ["name", "from_state", "to_state"],
+    registry=registry,
 )
 
 # Parser metrics
@@ -84,12 +108,14 @@ parser_price_fetch_duration_seconds = Histogram(
     "parser_price_fetch_duration_seconds",
     "Duration of competitor price fetching in seconds",
     buckets=[1, 5, 10, 30, 60, 120],
+    registry=registry,
 )
 
 parser_price_fetch_errors_total = Counter(
     "parser_price_fetch_errors_total",
     "Total number of parser price fetch errors",
     ["error_type"],
+    registry=registry,
 )
 
 # Database metrics
@@ -98,12 +124,14 @@ db_operations_duration_seconds = Histogram(
     "Duration of database operations in seconds",
     ["operation"],
     buckets=[0.01, 0.05, 0.1, 0.5, 1, 5],
+    registry=registry,
 )
 
 db_errors_total = Counter(
     "db_errors_total",
     "Total number of database errors",
     ["operation", "error_type"],
+    registry=registry,
 )
 
 # Excel metrics
@@ -112,12 +140,14 @@ excel_operations_duration_seconds = Histogram(
     "Duration of Excel operations in seconds",
     ["operation"],
     buckets=[0.1, 0.5, 1, 5, 10, 30],
+    registry=registry,
 )
 
 excel_errors_total = Counter(
     "excel_errors_total",
     "Total number of Excel errors",
     ["operation", "error_type"],
+    registry=registry,
 )
 
 
@@ -189,3 +219,10 @@ def record_excel_operation(operation: str, duration: float) -> None:
 def record_excel_error(operation: str, error_type: str) -> None:
     """Record Excel error."""
     excel_errors_total.labels(operation=operation, error_type=error_type).inc()
+
+
+def get_metrics_registry():
+    """Get the custom metrics registry for Prometheus exposition."""
+    return _get_metrics_registry()
+
+

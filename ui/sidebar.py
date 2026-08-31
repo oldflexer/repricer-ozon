@@ -46,6 +46,7 @@ LOCK_FILE = Path(tempfile.gettempdir()) / 'repricer_parser.lock'
 _background_threads: dict[str, threading.Thread] = {}
 _task_results: dict[str, tuple[str, str]] = {}
 _task_progress: dict[str, tuple[int, int, str]] = {}
+_task_events: dict[str, threading.Event] = {}  # Signal task completion
 def get_base64_encoded_image(image_path: Path) -> str:
     """
     Кодирует изображение в base64 для встраивания в HTML.
@@ -64,6 +65,10 @@ def _run_async_in_thread(
     coro: Any, task_id: str, progress_callback: Optional[Callable[[int, int, str], None]] = None
 ) -> None:
     """Запускает асинхронную корутину в отдельном потоке."""
+    # Create event for this task
+    event = threading.Event()
+    _task_events[task_id] = event
+    
     def run() -> None:
         loop = None
         try:
@@ -85,6 +90,8 @@ def _run_async_in_thread(
                 loop.close()
             # Clean up thread reference
             _background_threads.pop(task_id, None)
+            # Signal completion
+            event.set()
     
     thread = threading.Thread(target=run, daemon=True)
     _background_threads[task_id] = thread
@@ -322,8 +329,14 @@ def start_parsing_background(dry_run: bool) -> str:
     st.session_state.current_task_id = task_id
     st.session_state.parsing_dry_run = dry_run
     
-    async def _run() -> None:
-        await run_parsing(dry_run=dry_run)
+    async def _run() -> tuple[str, str]:
+        stats = await run_parsing(dry_run=dry_run)
+        msg = (
+            f"Готово! Обновлено цен: {stats.get('updated', 0)}, "
+            f"ошибок: {stats.get('errors', 0)}, "
+            f"пропущено: {stats.get('skipped', 0)}"
+        )
+        return msg, "success"
     
     _run_async_in_thread(_run(), task_id)
     return task_id
@@ -492,6 +505,17 @@ def _display_background_progress() -> None:
             st.progress(current / total, text=f"{message} ({current}/{total})")
         else:
             st.info(message)
+    
+    # If task is still running, check event and rerun when done
+    event = _task_events.get(task_id)
+    if event and not event.is_set():
+        # Task still running - use fragment to poll
+        @st.fragment(run_every=2)
+        def poll_task() -> None:
+            if event.is_set():
+                # Task completed, trigger rerun to show results
+                st.rerun()
+        poll_task()
 def render_sidebar() -> None:
     """Отрисовывает боковую панель дашборда."""
     icon_path = Path(__file__).parent.parent / "static" / "favicon.ico"
