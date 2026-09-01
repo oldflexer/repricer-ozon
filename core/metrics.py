@@ -1,10 +1,16 @@
+from __future__ import annotations
+
 from prometheus_client import Counter, Gauge, Histogram
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from prometheus_client import CollectorRegistry
 
 # Use a custom registry to avoid duplicate registration on Streamlit re-runs
 _metrics_registry = None
 
 
-def _get_metrics_registry():
+def _get_metrics_registry() -> "CollectorRegistry":
     """Get or create a custom metrics registry."""
     global _metrics_registry
     if _metrics_registry is None:
@@ -221,7 +227,7 @@ def record_excel_error(operation: str, error_type: str) -> None:
     excel_errors_total.labels(operation=operation, error_type=error_type).inc()
 
 
-def get_metrics_registry():
+def get_metrics_registry() -> "CollectorRegistry":
     """Get the custom metrics registry for Prometheus exposition."""
     return _get_metrics_registry()
 

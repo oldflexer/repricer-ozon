@@ -118,14 +118,6 @@ class Product:
             percent=Percentage.from_percent(0),
         )
 
-    def validate_min_price(self, price: Money, rules: OzonPricingRules) -> Money:
-        """Валидирует min_price через доменные правила."""
-        return rules.validate_min_price(price, self.min_price)
-
-    def calculate_old_price(self, price: Money, rules: OzonPricingRules) -> Money:
-        """Рассчитывает старую цену через доменные правила."""
-        return rules.calculate_old_price(price, self.old_price)
-
     # --- Методы обновления состояния ---
 
     def update_real_customer_price(self, price: Money) -> None:
