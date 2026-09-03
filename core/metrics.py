@@ -30,9 +30,23 @@ repricer_cycle_duration_seconds = Histogram(
     registry=registry,
 )
 
+repricer_pipeline_step_duration_seconds = Histogram(
+    "repricer_pipeline_step_duration_seconds",
+    "Duration of individual pipeline steps in seconds",
+    ["step"],
+    buckets=[0.1, 0.5, 1, 5, 10, 30, 60, 120],
+    registry=registry,
+)
+
 repricer_products_loaded = Gauge(
     "repricer_products_loaded",
     "Number of products loaded in the last cycle",
+    registry=registry,
+)
+
+repricer_active_tasks = Gauge(
+    "repricer_active_tasks",
+    "Number of currently active background tasks",
     registry=registry,
 )
 
@@ -162,9 +176,19 @@ def record_cycle_duration(duration: float) -> None:
     repricer_cycle_duration_seconds.observe(duration)
 
 
+def record_pipeline_step_duration(step: str, duration: float) -> None:
+    """Record the duration of a pipeline step."""
+    repricer_pipeline_step_duration_seconds.labels(step=step).observe(duration)
+
+
 def record_products_loaded(count: int) -> None:
     """Record the number of products loaded."""
     repricer_products_loaded.set(count)
+
+
+def set_active_tasks(count: int) -> None:
+    """Set the number of active background tasks."""
+    repricer_active_tasks.set(count)
 
 
 def record_prices_updated(status: str, count: int = 1) -> None:

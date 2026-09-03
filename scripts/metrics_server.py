@@ -6,6 +6,7 @@ Run this alongside the Streamlit app to expose /metrics endpoint.
 """
 
 import sys
+import json
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +18,7 @@ from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 
 from config.settings import settings
 from core.metrics import get_metrics_registry  # Import to register metrics
+from scripts.health_check import run_checks
 
 # Initialize metrics
 get_metrics_registry()
@@ -33,10 +35,13 @@ class MetricsHandler(BaseHTTPRequestHandler):
             from core.metrics import get_metrics_registry
             self.wfile.write(generate_latest(get_metrics_registry()))
         elif self.path == "/health":
-            self.send_response(200)
+            # Run comprehensive health checks
+            result = run_checks()
+            status_code = 200 if result["status"] == "healthy" else (503 if result["status"] == "unhealthy" else 200)
+            self.send_response(status_code)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
-            self.wfile.write(b'{"status": "healthy"}')
+            self.wfile.write(json.dumps(result, ensure_ascii=False).encode("utf-8"))
         else:
             self.send_response(404)
             self.end_headers()

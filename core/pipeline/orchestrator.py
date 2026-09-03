@@ -9,10 +9,12 @@ import time
 from core.domain.pricing_rules import OzonPricingRules
 from core.metrics import (
     record_cycle_duration,
+    record_pipeline_step_duration,
     record_products_loaded,
     record_prices_updated,
     record_error,
     record_marginality,
+    set_active_tasks,
 )
 from core.pipeline.steps import (
     CalculatePricesStep,
@@ -85,6 +87,7 @@ class PipelineOrchestrator:
         logger.info("Starting pipeline", steps=len(self.steps), request_id=request_id)
 
         try:
+            set_active_tasks(1)
             for i, step in enumerate(self.steps, start=1):
                 if context.should_stop:
                     logger.warning("Pipeline stopped before step", step=step.name, request_id=request_id)
@@ -92,6 +95,7 @@ class PipelineOrchestrator:
 
                 context.report_progress(i, f"Executing: {step.name}")
                 logger.info("Executing pipeline step", step=step.name, request_id=request_id)
+                step_start = time.time()
                 try:
                     await step.execute(context)
                 except Exception as e:
@@ -99,8 +103,12 @@ class PipelineOrchestrator:
                     context.add_error(f"Step {step.name} failed: {e}")
                     record_error(type(e).__name__, step.name)
                     context.should_stop = True
+                finally:
+                    step_duration = time.time() - step_start
+                    record_pipeline_step_duration(step.name, step_duration)
         finally:
             clear_request_id()
+            set_active_tasks(0)
             # Record metrics
             duration = time.time() - start_time
             record_cycle_duration(duration)
