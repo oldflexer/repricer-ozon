@@ -31,6 +31,4 @@ structlog==26.1.0
 # metrics
 prometheus-client==0.21.1
 # parser
-selenium==4.46.0
 undetected-chromedriver==3.5.5
-webdriver-manager==4.1.2

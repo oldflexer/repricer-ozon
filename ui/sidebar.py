@@ -31,7 +31,6 @@ from core.use_cases import (
 )
 from core.domain.pricing_rules import OzonPricingRules
 from infrastructure.logger import setup_logging, setup_parser_logging
-from infrastructure.x_display import get_available_display
 from ui.auth import get_session_info, logout
 from ui.cache import (
     get_api_client,
@@ -259,18 +258,6 @@ async def run_parsing(dry_run: bool = False) -> dict[str, Any]:
     """
     logger = setup_parser_logging("parser.log", mode="w")
     logger.info("=== Запуск парсинга из дашборда ===")
-
-    # Настройка окружения только для Linux
-    if not sys.platform.startswith("win"):
-        display = get_available_display()
-        if display:
-            os.environ["DISPLAY"] = display
-            logger.info(f"Установлен DISPLAY={display}")
-            if "XAUTHORITY" not in os.environ:
-                os.environ["XAUTHORITY"] = "/home/server/.Xauthority"
-        else:
-            logger.warning("X-сервер не найден. Возможно, парсинг не сможет открыть браузер.")
-    # На Windows ничего не делаем – DISPLAY не требуется
 
     use_case = ParseCompetitorPricesUseCase()
     return await use_case.execute(dry_run=dry_run)

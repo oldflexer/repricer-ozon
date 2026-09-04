@@ -1,5 +1,5 @@
 """
-Унифицированная инициализация Chrome-драйвера (обычный Selenium с профилем).
+Унифицированная инициализация Chrome-драйвера через undetected-chromedriver (UC).
 Поддерживает загрузку файлов в указанную папку.
 """
 
@@ -9,18 +9,9 @@ import sys
 from pathlib import Path
 from types import ModuleType
 
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options as ChromeOptions
-from selenium.webdriver.chrome.service import Service
+import undetected_chromedriver as uc  # type: ignore[import-untyped]
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.support.ui import WebDriverWait
-
-try:
-    from webdriver_manager.chrome import (
-        ChromeDriverManager as WDMChromeDriverManager,
-    )
-except Exception:
-    WDMChromeDriverManager = None  # type: ignore[assignment,misc]
 
 from config.settings import settings
 from infrastructure.logger import logger
@@ -103,43 +94,8 @@ class ChromeDriverManager:
                 except Exception:
                     pass
 
-    def _build_options(self) -> ChromeOptions:
-        options = ChromeOptions()
-        if self.headless:
-            options.add_argument("--headless")
-        options.add_argument("--no-sandbox")
-        options.add_argument("--disable-dev-shm-usage")
-        options.add_argument("--disable-gpu")
-        options.add_argument("--disable-blink-features=AutomationControlled")
-        options.add_argument("--remote-debugging-port=0")
-        options.add_argument("--no-first-run")
-        options.add_argument("--disable-default-apps")
-        options.add_argument("--disable-background-networking")
-        options.add_argument("--disable-sync")
-
-        if self.download_dir:
-            download_path = Path(self.download_dir).resolve()
-            download_path.mkdir(parents=True, exist_ok=True)
-            prefs = {
-                "download.default_directory": str(download_path),
-                "download.prompt_for_download": False,
-                "download.directory_upgrade": True,
-                "safebrowsing.enabled": True,
-            }
-            options.add_experimental_option("prefs", prefs)
-            logger.info(f"Загрузка файлов будет в: {download_path}")
-
-        profile_path = self._get_profile_path()
-        if profile_path:
-            if " " in profile_path:
-                options.add_argument(f'--user-data-dir="{profile_path}"')
-            else:
-                options.add_argument(f"--user-data-dir={profile_path}")
-            self._clean_profile_locks(profile_path)
-        return options
-
-    def _build_selenium_options(self) -> ChromeOptions:
-        options = ChromeOptions()
+    def _build_uc_options(self) -> uc.ChromeOptions:
+        options = uc.ChromeOptions()
         if self.headless:
             options.add_argument("--headless")
         options.add_argument("--no-sandbox")
@@ -171,41 +127,17 @@ class ChromeDriverManager:
         return options
 
     def init_driver(self) -> bool:
-        driver_path = None
         try:
-            try:
-                if WDMChromeDriverManager is not None:
-                    driver_path = WDMChromeDriverManager().install()
-            except Exception as e:
-                logger.warning(f"webdriver-manager не смог получить драйвер: {e}")
-
-            options = self._build_options()
-            if driver_path:
-                service = Service(executable_path=driver_path)
-                self.driver = webdriver.Chrome(service=service, options=options)
-            else:
-                self.driver = webdriver.Chrome(options=options)
-
+            options = self._build_uc_options()
+            self.driver = uc.Chrome(options=options, version_main=None)
             self._configure_driver()
-            logger.info("✅ Драйвер успешно инициализирован")
+            logger.info("✅ UC драйвер успешно инициализирован")
             return True
         except Exception as e:
-            logger.error(f"Ошибка инициализации драйвера: {e}")
-            try:
-                fallback_options = self._build_selenium_options()
-                if driver_path:
-                    service = Service(executable_path=driver_path)
-                    self.driver = webdriver.Chrome(service=service, options=fallback_options)
-                else:
-                    self.driver = webdriver.Chrome(options=fallback_options)
-                self._configure_driver()
-                logger.info("Драйвер инициализирован через fallback")
-                return True
-            except Exception as e2:
-                logger.error(f"Ошибка fallback-инициализации: {e2}")
-                self.driver = None
-                self.wait = None
-                return False
+            logger.error(f"Ошибка инициализации UC драйвера: {e}")
+            self.driver = None
+            self.wait = None
+            return False
 
     def _configure_driver(self) -> None:
         assert self.driver is not None
