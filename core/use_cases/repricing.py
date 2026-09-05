@@ -24,7 +24,6 @@ from core.protocols.repository import (
     IProductRepository,
 )
 from core.services.price_calculation import PriceCalculationService
-from core.services.real_price_sync import RealPriceSyncService
 
 
 @dataclass(slots=True)
@@ -41,7 +40,6 @@ class RepricingUseCaseDependencies:
     loader: ILoader
     pricing_rules: OzonPricingRules
     calculator: PriceCalculationService | None = None
-    sync_service: RealPriceSyncService | None = None
     progress_callback: Callable[[int, int, str], None] | None = None
 
 
@@ -90,7 +88,6 @@ class RepricingUseCase:
             maintenance_repo=self._deps.maintenance_repo,
             notifier=self._deps.mail_notifier,
             calculator=self._deps.calculator or PriceCalculationService(self._deps.pricing_rules),
-            sync_service=self._deps.sync_service or RealPriceSyncService(),
             pricing_rules=self._deps.pricing_rules,
             dry_run=dry_run,
             progress_callback=self._deps.progress_callback,

@@ -27,7 +27,6 @@ from core.protocols.repository import (
 from core.protocols.api import IApiClient
 from core.protocols.notifier import INotifier
 from core.services.price_calculation import PriceCalculationService
-from core.services.real_price_sync import RealPriceSyncService
 from core.enums import StrategyType
 
 

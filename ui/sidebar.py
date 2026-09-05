@@ -23,7 +23,6 @@ import streamlit as st
 from filelock import FileLock, Timeout
 
 from config.settings import settings
-from core.services.real_price_sync import RealPriceSyncService
 from core.use_cases import (
     ParseCompetitorPricesUseCase,
     RepricingUseCase,
@@ -96,14 +95,13 @@ def _run_async_in_thread(
     _background_threads[task_id] = thread
     thread.start()
 def run_repricing(
-    dry_run: bool = False, no_sync: bool = False, progress_callback: Optional[Callable[[int, int, str], None]] = None
+    dry_run: bool = False, progress_callback: Optional[Callable[[int, int, str], None]] = None
 ) -> dict[str, Any]:
     """
     Запускает репрайсинг в синхронном контексте (из Streamlit).
 
     Args:
         dry_run: Если True, цены не отправляются в Ozon.
-        no_sync: Если True, пропускает синхронизацию шаблона.
         progress_callback: Опциональный колбэк для отображения прогресса (current, total, message).
 
     Returns:
@@ -114,26 +112,7 @@ def run_repricing(
     logger.info("=== Запуск репрайсинга из дашборда ===")
 
     async def _run() -> dict[str, Any]:
-        # 1. Синхронизация реальных цен из шаблона (ДО репрайсинга)
-        if not no_sync:
-            logger.info("Выполняем синхронизацию реальных цен из шаблона...")
-            sync_service = RealPriceSyncService(
-                output_dir=str(Path("download").resolve()), headless=False
-            )
-            stats = await sync_service.sync_real_prices_async(
-                dry_run=dry_run,
-                keep_file=dry_run,
-                force_delete=False,
-                use_lock=True,
-            )
-            if stats:
-                logger.info(f"Синхронизация завершена: {stats}")
-            else:
-                logger.warning("Синхронизация не выполнена (возможно, занят lock или ошибка)")
-        else:
-            logger.info("Синхронизация пропущена (no_sync=True)")
-
-        # 2. Запуск репрайсинга
+        # Запуск репрайсинга
         loader = get_excel_loader()
         api = get_api_client()
         notifier = get_mail_notifier()

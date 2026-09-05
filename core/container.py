@@ -24,7 +24,6 @@ from core.protocols.repository import (
     IProductRepository,
 )
 from core.services.price_calculation import PriceCalculationService
-from core.services.real_price_sync import RealPriceSyncService
 from core.use_cases.disable_auto_add import DisableAutoAddUseCase
 from core.use_cases.parse_competitor_prices import ParseCompetitorPricesUseCase
 from core.use_cases.repricing import (
@@ -43,7 +42,6 @@ from infrastructure.excel_loader import ExcelLoader
 from infrastructure.mail_notifier import MailNotifier
 from infrastructure.ozon_api import OzonApiClient
 from infrastructure.ozon_competitor import OzonPriceParser
-from infrastructure.ozon_competitor_new import OzonPriceParserNew
 
 
 class Container(containers.DeclarativeContainer):
@@ -118,18 +116,6 @@ class Container(containers.DeclarativeContainer):
         OzonPriceParser,
     )
 
-    parser_new = providers.Factory(
-        OzonPriceParserNew,
-        timeout=30.0,
-        max_retries=3,
-        request_delay_min=config.parser.parser_request_delay_min,
-        request_delay_max=config.parser.parser_request_delay_max,
-    )
-
-    # Feature flag to switch between parsers (from settings)
-    use_new_parser = providers.Configuration()
-    use_new_parser.from_value("new" if settings.USE_NEW_PARSER else "old")
-
     # ------------------------------------------------------------------
     # Core Services (Singletons)
     # ------------------------------------------------------------------
@@ -137,12 +123,6 @@ class Container(containers.DeclarativeContainer):
     price_calculation_service = providers.Singleton(
         PriceCalculationService,
         pricing_rules=pricing_rules,
-    )
-
-    real_price_sync_service = providers.Singleton(
-        RealPriceSyncService,
-        output_dir=str(Path("download").resolve()),
-        headless=not config.debug,
     )
 
     # ------------------------------------------------------------------
@@ -172,7 +152,6 @@ class Container(containers.DeclarativeContainer):
             mail_notifier=notifier,
             loader=loader,
             calculator=price_calculation_service,
-            sync_service=real_price_sync_service,
             pricing_rules=pricing_rules,
         ),
     )
@@ -184,11 +163,7 @@ class Container(containers.DeclarativeContainer):
 
     parse_competitor_prices_use_case = providers.Factory(
         ParseCompetitorPricesUseCase,
-        parser=providers.Selector(
-            use_new_parser,
-            new=parser_new,
-            old=parser,
-        ),
+        parser=parser,
     )
 
     # ------------------------------------------------------------------
@@ -208,7 +183,6 @@ class Container(containers.DeclarativeContainer):
             maintenance_repo=maintenance_repo_protocol,
             notifier=notifier,
             calculator=price_calculation_service,
-            sync_service=real_price_sync_service,
             pricing_rules=pricing_rules,
             dry_run=False,  # Will be overridden per call
         ),

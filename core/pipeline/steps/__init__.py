@@ -12,13 +12,11 @@ from .persist_excel import PersistToExcelStep
 from .save_history import SaveHistoryStep
 from .send_report import SendReportStep
 from .submit_prices import SubmitPricesToOzonStep
-from .sync_real_prices import SyncRealPricesStep
 
 __all__ = [
     "PipelineStep",
     "PipelineContext",
     "PipelineResult",
-    "SyncRealPricesStep",
     "LoadProductsStep",
     "EnrichProductIdsStep",
     "FetchPricingDataStep",
