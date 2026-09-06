@@ -65,6 +65,11 @@ def render_service() -> None:
     # Диагностика
     _render_diagnostics(repo)
 
+    st.divider()
+
+    # Discount Coef Info
+    _render_discount_coef_info(repo)
+
 
 def _render_heatmap(repo: IRepository) -> None:
     """
@@ -297,6 +302,52 @@ def _render_diagnostics(repo: IRepository) -> None:
             st.success("База данных доступна", icon=":material/check_circle:")
         except Exception as e:
             st.error(f"Ошибка: {e}", icon=":material/cancel:")
+
+
+def _render_discount_coef_info(repo: IRepository) -> None:
+    """
+    Рендерит информацию о discount_coef для товаров.
+    """
+    st.subheader("Discount Coef (Коэффициент дисконта)")
+
+    products = repo.get_all_products()
+    if not products:
+        st.info("Нет товаров в БД", icon=":material/info:")
+        return
+
+    # Статистика по источникам
+    source_counts = {"parsed": 0, "historical": 0, "default": 0, "none": 0}
+    for p in products:
+        if p.discount_coef_source:
+            source_counts[p.discount_coef_source] = source_counts.get(p.discount_coef_source, 0) + 1
+        else:
+            source_counts["none"] += 1
+
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Parsed (парсинг)", source_counts.get("parsed", 0))
+    with col2:
+        st.metric("Historical (история)", source_counts.get("historical", 0))
+    with col3:
+        st.metric("Default (настройки)", source_counts.get("default", 0))
+    with col4:
+        st.metric("Не задано", source_counts.get("none", 0))
+
+    # Таблица с деталями
+    st.markdown("### Детали по товарам")
+    import pandas as pd
+    data = []
+    for p in products:
+        data.append({
+            "SKU": p.sku,
+            "Название": p.product_name[:50] + "..." if p.product_name and len(p.product_name) > 50 else p.product_name,
+            "Real Customer Price": f"{p.real_customer_price:.2f} ₽" if p.real_customer_price else "—",
+            "Discount Coef": f"{p.discount_coef:.4f}" if p.discount_coef else "—",
+            "Источник": p.discount_coef_source or "—",
+            "Обновлен": p.discount_coef_updated_at or "—",
+        })
+    df = pd.DataFrame(data)
+    st.dataframe(df, width="stretch", hide_index=True)
 
 
 

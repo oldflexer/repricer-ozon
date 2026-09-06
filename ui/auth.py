@@ -131,6 +131,21 @@ def get_session_info() -> dict:
     }
 
 
+def render_session_timer() -> None:
+    """Отображает таймер сессии с автообновлением каждую секунду."""
+    if not validate_session():
+        return
+
+    @st.fragment(run_every=1)
+    def timer_fragment() -> None:
+        expiry = st.session_state.get(SESSION_EXPIRY_KEY, 0)
+        remaining = max(0, int(expiry - time.time()))
+        mins, secs = divmod(remaining, 60)
+        st.markdown(f"**Осталось:** {mins:02d}:{secs:02d}")
+
+    timer_fragment()
+
+
 def require_auth() -> bool:
     """
     Требует аутентификацию - показывает форму входа если не аутентифицирован.

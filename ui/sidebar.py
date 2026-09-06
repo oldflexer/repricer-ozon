@@ -31,7 +31,7 @@ from core.use_cases import (
 from core.use_cases.parse_own_products import ParseOwnProductsUseCase
 from core.domain.pricing_rules import OzonPricingRules
 from infrastructure.logger import setup_logging, setup_parser_logging
-from ui.auth import get_session_info, logout
+from ui.auth import get_session_info, logout, render_session_timer
 from ui.cache import (
     get_api_client,
     get_excel_loader,
@@ -247,6 +247,27 @@ async def run_parsing(dry_run: bool = False) -> dict[str, Any]:
 
     use_case = ParseCompetitorPricesUseCase()
     return await use_case.execute(dry_run=dry_run)
+
+
+async def run_parsing_own_products(dry_run: bool = False) -> dict[str, Any]:
+    """
+    Запускает парсинг своих товаров в асинхронном контексте (из Streamlit).
+
+    Args:
+        dry_run: Если True, данные не записываются в БД.
+
+    Returns:
+        Словарь со статистикой {updated, errors, skipped}.
+    """
+    logger = setup_parser_logging("parser_own.log", mode="w")
+    logger.info("=== Запуск парсинга своих товаров из дашборда ===")
+
+    # Get dependencies from container
+    from core.container import container
+    use_case = container.parse_own_products_use_case()
+    return await use_case.execute(dry_run=dry_run)
+
+
 def execute_parsing(dry_run: bool) -> tuple[str, str]:
     """
     Выполняет парсинг конкурентов с отображением прогресса в Streamlit.
@@ -313,6 +334,36 @@ def start_parsing_background(dry_run: bool) -> str:
     
     _run_async_in_thread(_run(), task_id)
     return task_id
+
+
+def start_parsing_own_products_background(dry_run: bool) -> str:
+    """
+    Запускает парсинг своих товаров в фоновом потоке (неблокирующий).
+
+    Args:
+        dry_run: Флаг тестового запуска.
+
+    Returns:
+        ID задачи для отслеживания прогресса.
+    """
+    task_id = f"parsing_own_{int(time.time() * 1000)}"
+    st.session_state.parsing_running = True
+    st.session_state.current_task_id = task_id
+    st.session_state.parsing_dry_run = dry_run
+
+    async def _run() -> tuple[str, str]:
+        stats = await run_parsing_own_products(dry_run=dry_run)
+        msg = (
+            f"Готово! Обновлено товаров: {stats.get('updated', 0)}, "
+            f"ошибок: {stats.get('errors', 0)}, "
+            f"пропущено: {stats.get('skipped', 0)}"
+        )
+        return msg, "success"
+
+    _run_async_in_thread(_run(), task_id)
+    return task_id
+
+
 def render_sidebar_section_excel(disabled: bool) -> None:
     """
     Отрисовывает секцию работы с Excel (загрузка/скачивание).
@@ -445,6 +496,46 @@ def _handle_parsing_buttons(is_busy: bool) -> None:
         ):
             start_parsing_background(dry_run=True)
             st.rerun()
+
+    # Парсинг своих товаров
+    st.markdown(
+        '<h3><i class="fa-solid fa-box"></i> Парсинг своих товаров</h3>', unsafe_allow_html=True
+    )
+    if is_busy:
+        st.warning("Выполняется задача. Пожалуйста, подождите...", icon=":material/warning:")
+
+    if st.session_state.get("parsing_running"):
+        st.button(
+            'Парсинг своих товаров',
+            type="primary",
+            width="stretch",
+            disabled=True,
+            icon=":material/rocket_launch:",
+        )
+        st.button(
+            'Тест парсинга своих товаров',
+            width="stretch",
+            disabled=True,
+            icon=":material/bug_report:",
+        )
+    else:
+        if st.button(
+            'Парсинг своих товаров',
+            type="primary",
+            width="stretch",
+            icon=":material/rocket_launch:",
+        ):
+            start_parsing_own_products_background(dry_run=False)
+            st.rerun()
+        if st.button(
+            'Тест парсинга своих товаров',
+            width="stretch",
+            icon=":material/bug_report:",
+        ):
+            start_parsing_own_products_background(dry_run=True)
+            st.rerun()
+
+
 def _display_result_message() -> None:
     """Отображает сообщение о результате выполнения задачи."""
     if st.session_state.get("result_message"):
@@ -513,9 +604,7 @@ def render_sidebar() -> None:
         with st.expander("👤 Сессия", expanded=False):
             st.markdown(f"**Пользователь:** {session_info.get('user', 'N/A')}")
             st.markdown(f"**Токен:** `{session_info.get('token', 'N/A')}`")
-            expires = session_info.get('expires_in_seconds', 0)
-            mins, secs = divmod(expires, 60)
-            st.markdown(f"**Осталось:** {mins:02d}:{secs:02d}")
+            render_session_timer()
             if st.button("🚪 Выйти", use_container_width=True):
                 logout()
 
