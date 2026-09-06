@@ -26,6 +26,7 @@ from core.protocols.repository import (
 from core.services.price_calculation import PriceCalculationService
 from core.use_cases.disable_auto_add import DisableAutoAddUseCase
 from core.use_cases.parse_competitor_prices import ParseCompetitorPricesUseCase
+from core.use_cases.parse_own_products import ParseOwnProductsUseCase
 from core.use_cases.repricing import (
     RepricingUseCase,
     RepricingUseCaseDependencies,
@@ -139,6 +140,18 @@ class Container(containers.DeclarativeContainer):
     # Coordinators / Use Cases (Factories - new for each run)
     # ------------------------------------------------------------------
 
+    parse_competitor_prices_use_case = providers.Factory(
+        ParseCompetitorPricesUseCase,
+        parser=parser,
+    )
+
+    parse_own_products_use_case = providers.Factory(
+        ParseOwnProductsUseCase,
+        parser=parser,
+        product_repo=product_repo_protocol,
+        api_client=api_client,
+    )
+
     repricing_use_case = providers.Factory(
         RepricingUseCase,
         deps=providers.Factory(
@@ -153,17 +166,13 @@ class Container(containers.DeclarativeContainer):
             loader=loader,
             calculator=price_calculation_service,
             pricing_rules=pricing_rules,
+            parse_own_products_use_case=parse_own_products_use_case,
         ),
     )
 
     disable_auto_add_use_case = providers.Factory(
         DisableAutoAddUseCase,
         api_client=api_client,
-    )
-
-    parse_competitor_prices_use_case = providers.Factory(
-        ParseCompetitorPricesUseCase,
-        parser=parser,
     )
 
     # ------------------------------------------------------------------
@@ -184,6 +193,7 @@ class Container(containers.DeclarativeContainer):
             notifier=notifier,
             calculator=price_calculation_service,
             pricing_rules=pricing_rules,
+            parse_own_products_use_case=parse_own_products_use_case,
             dry_run=False,  # Will be overridden per call
         ),
     )

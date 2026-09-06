@@ -8,6 +8,7 @@ from config.settings import TIMEZONE
 from core.domain.pricing_rules import OzonPricingRules
 from core.entities import PriceCalculationResult, PricingData, StrategyInterval
 from core.enums import StrategyType
+from core.protocols.repository import IProductRepository
 from infrastructure.logger import logger
 
 
@@ -15,38 +16,53 @@ class PriceCalculationService:
     def __init__(self, pricing_rules: OzonPricingRules) -> None:
         self.pricing_rules = pricing_rules
 
-    def calculate(self, sku: str, pricing: PricingData, rip: float, intervals: list[StrategyInterval], competitor_min_price: float | None = None, real_customer_price: float | None = None) -> PriceCalculationResult:
+    def _resolve_discount_coef(
+        self, sku: str, pricing: PricingData, product_repo: IProductRepository | None
+    ) -> tuple[float, str]:
+        """
+        Определяет discount_coef по приоритету:
+        1. real_customer_price / marketing_seller_price (если парсинг своих товаров УСПЕШЕН)
+        2. discount_coef из БД (историческое значение)
+        3. default_discount_coef из .env
+
+        Returns:
+            (discount_coef, source) где source: 'parsed' | 'historical' | 'default'
+        """
+        # 1️⃣ Попытка получить real_customer_price из БД (заполнен ParseOwnProductsUseCase)
+        if product_repo:
+            products = product_repo.get_all_products()
+            product = next((p for p in products if p.sku == sku), None)
+            if product and product.real_customer_price and pricing.marketing_seller_price:
+                coef = product.real_customer_price / pricing.marketing_seller_price
+                if 0.01 < coef < 1.0:  # sanity check
+                    return coef, 'parsed'
+
+            # 2️⃣ Исторический discount_coef из БД
+            if product and product.discount_coef:
+                return product.discount_coef, 'historical'
+
+        # 3️⃣ Default из настроек
+        return self.pricing_rules.default_discount_coef.value_float, 'default'
+
+    def calculate(
+        self,
+        sku: str,
+        pricing: PricingData,
+        rip: float,
+        intervals: list[StrategyInterval],
+        competitor_min_price: float | None = None,
+        real_customer_price: float | None = None,
+        product_repo: IProductRepository | None = None,
+    ) -> PriceCalculationResult:
         index_prices: list[float] = []
         index_data: list[float] = []
         approx_real_price: float | None = None
-        discount_coef = self.pricing_rules.default_discount_coef.value_float
-        discount_coef_source = "default_env"
 
-        if real_customer_price is not None and real_customer_price > 0 and pricing.marketing_seller_price and pricing.marketing_seller_price > 0:
-            discount_coef = real_customer_price / pricing.marketing_seller_price
-            discount_coef_source = "real_customer_price"
-            logger.info(f"SKU {sku}: discount_coef = {discount_coef:.4f} (source: {discount_coef_source})")
-        elif pricing.marketing_seller_price and pricing.marketing_seller_price > 0:
-            if pricing.external_index_data_index and pricing.external_index_data_index != 0 and pricing.external_index_data_price is not None:
-                index_prices.append(pricing.external_index_data_price)
-                index_data.append(pricing.external_index_data_index)
-            if pricing.ozon_index_data_index and pricing.ozon_index_data_index != 0 and pricing.ozon_index_data_price is not None:
-                index_prices.append(pricing.ozon_index_data_price)
-                index_data.append(pricing.ozon_index_data_index)
-            if pricing.self_marketplaces_index_data_index and pricing.self_marketplaces_index_data_index != 0 and pricing.self_marketplaces_index_data_price is not None:
-                index_prices.append(pricing.self_marketplaces_index_data_price)
-                index_data.append(pricing.self_marketplaces_index_data_index)
-            if index_prices and index_data:
-                approx_index_price = sum(index_prices) / len(index_prices)
-                approx_index_data = sum(index_data) / len(index_data)
-                if approx_index_price and approx_index_data:
-                    approx_real_price = approx_index_price * approx_index_data
-            if approx_real_price is not None:
-                discount_coef = approx_real_price / pricing.marketing_seller_price
-                discount_coef_source = "indexes"
-                logger.info(f"SKU {sku}: discount_coef = {discount_coef:.4f} (source: {discount_coef_source})")
-        else:
-            logger.info(f"SKU {sku}: discount_coef = {discount_coef:.4f} (source: {discount_coef_source})")
+        # Новая логика приоритизации discount_coef
+        discount_coef, discount_coef_source = self._resolve_discount_coef(
+            sku, pricing, product_repo
+        )
+        logger.info(f"SKU {sku}: discount_coef = {discount_coef:.4f} (source: {discount_coef_source})")
 
         target_min_price = rip / discount_coef if discount_coef else rip
         now = datetime.now(TIMEZONE).time()

@@ -22,6 +22,7 @@ from core.pipeline.steps import (
     EnrichProductIdsStep,
     FetchPricingDataStep,
     LoadProductsStep,
+    ParseOwnProductsStep,
     PersistToExcelStep,
     PipelineContext,
     PipelineStep,
@@ -29,6 +30,10 @@ from core.pipeline.steps import (
     SendReportStep,
     SubmitPricesToOzonStep,
 )
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from core.use_cases.parse_own_products import ParseOwnProductsUseCase
 from core.protocols.api import IApiClient
 from core.protocols.loader import ILoader
 from core.protocols.notifier import INotifier
@@ -166,6 +171,7 @@ class PipelineDependencies:
     notifier: INotifier
     calculator: PriceCalculationService
     pricing_rules: OzonPricingRules
+    parse_own_products_use_case: "ParseOwnProductsUseCase"
     dry_run: bool = False
     progress_callback: Callable[[int, int, str], None] | None = None
 
@@ -190,6 +196,7 @@ def create_repricing_pipeline(
     """
 
     steps = [
+        ParseOwnProductsStep(deps.parse_own_products_use_case, deps.dry_run),
         LoadProductsStep(deps.loader, deps.product_repo),
         EnrichProductIdsStep(deps.api_client),
         FetchPricingDataStep(deps.api_client),

@@ -27,6 +27,9 @@ class ProductInfo:
         offer_id: Offer ID товара.
         real_customer_price: Реальная цена покупателя (FBS).
         competitor_min_price: Минимальная цена конкурента.
+        discount_coef: Коэффициент дисконта (кэш из парсинга своих товаров).
+        discount_coef_source: Источник discount_coef ('parsed' | 'historical' | 'default').
+        discount_coef_updated_at: Время последнего обновления discount_coef.
     """
 
     sku: str
@@ -39,6 +42,9 @@ class ProductInfo:
     offer_id: str | None = None
     real_customer_price: float | None = None
     competitor_min_price: float | None = None
+    discount_coef: float | None = None
+    discount_coef_source: str | None = None
+    discount_coef_updated_at: str | None = None
 
 
 @dataclass

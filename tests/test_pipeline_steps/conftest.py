@@ -121,14 +121,6 @@ def mock_calculator() -> AsyncMock:
 
 
 @pytest.fixture
-def mock_sync_service() -> AsyncMock:
-    """Mock RealPriceSyncService."""
-    service = AsyncMock(spec=RealPriceSyncService)
-    service.sync_real_prices_async.return_value = {}
-    return service
-
-
-@pytest.fixture
 def pricing_rules() -> OzonPricingRules:
     """Real OzonPricingRules instance for testing."""
     return OzonPricingRules()

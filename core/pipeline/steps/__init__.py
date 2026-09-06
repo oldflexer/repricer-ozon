@@ -8,6 +8,7 @@ from .cleanup_db import CleanupDatabaseStep
 from .enrich_ids import EnrichProductIdsStep
 from .fetch_pricing import FetchPricingDataStep
 from .load_products import LoadProductsStep
+from .parse_own_products import ParseOwnProductsStep
 from .persist_excel import PersistToExcelStep
 from .save_history import SaveHistoryStep
 from .send_report import SendReportStep
@@ -17,6 +18,7 @@ __all__ = [
     "PipelineStep",
     "PipelineContext",
     "PipelineResult",
+    "ParseOwnProductsStep",
     "LoadProductsStep",
     "EnrichProductIdsStep",
     "FetchPricingDataStep",

@@ -28,6 +28,7 @@ from core.use_cases import (
     RepricingUseCase,
     RepricingUseCaseDependencies,
 )
+from core.use_cases.parse_own_products import ParseOwnProductsUseCase
 from core.domain.pricing_rules import OzonPricingRules
 from infrastructure.logger import setup_logging, setup_parser_logging
 from ui.auth import get_session_info, logout
@@ -118,6 +119,11 @@ def run_repricing(
         notifier = get_mail_notifier()
         repo = get_repo()
         pricing_rules = OzonPricingRules.from_settings(settings)
+        
+        # Get parse_own_products_use_case from container
+        from core.container import container
+        parse_own_products_use_case = container.parse_own_products_use_case()
+        
         deps = RepricingUseCaseDependencies(
             product_repo=repo,
             history_repo=repo,
@@ -129,6 +135,7 @@ def run_repricing(
             loader=loader,
             calculator=None,
             pricing_rules=pricing_rules,
+            parse_own_products_use_case=parse_own_products_use_case,
             progress_callback=progress_callback,
         )
         use_case = RepricingUseCase(deps)

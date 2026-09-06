@@ -1,5 +1,6 @@
 import sys
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -8,6 +9,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from core.domain.pricing_rules import OzonPricingRules
 from core.entities import PricingData
 from core.use_cases import RepricingUseCase, RepricingUseCaseDependencies
+from core.use_cases.parse_own_products import ParseOwnProductsUseCase
 from infrastructure.db import SQLiteRepository
 from infrastructure.excel_loader import ExcelLoader
 from infrastructure.mail_notifier import MailNotifier
@@ -116,6 +118,9 @@ async def test_full_cycle_dry_run(tmp_path):
     )
     mock_api.set_price(1, pricing)
 
+    parse_own_products_use_case = MagicMock(spec=ParseOwnProductsUseCase)
+    parse_own_products_use_case.execute = AsyncMock(return_value={"updated": 0, "errors": 0, "skipped": 0})
+
     deps = RepricingUseCaseDependencies(
         product_repo=repo,
         history_repo=repo,
@@ -126,6 +131,7 @@ async def test_full_cycle_dry_run(tmp_path):
         mail_notifier=notifier,
         loader=loader,
         pricing_rules=OzonPricingRules(),
+        parse_own_products_use_case=parse_own_products_use_case,
     )
     use_case = RepricingUseCase(deps)
     stats = await use_case.execute(dry_run=True)

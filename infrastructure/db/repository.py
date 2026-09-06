@@ -59,6 +59,12 @@ class SQLiteRepository(
             with self._get_connection() as conn, sql_002.open(encoding="utf-8") as f:
                 conn.executescript(f.read())
 
+        # Выполняем миграцию 003
+        sql_003 = sql_dir / "003_add_discount_coef.sql"
+        if sql_003.exists():
+            with self._get_connection() as conn, sql_003.open(encoding="utf-8") as f:
+                conn.executescript(f.read())
+
     # ------------------------------------------------------------------
     # Вспомогательные методы
     # ------------------------------------------------------------------
@@ -80,7 +86,7 @@ class SQLiteRepository(
         with self._get_connection() as conn:
             rows = conn.execute("""
                 SELECT product_id, offer_id, sku, product_name, rip, net_price,
-                       real_customer_price
+                       real_customer_price, discount_coef, discount_coef_source, discount_coef_updated_at
                 FROM product
             """).fetchall()
             return [
@@ -92,6 +98,9 @@ class SQLiteRepository(
                     min_price=r["rip"] or 0.0,
                     cost_price=r["net_price"] or 0.0,
                     real_customer_price=r["real_customer_price"],
+                    discount_coef=r["discount_coef"],
+                    discount_coef_source=r["discount_coef_source"],
+                    discount_coef_updated_at=r["discount_coef_updated_at"],
                 )
                 for r in rows
             ]
@@ -165,6 +174,35 @@ class SQLiteRepository(
                 WHERE sku = ?
                 """,
                 (real_price, sku),
+            )
+            conn.commit()
+            return True
+
+    def update_discount_coef(
+        self, sku: str, discount_coef: float, source: str
+    ) -> bool:
+        """
+        Обновляет discount_coef для товара (только при успешном парсинге своих товаров).
+
+        Args:
+            sku: Артикул товара.
+            discount_coef: Новый коэффициент дисконта.
+            source: Источник ('parsed' | 'historical' | 'default').
+
+        Returns:
+            True в случае успеха.
+        """
+        with self._get_connection() as conn:
+            conn.execute(
+                """
+                UPDATE product
+                SET discount_coef = ?,
+                    discount_coef_source = ?,
+                    discount_coef_updated_at = CURRENT_TIMESTAMP,
+                    last_updated = CURRENT_TIMESTAMP
+                WHERE sku = ?
+                """,
+                (discount_coef, source, sku),
             )
             conn.commit()
             return True

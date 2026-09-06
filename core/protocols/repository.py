@@ -37,6 +37,11 @@ class IProductRepository(Protocol):
         ...
 
     @abstractmethod
+    def update_discount_coef(self, sku: str, discount_coef: float, source: str) -> bool:
+        """Обновляет discount_coef для товара (только при успешном парсинге своих товаров)."""
+        ...
+
+    @abstractmethod
     def get_strategies(self, sku: str) -> list[StrategyInterval]:
         """Возвращает список интервалов стратегий для товара."""
         ...
