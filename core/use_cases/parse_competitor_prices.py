@@ -16,10 +16,10 @@ import numpy as np
 import pandas as pd
 
 from config.settings import settings
+from core.protocols.parser import OzonPriceParserProtocol
 from core.use_cases.base_parser import BaseParserUseCase
 from infrastructure.file_utils import save_safely, wait_for_excel_available
 from infrastructure.logger import logger
-from infrastructure.ozon_competitor import OzonPriceParser
 from scripts.common import is_shutdown_requested
 
 
@@ -30,14 +30,15 @@ class ParseCompetitorPricesUseCase(BaseParserUseCase):
     Использует OzonPriceParser (Selenium) для извлечения цен со страниц товаров.
     """
 
-    def __init__(self, parser: OzonPriceParser | None = None):
+    def __init__(self, parser: OzonPriceParserProtocol | None = None):
         """
         Инициализирует UseCase.
 
         Args:
-            parser: Экземпляр OzonPriceParser (опционально, будет создан при необходимости).
+            parser: Экземпляр парсера, реализующий OzonPriceParserProtocol
+                    (опционально, будет создан при необходимости).
         """
-        self.parser = parser or OzonPriceParser()
+        self.parser = parser
 
     def _parse_price_with_retry(self, url: str) -> float | None:
         """
@@ -49,6 +50,11 @@ class ParseCompetitorPricesUseCase(BaseParserUseCase):
         Returns:
             Цена (float), -1.0 если товар закончился, None при ошибке.
         """
+        # Ensure parser is initialized
+        if self.parser is None:
+            from infrastructure.ozon_competitor import OzonPriceParser
+            self.parser = OzonPriceParser()
+
         for attempt in range(1, settings.PARSER_RETRIES + 1):
             if is_shutdown_requested():
                 logger.info("Shutdown requested, stopping price parsing")
@@ -89,6 +95,11 @@ class ParseCompetitorPricesUseCase(BaseParserUseCase):
         Returns:
             Словарь со статистикой: updated, errors, skipped.
         """
+        # Lazy initialization of parser
+        if self.parser is None:
+            from infrastructure.ozon_competitor import OzonPriceParser
+            self.parser = OzonPriceParser()
+
         excel_path = settings.data_file_path
 
         if not excel_path.exists():

@@ -13,11 +13,12 @@ from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.support import expected_conditions as ec
 from selenium.webdriver.support.ui import WebDriverWait
 
+from core.protocols.parser import OzonPriceParserProtocol
 from infrastructure.chrome_driver import ChromeDriverManager
 from infrastructure.logger import logger
 
 
-class OzonPriceParser:
+class OzonPriceParser(OzonPriceParserProtocol):
     """
     Парсер цен конкурентов на Ozon.
 

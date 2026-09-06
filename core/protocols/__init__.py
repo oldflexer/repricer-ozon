@@ -2,7 +2,7 @@
 Protocols package - typed interfaces for dependency injection.
 """
 
-from .parser import OzonPriceParserProtocol, OzonPriceParserBase
+from .parser import OzonPriceParserProtocol
 from .repository import (
     IAnalyticsRepository,
     IMaintenanceRepository,
@@ -20,5 +20,4 @@ __all__ = [
     "IMaintenanceRepository",
     "IRepository",
     "OzonPriceParserProtocol",
-    "OzonPriceParserBase",
 ]

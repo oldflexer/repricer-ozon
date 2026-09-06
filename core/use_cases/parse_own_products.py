@@ -13,10 +13,10 @@ from typing import Any
 
 from config.settings import settings
 from core.protocols.api import IApiClient
+from core.protocols.parser import OzonPriceParserProtocol
 from core.protocols.repository import IProductRepository
 from core.use_cases.base_parser import BaseParserUseCase
 from infrastructure.logger import logger
-from infrastructure.ozon_competitor import OzonPriceParser
 from scripts.common import is_shutdown_requested
 
 
@@ -30,7 +30,7 @@ class ParseOwnProductsUseCase(BaseParserUseCase):
 
     def __init__(
         self,
-        parser: OzonPriceParser | None = None,
+        parser: OzonPriceParserProtocol | None = None,
         product_repo: IProductRepository | None = None,
         api_client: IApiClient | None = None,
     ):
@@ -38,11 +38,12 @@ class ParseOwnProductsUseCase(BaseParserUseCase):
         Инициализирует UseCase.
 
         Args:
-            parser: Экземпляр OzonPriceParser (опционально, будет создан при необходимости).
+            parser: Экземпляр парсера, реализующий OzonPriceParserProtocol
+                    (опционально, будет создан при необходимости).
             product_repo: Репозиторий для обновления БД (опционально).
             api_client: Клиент Ozon API для получения marketing_seller_price (опционально).
         """
-        self.parser = parser or OzonPriceParser()
+        self.parser = parser
         self.product_repo = product_repo
         self.api_client = api_client
 
@@ -56,6 +57,11 @@ class ParseOwnProductsUseCase(BaseParserUseCase):
         Returns:
             Цена (float), -1.0 если товар закончился, None при ошибке.
         """
+        # Ensure parser is initialized
+        if self.parser is None:
+            from infrastructure.ozon_competitor import OzonPriceParser
+            self.parser = OzonPriceParser()
+
         for attempt in range(1, settings.PARSER_RETRIES + 1):
             if is_shutdown_requested():
                 logger.info("Shutdown requested, stopping own product price parsing")
@@ -96,6 +102,11 @@ class ParseOwnProductsUseCase(BaseParserUseCase):
         Returns:
             Словарь со статистикой: updated, errors, skipped.
         """
+        # Lazy initialization of parser
+        if self.parser is None:
+            from infrastructure.ozon_competitor import OzonPriceParser
+            self.parser = OzonPriceParser()
+
         if not self.product_repo:
             logger.error("Product repository not provided")
             return {"updated": 0, "errors": 0, "skipped": 0}
