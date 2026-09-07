@@ -138,6 +138,39 @@ parser_price_fetch_errors_total = Counter(
     registry=registry,
 )
 
+parser_price_fetch_total = Counter(
+    "parser_price_fetch_total",
+    "Total number of parser price fetch attempts",
+    ["result"],  # success, error, captcha, out_of_stock, skipped
+    registry=registry,
+)
+
+parser_captcha_detected_total = Counter(
+    "parser_captcha_detected_total",
+    "Total number of CAPTCHA detections",
+    registry=registry,
+)
+
+parser_block_detected_total = Counter(
+    "parser_block_detected_total",
+    "Total number of IP/block detections",
+    registry=registry,
+)
+
+parser_retry_total = Counter(
+    "parser_retry_total",
+    "Total number of parser retries",
+    ["attempt"],  # attempt number
+    registry=registry,
+)
+
+parser_graceful_degradation_total = Counter(
+    "parser_graceful_degradation_total",
+    "Total number of graceful degradation events",
+    ["reason"],  # captcha, block, timeout, etc.
+    registry=registry,
+)
+
 # Database metrics
 db_operations_duration_seconds = Histogram(
     "db_operations_duration_seconds",
@@ -229,6 +262,31 @@ def record_parser_price_fetch(duration: float) -> None:
 def record_parser_price_fetch_error(error_type: str) -> None:
     """Record parser price fetch error."""
     parser_price_fetch_errors_total.labels(error_type=error_type).inc()
+
+
+def record_parser_price_fetch_result(result: str) -> None:
+    """Record parser price fetch result (success, error, captcha, out_of_stock, skipped)."""
+    parser_price_fetch_total.labels(result=result).inc()
+
+
+def record_parser_captcha_detected() -> None:
+    """Record CAPTCHA detection."""
+    parser_captcha_detected_total.inc()
+
+
+def record_parser_block_detected() -> None:
+    """Record IP/block detection."""
+    parser_block_detected_total.inc()
+
+
+def record_parser_retry(attempt: int) -> None:
+    """Record parser retry attempt."""
+    parser_retry_total.labels(attempt=str(attempt)).inc()
+
+
+def record_parser_graceful_degradation(reason: str) -> None:
+    """Record graceful degradation event."""
+    parser_graceful_degradation_total.labels(reason=reason).inc()
 
 
 def record_db_operation(operation: str, duration: float) -> None:

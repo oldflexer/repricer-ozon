@@ -12,6 +12,7 @@ import time
 from typing import Any
 
 from config.settings import settings
+from core.metrics import record_parser_retry
 from core.protocols.api import IApiClient
 from core.protocols.parser import OzonPriceParserProtocol
 from core.protocols.repository import IProductRepository
@@ -82,6 +83,7 @@ class ParseOwnProductsUseCase(BaseParserUseCase):
                 )
 
             if attempt < settings.PARSER_RETRIES:
+                record_parser_retry(attempt)
                 logger.info(f"Перезапуск драйвера перед повторной попыткой {attempt + 1}...")
                 try:
                     self.parser.restart()

@@ -16,6 +16,7 @@ import numpy as np
 import pandas as pd
 
 from config.settings import settings
+from core.metrics import record_parser_retry
 from core.protocols.parser import OzonPriceParserProtocol
 from core.use_cases.base_parser import BaseParserUseCase
 from infrastructure.file_utils import save_safely, wait_for_excel_available
@@ -75,6 +76,7 @@ class ParseCompetitorPricesUseCase(BaseParserUseCase):
                 )
 
             if attempt < settings.PARSER_RETRIES:
+                record_parser_retry(attempt)
                 logger.info(f"Перезапуск драйвера перед повторной попыткой {attempt + 1}...")
                 try:
                     self.parser.restart()
