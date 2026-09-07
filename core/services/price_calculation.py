@@ -129,4 +129,14 @@ class PriceCalculationService:
         marginality = (marginality_real_price - total_costs) / marginality_real_price if marginality_real_price > 0 else 0.0
         log_details = {"approx_real_price": approx_real_price, "discount_coef": discount_coef, "discount_coef_source": discount_coef_source, "default_coef_used": discount_coef == self.pricing_rules.default_discount_coef.value_float, "target_min_price": target_min_price, "strategy_type": strategy_type.value, "strategy_type_name": strategy_type.name, "strategy_price": strategy_price, "target_strategy_price": target_strategy_price, "result_target_price": result_target_price, "real_price": real_price, "marginality_real_price": marginality_real_price, "real_customer_price": real_customer_price, "ozon_index_data_price": pricing.ozon_index_data_price, "competitor_min_price": competitor_min_price, "base_price": base_price, "base_price_source": source, "intervals_used": len(intervals), "index_prices_count": len(index_prices), "reason": reason, "marginality_components": {"fbo_sales_commission": fbo_sales_commission, "fbo_deliv_to_customer": fbo_deliv_to_customer_amount, "fbo_direct_flow_avg": fbs_direct_flow_avg, "fbo_return_flow": fbo_return_flow_amount, "fbo_total": fbo_total, "fbs_sales_commission": fbs_sales_commission, "fbs_deliv_to_customer": fbs_deliv_to_customer_amount, "fbs_direct_flow_avg": fbs_direct_flow_avg, "fbs_first_mile_avg": fbs_first_mile_avg, "fbs_return_flow": fbs_return_flow_amount, "fbs_total": fbs_total, "net_price": pricing.net_price, "total_costs": total_costs}}
         logger.info(f"SKU {sku}: итоговая цена = {result_target_price} ₽, маржинальность = {marginality:.2%}, причина: {reason}")
-        return PriceCalculationResult(sku=sku, target_min_price=target_min_price, strategy_price=strategy_price, target_strategy_price=target_strategy_price, result_target_price=result_target_price, marginality=marginality, log_details=log_details)
+        return PriceCalculationResult(
+            sku=sku,
+            target_min_price=target_min_price,
+            strategy_price=strategy_price,
+            target_strategy_price=target_strategy_price,
+            result_target_price=result_target_price,
+            marginality=marginality,
+            discount_coef=discount_coef,
+            discount_coef_source=discount_coef_source,
+            log_details=log_details,
+        )

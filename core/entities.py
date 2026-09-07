@@ -145,6 +145,8 @@ class PriceCalculationResult:
         target_strategy_price: Цена по стратегии с учётом дисконта.
         result_target_price: Итоговая цена для отправки в Ozon (округлённая).
         marginality: Рассчитанная маржинальность (в долях).
+        discount_coef: Использованный коэффициент дисконта.
+        discount_coef_source: Источник discount_coef ('parsed' | 'historical' | 'default').
         log_details: Дополнительная информация для логирования (словарь).
     """
 
@@ -154,6 +156,8 @@ class PriceCalculationResult:
     target_strategy_price: float | None
     result_target_price: float
     marginality: float
+    discount_coef: float
+    discount_coef_source: str
     log_details: dict = field(default_factory=dict)
 
 

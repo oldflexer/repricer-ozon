@@ -69,6 +69,8 @@ class TestSaveHistoryStep:
             target_strategy_price=150.0,
             result_target_price=150.0,
             marginality=25.0,
+            discount_coef=1.0,
+            discount_coef_source="default",
             log_details={"discount_coef": 1.0},
         )
 

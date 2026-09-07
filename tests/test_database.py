@@ -78,6 +78,8 @@ def _test_price_history_with_real_price(repo):
         target_strategy_price=520.0,
         result_target_price=520.0,
         marginality=0.2,
+        discount_coef=0.9,
+        discount_coef_source="default",
         log_details={"discount_coef": 0.9},
     )
     repo.save_price_history("001", pricing, result, real_price=2400.0)
@@ -111,6 +113,8 @@ def _test_price_history_without_real_price(repo):
         target_strategy_price=520.0,
         result_target_price=520.0,
         marginality=0.2,
+        discount_coef=0.9,
+        discount_coef_source="default",
         log_details={"discount_coef": 0.9},
     )
     repo.save_price_history("001", pricing, result)  # без real_price
