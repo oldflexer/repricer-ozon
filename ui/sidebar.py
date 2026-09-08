@@ -16,6 +16,7 @@ import sys
 import tempfile
 import threading
 import time
+from collections import deque
 from pathlib import Path
 from typing import Any, Callable, Optional
 
@@ -46,6 +47,10 @@ _background_threads: dict[str, threading.Thread] = {}
 _task_results: dict[str, tuple[str, str]] = {}
 _task_progress: dict[str, tuple[int, int, str]] = {}
 _task_events: dict[str, threading.Event] = {}  # Signal task completion
+
+# Real-time log storage (max 1000 entries)
+_log_queue: deque[tuple[str, str, float]] = deque(maxlen=1000)  # (level, message, timestamp)
+_log_subscribers: list[threading.Event] = []  # Events for real-time updates
 def get_base64_encoded_image(image_path: Path) -> str:
     """
     Кодирует изображение в base64 для встраивания в HTML.
@@ -95,6 +100,40 @@ def _run_async_in_thread(
     thread = threading.Thread(target=run, daemon=True)
     _background_threads[task_id] = thread
     thread.start()
+
+
+def add_log(level: str, message: str) -> None:
+    """Add a log entry to the queue and notify subscribers."""
+    timestamp = time.time()
+    _log_queue.append((level, message, timestamp))
+    # Notify all subscribers
+    for event in _log_subscribers:
+        event.set()
+
+
+def subscribe_to_logs() -> threading.Event:
+    """Subscribe to real-time log updates."""
+    event = threading.Event()
+    _log_subscribers.append(event)
+    return event
+
+
+def unsubscribe_from_logs(event: threading.Event) -> None:
+    """Unsubscribe from real-time log updates."""
+    if event in _log_subscribers:
+        _log_subscribers.remove(event)
+
+
+def get_recent_logs(limit: int = 100) -> list[tuple[str, str, float]]:
+    """Get recent log entries."""
+    return list(_log_queue)[-limit:]
+
+
+def clear_logs() -> None:
+    """Clear the log queue."""
+    _log_queue.clear()
+
+
 def run_repricing(
     dry_run: bool = False, progress_callback: Optional[Callable[[int, int, str], None]] = None
 ) -> dict[str, Any]:
@@ -537,12 +576,12 @@ def _handle_parsing_buttons(is_busy: bool) -> None:
 
 
 def _display_result_message() -> None:
-    """Отображает сообщение о результате выполнения задачи."""
+    """Отображает сообщение о результате выполнения задачи (toast notification)."""
     if st.session_state.get("result_message"):
         if st.session_state.get("result_type") == "success":
-            st.success(st.session_state.result_message, icon=":material/check_circle:")
+            st.toast(st.session_state.result_message, icon=":material/check_circle:")
         else:
-            st.error(st.session_state.result_message, icon=":material/cancel:")
+            st.toast(st.session_state.result_message, icon=":material/cancel:")
         st.session_state.result_message = None
         st.session_state.result_type = None
 
