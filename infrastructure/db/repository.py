@@ -59,11 +59,16 @@ class SQLiteRepository(
             with self._get_connection() as conn, sql_002.open(encoding="utf-8") as f:
                 conn.executescript(f.read())
 
-        # Выполняем миграцию 003
+        # Выполняем миграцию 003 - проверяем наличие колонок перед выполнением
         sql_003 = sql_dir / "003_add_discount_coef.sql"
         if sql_003.exists():
-            with self._get_connection() as conn, sql_003.open(encoding="utf-8") as f:
-                conn.executescript(f.read())
+            with self._get_connection() as conn:
+                # Проверяем, существует ли уже колонка discount_coef
+                cursor = conn.execute("PRAGMA table_info(product)")
+                columns = [row[1] for row in cursor.fetchall()]
+                if "discount_coef" not in columns:
+                    with sql_003.open(encoding="utf-8") as f:
+                        conn.executescript(f.read())
 
     # ------------------------------------------------------------------
     # Вспомогательные методы
