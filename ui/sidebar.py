@@ -102,6 +102,40 @@ def _run_async_in_thread(
     thread.start()
 
 
+def _run_async_in_thread_sync(coro: Any) -> Any:
+    """
+    Запускает асинхронную корутину в отдельном потоке и возвращает результат.
+
+    Args:
+        coro: Асинхронная корутина для выполнения.
+
+    Returns:
+        Результат выполнения корутины.
+    """
+    result_container: list[Any] = []
+    exception_container: list[BaseException] = []
+
+    def run() -> None:
+        loop = None
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            result_container.append(loop.run_until_complete(coro))
+        except Exception as e:
+            exception_container.append(e)
+        finally:
+            if loop is not None:
+                loop.close()
+
+    thread = threading.Thread(target=run, daemon=True)
+    thread.start()
+    thread.join()
+
+    if exception_container:
+        raise exception_container[0]
+    return result_container[0] if result_container else None
+
+
 def add_log(level: str, message: str) -> None:
     """Add a log entry to the queue and notify subscribers."""
     timestamp = time.time()
@@ -184,7 +218,8 @@ def run_repricing(
         finally:
             await api.close()
 
-    return asyncio.run(_run())
+    # Run async function in a separate thread with its own event loop
+    return _run_async_in_thread_sync(_run())  # type: ignore[no-any-return]
 def execute_repricing(dry_run: bool) -> tuple[str, str]:
     """
     Выполняет репрайсинг с отображением прогресса в Streamlit (блокирующий вариант).
@@ -325,7 +360,7 @@ def execute_parsing(dry_run: bool) -> tuple[str, str]:
         ):
             st.write("Инициализация браузера и загрузка страниц Ozon...")
             try:
-                stats = asyncio.run(run_parsing(dry_run=dry_run))
+                stats = _run_async_in_thread_sync(run_parsing(dry_run=dry_run))
                 if not dry_run:
                     st.cache_data.clear()
                     st.cache_resource.clear()

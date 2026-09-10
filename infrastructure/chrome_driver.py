@@ -129,7 +129,8 @@ class ChromeDriverManager:
     def init_driver(self) -> bool:
         try:
             options = self._build_uc_options()
-            self.driver = uc.Chrome(options=options, version_main=None)
+            # Specify Chrome version 152 to match installed Chrome version
+            self.driver = uc.Chrome(options=options, version_main=152)
             self._configure_driver()
             logger.info("✅ UC драйвер успешно инициализирован")
             return True

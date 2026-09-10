@@ -19,6 +19,7 @@ from ..queries import (
     SQL_SELECT_PRODUCT_STRATEGIES,
     SQL_SELECT_STRATEGY_COUNTS,
     SQL_UPDATE_PRODUCT_REAL_PRICE,
+    SQL_UPDATE_PRODUCT_DISCOUNT_COEF,
     SQL_UPDATE_PRODUCT_STRATEGIES,
 )
 
@@ -79,6 +80,16 @@ class ProductRepository(BaseRepository, IProductRepository):
             conn.commit()
             return True
     
+    def update_discount_coef(self, sku: str, discount_coef: float, source: str) -> bool:
+        """Обновляет discount_coef для товара (только при успешном парсинге своих товаров)."""
+        with self._get_connection() as conn:
+            conn.execute(
+                SQL_UPDATE_PRODUCT_DISCOUNT_COEF,
+                (discount_coef, source, sku),
+            )
+            conn.commit()
+            return True
+
     def get_strategies(self, sku: str) -> list[StrategyInterval]:
         """Возвращает интервалы стратегий для товара."""
         with self._get_connection() as conn:

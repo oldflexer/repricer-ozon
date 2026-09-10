@@ -36,6 +36,15 @@ SQL_UPDATE_PRODUCT_REAL_PRICE = """
     WHERE sku = ?
 """
 
+SQL_UPDATE_PRODUCT_DISCOUNT_COEF = """
+    UPDATE product
+    SET discount_coef = ?,
+        discount_coef_source = ?,
+        discount_coef_updated_at = CURRENT_TIMESTAMP,
+        last_updated = CURRENT_TIMESTAMP
+    WHERE sku = ?
+"""
+
 SQL_SELECT_ALL_PRODUCTS = """
     SELECT product_id, sku, product_name, rip, net_price, real_customer_price
     FROM product
