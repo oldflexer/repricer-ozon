@@ -2,16 +2,15 @@
 Use‑case для обновления таймера актуальности минимальной цены.
 """
 
-from typing import Dict, List
-
 from infrastructure.logger import logger
+from infrastructure.ozon_api import OzonApiClient
 
 
 class UpdatePriceTimerUseCase:
-    def __init__(self, api_client):
+    def __init__(self, api_client: OzonApiClient) -> None:
         self.api = api_client
 
-    async def execute(self, product_ids: List[int]) -> Dict[str, int]:
+    async def execute(self, product_ids: list[int]) -> dict[str, int]:
         """
         Выполняет обновление таймера для списка товаров.
 
@@ -32,11 +31,7 @@ class UpdatePriceTimerUseCase:
         failed_count = len(results) - success_count
 
         if failed_count:
-            errors = [
-                f"{pid}: {r['error']}"
-                for pid, r in results.items()
-                if not r.get("success")
-            ]
+            errors = [f"{pid}: {r['error']}" for pid, r in results.items() if not r.get("success")]
             logger.warning(f"Ошибки обновления таймера: {errors}")
 
         logger.info(f"Обновление таймера завершено: успешно {success_count}, ошибок {failed_count}")

@@ -6,16 +6,21 @@
 """
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
-import re
+from typing import Any
 
 import pandas as pd
+from openpyxl import load_workbook
 
-from config.settings import settings
+from config.settings import TIME_FORMAT_LENGTH, settings
 from core.entities import PriceCalculationResult, ProductInfo, StrategyInterval
 from core.enums import StrategyType, parse_strategy_value
 from core.repository import ILoader
 from infrastructure.logger import logger
+
+# Константы для валидации времени
+TIME_COLON_POSITION = 2
+MAX_PERCENT = 100
+MIN_PERCENT = 0
 
 
 class ExcelLoader(ILoader):
@@ -47,13 +52,13 @@ class ExcelLoader(ILoader):
             file_path: Путь к Excel-файлу.
         """
         self.file_path = file_path
-        self._strategies: Dict[str, List[StrategyInterval]] = {}
+        self._strategies: dict[str, list[StrategyInterval]] = {}
 
     # ------------------------------------------------------------------
     # Реализация интерфейса ILoader
     # ------------------------------------------------------------------
 
-    def load(self) -> Tuple[List[ProductInfo], List[str]]:
+    def load(self) -> tuple[list[ProductInfo], list[str]]:
         """
         Загружает товары из Excel с валидацией.
 
@@ -64,114 +69,138 @@ class ExcelLoader(ILoader):
             Возвращает пустой список и сообщение об ошибке, если файл не найден,
             имеет неверный формат, отсутствует колонка SKU или есть дубликаты SKU.
         """
-        if not self.file_path.exists():
-            logger.error(f"Файл {self.file_path} не найден")
-            return [], ["Файл Excel не найден"]
-
-        if self.file_path.suffix.lower() != ".xlsx":
-            logger.error(
-                f"Неподдерживаемый формат: {self.file_path.suffix}. Используйте .xlsx"
-            )
-            return [], [f"Неподдерживаемый формат: {self.file_path.suffix}"]
+        # Валидация файла
+        error = self._validate_file()
+        if error:
+            return [], [error]
 
         df = pd.read_excel(self.file_path, engine="openpyxl", dtype=str)
         df.columns = df.columns.str.lower().str.strip()
 
         # Поиск колонки SKU
-        sku_col = None
-        for col in ["sku", "артикул", "article", "id", "offer_id"]:
-            if col in df.columns:
-                sku_col = col
-                break
+        sku_col = self._find_sku_column(df)
         if sku_col is None:
-            return [], [
-                "Не найдена колонка SKU (ожидаются: sku, артикул, article, id, offer_id)"
-            ]
+            return [], ["Не найдена колонка SKU (ожидаются: sku, артикул, article, id, offer_id)"]
 
-        # Нормализация SKU для проверки дубликатов
-        df["_sku_normalized"] = df[sku_col].astype(str).str.strip()
-        duplicates = df[df["_sku_normalized"].duplicated(keep=False)][
-            "_sku_normalized"
-        ].unique()
-        if len(duplicates) > 0:
-            return [], [f"Обнаружены дубликаты SKU: {', '.join(duplicates)}"]
+        # Проверка дубликатов SKU
+        error = self._check_duplicates(df, sku_col)
+        if error:
+            return [], [error]
 
         products = []
         warnings = []
         self._strategies.clear()
 
         for i, (_, row) in enumerate(df.iterrows(), start=2):
-            sku = str(row[sku_col]).strip()
-            if not sku:
-                warnings.append(f"Строка {i}: пропущен SKU")
-                continue
-
-            # Валидация себестоимости
-            cost_price = self._get_float(
-                row, df.columns, ["себестоимость", "cost_price", "cost"], 0.0
-            )
-            if cost_price <= 0:
-                warnings.append(
-                    f"SKU {sku}: себестоимость = {cost_price} <= 0, товар пропущен"
-                )
-                continue
-
-            min_price = self._get_float(
-                row, df.columns, ["цена риц", "min_price", "rip"], 0.0
-            )
-
-            # Чтение цен конкурентов (используем настраиваемый префикс)
-            competitor_prices = []
-            price_prefix = settings.COMPETITOR_PRICE_COLUMN_PREFIX
-            for j in range(1, settings.MAX_COMPETITORS + 1):
-                price_col = f"{price_prefix} {j}"
-                if price_col in df.columns:
-                    val = row.get(price_col)
-                    if pd.notna(val):
-                        try:
-                            price = float(val)
-                            if price > 0:
-                                competitor_prices.append(price)
-                        except (ValueError, TypeError):
-                            pass
-            competitor_min_price = min(competitor_prices) if competitor_prices else None
-
-            # Парсинг интервалов стратегий
-            intervals, interval_warnings = self._parse_intervals_with_validation(
-                row, df.columns
-            )
-            warnings.extend(interval_warnings)
-
-            if not intervals:
-                warnings.append(
-                    f"SKU {sku}: не задано ни одного интервала стратегии, "
-                    "используется стратегия по умолчанию 'Равная'"
-                )
-                intervals = [
-                    StrategyInterval(start="00:00", end="23:59", strategy_type=StrategyType.EQUAL, percent=0.0)
-                ]
-
-            old_price_val = self._get_float(
-                row, df.columns, ["цена до скидки", "old_price", "старая цена"], 0.0
-            )
-            old_price = old_price_val if old_price_val > 0 else None
-
-            product = ProductInfo(
-                sku=sku,
-                product_name=None,
-                cost_price=cost_price,
-                min_price=min_price,
-                current_price=0.0,
-                old_price=old_price,
-                competitor_min_price=competitor_min_price,
-            )
-            products.append(product)
-            self._strategies[sku] = intervals
+            product, row_warnings = self._parse_row(row, df.columns, sku_col, i)
+            if product:
+                products.append(product)
+            warnings.extend(row_warnings)
 
         logger.info(f"Загружено {len(products)} товаров, {len(warnings)} предупреждений")
         return products, warnings
 
-    def get_strategy_intervals(self, product: ProductInfo) -> List[StrategyInterval]:
+    def _validate_file(self) -> str | None:
+        """Валидирует существование и формат файла."""
+        if not self.file_path.exists():
+            logger.error(f"Файл {self.file_path} не найден")
+            return "Файл Excel не найден"
+
+        if self.file_path.suffix.lower() != ".xlsx":
+            logger.error(f"Неподдерживаемый формат: {self.file_path.suffix}. Используйте .xlsx")
+            return f"Неподдерживаемый формат: {self.file_path.suffix}"
+        return None
+
+    def _find_sku_column(self, df: pd.DataFrame) -> str | None:
+        """Находит колонку SKU в DataFrame."""
+        for col in ["sku", "артикул", "article", "id", "offer_id"]:
+            if col in df.columns:
+                return col
+        return None
+
+    def _check_duplicates(self, df: pd.DataFrame, sku_col: str) -> str | None:
+        """Проверяет дубликаты SKU."""
+        df["_sku_normalized"] = df[sku_col].astype(str).str.strip()
+        duplicates = df[df["_sku_normalized"].duplicated(keep=False)]["_sku_normalized"].unique()
+        if len(duplicates) > 0:
+            return f"Обнаружены дубликаты SKU: {', '.join(duplicates)}"
+        return None
+
+    def _parse_row(
+        self, row: pd.Series, columns: pd.Index, sku_col: str, row_num: int
+    ) -> tuple[ProductInfo | None, list[str]]:
+        """Парсит строку DataFrame в ProductInfo."""
+        warnings = []
+        sku = str(row[sku_col]).strip()
+        if not sku:
+            warnings.append(f"Строка {row_num}: пропущен SKU")
+            return None, warnings
+
+        # Валидация себестоимости
+        cost_price = self._get_float(row, columns, ["себестоимость", "cost_price", "cost"], 0.0)
+        if cost_price <= 0:
+            warnings.append(f"SKU {sku}: себестоимость = {cost_price} <= 0, товар пропущен")
+            return None, warnings
+
+        min_price = self._get_float(row, columns, ["цена риц", "min_price", "rip"], 0.0)
+
+        # Чтение цен конкурентов
+        competitor_min_price = self._read_competitor_prices(row, columns)
+
+        # Парсинг интервалов стратегий
+        intervals, interval_warnings = self._parse_intervals_with_validation(row, columns)
+        warnings.extend(interval_warnings)
+
+        if not intervals:
+            warnings.append(
+                f"SKU {sku}: не задано ни одного интервала стратегии, "
+                "используется стратегия по умолчанию 'Равная'"
+            )
+            intervals = self._get_default_intervals()
+
+        old_price_val = self._get_float(
+            row, columns, ["цена до скидки", "old_price", "старая цена"], 0.0
+        )
+        old_price = old_price_val if old_price_val > 0 else None
+
+        product = ProductInfo(
+            sku=sku,
+            product_name=None,
+            cost_price=cost_price,
+            min_price=min_price,
+            current_price=0.0,
+            old_price=old_price,
+            competitor_min_price=competitor_min_price,
+        )
+        self._strategies[sku] = intervals
+        return product, warnings
+
+    def _read_competitor_prices(self, row: pd.Series, columns: pd.Index) -> float | None:
+        """Читает цены конкурентов из строки."""
+        competitor_prices = []
+        price_prefix = settings.COMPETITOR_PRICE_COLUMN_PREFIX
+        for j in range(1, settings.MAX_COMPETITORS + 1):
+            price_col = f"{price_prefix} {j}"
+            if price_col in columns:
+                val = row.get(price_col)
+                if pd.notna(val):
+                    try:
+                        price = float(val)
+                        if price > 0:
+                            competitor_prices.append(price)
+                    except (ValueError, TypeError):
+                        pass
+        return min(competitor_prices) if competitor_prices else None
+
+    def _get_default_intervals(self) -> list[StrategyInterval]:
+        """Возвращает интервалы стратегии по умолчанию."""
+        return [
+            StrategyInterval(
+                start="00:00", end="23:59", strategy_type=StrategyType.EQUAL, percent=0.0
+            )
+        ]
+
+    def get_strategy_intervals(self, product: ProductInfo) -> list[StrategyInterval]:
         """
         Возвращает интервалы стратегий для товара (из загруженных данных).
 
@@ -183,7 +212,7 @@ class ExcelLoader(ILoader):
         """
         return self._strategies.get(product.sku, [])
 
-    def update_product_in_file(self, sku: str, updates: Dict[str, Any]) -> bool:
+    def update_product_in_file(self, sku: str, updates: dict[str, Any]) -> bool:
         """
         Обновляет данные товара в Excel-файле (точечное обновление ячеек).
 
@@ -195,8 +224,6 @@ class ExcelLoader(ILoader):
             True в случае успеха, False при ошибке.
         """
         try:
-            from openpyxl import load_workbook
-
             wb = load_workbook(self.file_path)
             ws = wb.active
             if ws is None:
@@ -204,63 +231,22 @@ class ExcelLoader(ILoader):
                 return False
 
             header_row = 1
-            col_map = {}
-            target_columns = {
-                "current_price": ["ваша цена", "current_price", "price"],
-                "min_price": ["минимальная цена", "min_price", "min"],
-                "old_price": ["цена до скидки", "old_price", "старая цена"],
-                "margin": ["маржинальность", "маржа", "margin"],
-                "margin_week": ["маржинальность за неделю", "margin_week"],
-                "margin_month": ["маржинальность за месяц", "margin_month"],
-                "product_name": ["название", "name", "товар", "product_name"],
-            }
-
-            # Определяем индексы колонок по заголовкам
-            for field, synonyms in target_columns.items():
-                for col_idx, cell in enumerate(ws[header_row], start=1):
-                    if cell.value and str(cell.value).lower().strip() in synonyms:
-                        col_map[field] = col_idx
-                        break
+            col_map = self._build_column_map(ws, header_row)
 
             # Поиск колонки SKU
-            sku_col = None
-            for col_idx, cell in enumerate(ws[header_row], start=1):
-                if cell.value and str(cell.value).lower().strip() in ["sku", "артикул", "offer_id"]:
-                    sku_col = col_idx
-                    break
+            sku_col = self._find_sku_column_in_sheet(ws, header_row)
             if sku_col is None:
                 logger.error("Не найдена колонка 'SKU'")
                 return False
 
             # Поиск строки с нужным SKU
-            target_row = None
-            for row_idx in range(2, ws.max_row + 1):
-                sku_cell = ws.cell(row_idx, sku_col)
-                cell_value = sku_cell.value
-                if cell_value is None:
-                    continue
-                cell_str = str(cell_value).strip()
-                if cell_str == str(sku):
-                    target_row = row_idx
-                    break
-                try:
-                    if int(float(cell_str)) == int(float(sku)):
-                        target_row = row_idx
-                        break
-                except (ValueError, TypeError):
-                    pass
-
+            target_row = self._find_target_row(ws, sku_col, sku)
             if target_row is None:
                 logger.warning(f"SKU {sku} не найден в файле")
                 return False
 
             # Обновляем ячейки
-            for field, col_idx in col_map.items():
-                value = updates.get(field)
-                if value is not None:
-                    if field.startswith("margin"):
-                        value = round(float(value), 2)
-                    ws.cell(target_row, col_idx, value=value)
+            self._update_cells(ws, target_row, col_map, updates)
 
             wb.save(self.file_path)
             logger.info(f"Обновлены поля {list(updates.keys())} для SKU {sku}")
@@ -269,31 +255,86 @@ class ExcelLoader(ILoader):
             logger.error(f"Ошибка обновления Excel: {e}")
             return False
 
+    def _build_column_map(self, ws: Any, header_row: int) -> dict[str, int]:
+        """Строит маппинг полей на индексы колонок."""
+        col_map: dict[str, int] = {}
+        target_columns = {
+            "current_price": ["ваша цена", "current_price", "price"],
+            "min_price": ["минимальная цена", "min_price", "min"],
+            "old_price": ["цена до скидки", "old_price", "старая цена"],
+            "margin": ["маржинальность", "маржа", "margin"],
+            "margin_week": ["маржинальность за неделю", "margin_week"],
+            "margin_month": ["маржинальность за месяц", "margin_month"],
+            "product_name": ["название", "name", "товар", "product_name"],
+        }
+
+        for field, synonyms in target_columns.items():
+            for col_idx, cell in enumerate(ws[header_row], start=1):
+                if cell.value and str(cell.value).lower().strip() in synonyms:
+                    col_map[field] = col_idx
+                    break
+        return col_map
+
+    def _find_sku_column_in_sheet(self, ws: Any, header_row: int) -> int | None:
+        """Находит колонку SKU в листе."""
+        for col_idx, cell in enumerate(ws[header_row], start=1):
+            if cell.value and str(cell.value).lower().strip() in ["sku", "артикул", "offer_id"]:
+                return col_idx
+        return None
+
+    def _find_target_row(self, ws: Any, sku_col: int, sku: str) -> int | None:
+        """Находит строку с заданным SKU."""
+        for row_idx in range(2, ws.max_row + 1):
+            sku_cell = ws.cell(row_idx, sku_col)
+            cell_value = sku_cell.value
+            if cell_value is None:
+                continue
+            cell_str = str(cell_value).strip()
+            if cell_str == str(sku):
+                return row_idx
+            try:
+                if int(float(cell_str)) == int(float(sku)):
+                    return row_idx
+            except (ValueError, TypeError):
+                pass
+        return None
+
+    def _update_cells(
+        self, ws: Any, target_row: int, col_map: dict[str, int], updates: dict[str, Any]
+    ) -> None:
+        """Обновляет ячейки в строке."""
+        for field, col_idx in col_map.items():
+            value = updates.get(field)
+            if value is not None:
+                if field.startswith("margin"):
+                    value = round(float(value), 2)
+                ws.cell(target_row, col_idx, value=value)
+
     # ------------------------------------------------------------------
     # Приватные вспомогательные методы
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _parse_strategy_value(value) -> StrategyType:
-            """
-            Преобразует значение стратегии из Excel в StrategyType enum.
+    def _parse_strategy_value(value: Any) -> StrategyType:
+        """
+        Преобразует значение стратегии из Excel в StrategyType enum.
 
-            Поддерживает:
-                - числа 1, 2, 3,
-                - текстовые варианты: 'ниже', 'выше', 'равная',
-                - любые регистры.
+        Поддерживает:
+            - числа 1, 2, 3,
+            - текстовые варианты: 'ниже', 'выше', 'равная',
+            - любые регистры.
 
-            Args:
-                value: Значение из ячейки (строка, число, None).
+        Args:
+            value: Значение из ячейки (строка, число, None).
 
-            Returns:
-                StrategyType: Соответствующий тип стратегии (по умолчанию EQUAL).
-            """
-            return parse_strategy_value(value)
+        Returns:
+            StrategyType: Соответствующий тип стратегии (по умолчанию EQUAL).
+        """
+        return parse_strategy_value(value)
 
     def _parse_intervals_with_validation(
         self, row: pd.Series, columns: pd.Index
-    ) -> Tuple[List[StrategyInterval], List[str]]:
+    ) -> tuple[list[StrategyInterval], list[str]]:
         """
         Парсит интервалы стратегий из строки Excel с валидацией.
 
@@ -327,9 +368,19 @@ class ExcelLoader(ILoader):
             start, end = start.strip(), end.strip()
 
             # Простая проверка формата HH:MM
-            if not (len(start) == 5 and start[2] == ":" and start[:2].isdigit() and start[3:].isdigit()):
+            if not (
+                len(start) == TIME_FORMAT_LENGTH
+                and start[2] == ":"
+                and start[:2].isdigit()
+                and start[3:].isdigit()
+            ):
                 warnings.append(f"Интервал {i}: некорректное время начала '{start}'")
-            if not (len(end) == 5 and end[2] == ":" and end[:2].isdigit() and end[3:].isdigit()):
+            if not (
+                len(end) == TIME_FORMAT_LENGTH
+                and end[TIME_COLON_POSITION] == ":"
+                and end[:2].isdigit()
+                and end[3:].isdigit()
+            ):
                 warnings.append(f"Интервал {i}: некорректное время окончания '{end}'")
 
             strategy_col = self._find_column(columns, [f"стратегия {i}", f"стратеги {i}"])
@@ -343,7 +394,9 @@ class ExcelLoader(ILoader):
                 if pd.notna(percent_val):
                     try:
                         percent = float(percent_val)
-                        if strategy in (StrategyType.BELOW, StrategyType.ABOVE) and (percent < 0 or percent > 100):
+                        if strategy in (StrategyType.BELOW, StrategyType.ABOVE) and (
+                            percent < 0 or percent > MAX_PERCENT
+                        ):
                             warnings.append(
                                 f"Интервал {i}: процент {percent} выходит за пределы 0-100, используется 0"
                             )
@@ -354,124 +407,12 @@ class ExcelLoader(ILoader):
                         )
 
             intervals.append(
-                StrategyInterval(
-                    start=start, end=end, strategy_type=strategy, percent=percent
-                )
+                StrategyInterval(start=start, end=end, strategy_type=strategy, percent=percent)
             )
 
         return intervals, warnings
 
-    def _parse_row(self, row: pd.Series, columns: pd.Index) -> tuple[Optional[ProductInfo], List[StrategyInterval]]:
-        """
-        (Устаревший метод) Парсит строку Excel в объект ProductInfo и список интервалов.
-
-        Оставлен для обратной совместимости; в текущей реализации не используется.
-        """
-        product_dict = {}
-        for std_name, synonyms in self.COLUMN_MAPPING.items():
-            value = None
-            for syn in synonyms:
-                if syn in columns:
-                    val = row.get(syn)
-                    if pd.notna(val):
-                        value = val
-                        break
-            product_dict[std_name] = value
-
-        if not product_dict.get("sku"):
-            logger.warning("Пропущена строка без SKU")
-            return None, []
-
-        intervals = []
-        for i in range(1, settings.SCHEDULE_INTERVALS_COUNT + 1):
-            time_col = self._find_column(columns, [f"интервал {i}", f"промежуток {i}"])
-            strategy_col = self._find_column(columns, [f"стратегия {i}", f"стратеги {i}"])
-            percent_col = self._find_column(columns, [f"процент {i}", f"percent_{i}"])
-
-            if not time_col:
-                continue
-
-            time_val = row.get(time_col)
-            if pd.isna(time_val) or not str(time_val).strip():
-                continue
-
-            time_range = str(time_val).strip()
-            if "-" not in time_range:
-                logger.warning(f"Неверный формат интервала '{time_range}'")
-                continue
-
-            start, end = time_range.split("-", 1)
-            start, end = start.strip(), end.strip()
-
-            strategy_val = row.get(strategy_col) if strategy_col else None
-            percent_val = row.get(percent_col) if percent_col else None
-
-            strategy = self._parse_strategy_value(strategy_val)
-            percent = 0.0
-            if percent_val is not None and pd.notna(percent_val):
-                try:
-                    percent = float(percent_val)
-                except (ValueError, TypeError):
-                    percent = 0.0
-
-            intervals.append(
-                StrategyInterval(
-                    start=start, end=end, strategy_type=strategy, percent=percent
-                )
-            )
-
-        if not intervals:
-            base_strategy_col = self._find_column(columns, ["стратегия", "strategy"])
-            base_strategy_val = row.get(base_strategy_col) if base_strategy_col else None
-            base_strategy = self._parse_strategy_value(base_strategy_val)
-            base_percent_col = self._find_column(columns, ["процент", "percent"])
-            base_percent = 0.0
-            if base_percent_col:
-                base_percent_val = row.get(base_percent_col)
-                if base_percent_val is not None and pd.notna(base_percent_val):
-                    try:
-                        base_percent = float(base_percent_val)
-                    except (ValueError, TypeError):
-                        base_percent = 0.0
-            intervals.append(
-                StrategyInterval(
-                    start="00:00", end="23:59",
-                    strategy_type=base_strategy, percent=base_percent
-                )
-            )
-
-        cost_price = 0.0
-        if product_dict.get("cost_price") is not None:
-            try:
-                cost_price = float(product_dict["cost_price"])
-            except Exception:
-                pass
-
-        min_price = 0.0
-        if product_dict.get("min_price") is not None:
-            try:
-                min_price = float(product_dict["min_price"])
-            except Exception:
-                pass
-
-        old_price = None
-        if product_dict.get("old_price") is not None:
-            try:
-                old_price = float(product_dict["old_price"])
-            except Exception:
-                pass
-
-        product = ProductInfo(
-            sku=product_dict["sku"],
-            product_name=None,
-            cost_price=cost_price,
-            min_price=min_price,
-            current_price=0.0,
-            old_price=old_price,
-        )
-        return product, intervals
-
-    def _find_column(self, columns: pd.Index, candidates: List[str]) -> Optional[str]:
+    def _find_column(self, columns: pd.Index, candidates: list[str]) -> str | None:
         """Ищет колонку по одному из возможных имён."""
         for cand in candidates:
             if cand in columns:
@@ -479,7 +420,7 @@ class ExcelLoader(ILoader):
         return None
 
     def _get_float(
-        self, row: pd.Series, columns: pd.Index, candidates: List[str], default: float
+        self, row: pd.Series, columns: pd.Index, candidates: list[str], default: float
     ) -> float:
         """Извлекает числовое значение из ячейки по имени колонки."""
         col = self._find_column(columns, candidates)
@@ -498,8 +439,8 @@ class ExcelLoader(ILoader):
         result: PriceCalculationResult,
         marginality_week: float,
         marginality_month: float,
-        old_price_update: Optional[int],
-    ) -> Dict[str, Any]:
+        old_price_update: int | None,
+    ) -> dict[str, Any]:
         """
         Формирует словарь обновлений для Excel на основе результатов расчёта.
 
@@ -529,3 +470,142 @@ class ExcelLoader(ILoader):
         if old_price_update is not None:
             updates["old_price"] = old_price_update
         return updates
+
+    # Новые приватные методы для разделения сложной функции load()
+
+    def _find_column_indices(self, ws: Any) -> dict[str, int]:
+        """Находит индексы колонок по заголовкам."""
+        header_row = 1
+        col_map: dict[str, int] = {}
+        target_columns = {
+            "current_price": ["ваша цена", "current_price", "price"],
+            "min_price": ["минимальная цена", "min_price", "min"],
+            "old_price": ["цена до скидки", "old_price", "старая цена"],
+            "margin": ["маржинальность", "маржа", "margin"],
+            "margin_week": ["маржинальность за неделю", "margin_week"],
+            "margin_month": ["маржинальность за месяц", "margin_month"],
+            "product_name": ["название", "name", "товар", "product_name"],
+        }
+
+        for field, synonyms in target_columns.items():
+            for col_idx, cell in enumerate(ws[header_row], start=1):
+                if cell.value and str(cell.value).lower().strip() in synonyms:
+                    col_map[field] = col_idx
+                    break
+        return col_map
+
+    def _find_sku_column_index(self, ws: Any) -> int | None:
+        """Находит колонку SKU."""
+        header_row = 1
+        for col_idx, cell in enumerate(ws[header_row], start=1):
+            if cell.value and str(cell.value).lower().strip() in ["sku", "артикул", "offer_id"]:
+                return col_idx
+        return None
+
+    def _find_row_by_sku(self, ws: Any, sku_col: int, sku: str) -> int | None:
+        """Находит строку с нужным SKU."""
+        for row_idx in range(2, ws.max_row + 1):
+            sku_cell = ws.cell(row_idx, sku_col)
+            cell_value = sku_cell.value
+            if cell_value is None:
+                continue
+            cell_str = str(cell_value).strip()
+            if cell_str == str(sku):
+                return row_idx
+            try:
+                if int(float(cell_str)) == int(float(sku)):
+                    return row_idx
+            except (ValueError, TypeError):
+                pass
+        return None
+
+
+    def _read_excel_data(self) -> pd.DataFrame:
+        """Читает и подготавливает данные из Excel-файла."""
+        df = pd.read_excel(self.file_path, engine="openpyxl", dtype=str)
+        df.columns = df.columns.str.lower().str.strip()
+        return df
+
+
+    def _check_sku_duplicates(
+        self, df: pd.DataFrame, sku_col: str
+    ) -> tuple[list[ProductInfo], list[str]] | None:
+        """Проверяет наличие дубликатов SKU и возвращает ошибку если найдены."""
+        # Нормализация SKU для проверки дубликатов
+        df["_sku_normalized"] = df[sku_col].astype(str).str.strip()
+        duplicates = df[df["_sku_normalized"].duplicated(keep=False)]["_sku_normalized"].unique()
+        if len(duplicates) > 0:
+            return [], [f"Обнаружены дубликаты SKU: {', '.join(duplicates)}"]
+        return None
+
+    def _process_rows(self, df: pd.DataFrame, sku_col: str) -> tuple[list[ProductInfo], list[str]]:
+        """Обрабатывает строки DataFrame и создает список товаров."""
+        products = []
+        warnings = []
+        self._strategies.clear()
+
+        for i, (_, row) in enumerate(df.iterrows(), start=2):
+            sku = str(row[sku_col]).strip()
+            if not sku:
+                warnings.append(f"Строка {i}: пропущен SKU")
+                continue
+
+            # Валидация себестоимости
+            cost_price = self._get_float(
+                row, df.columns, ["себестоимость", "cost_price", "cost"], 0.0
+            )
+            if cost_price <= 0:
+                warnings.append(f"SKU {sku}: себестоимость = {cost_price} <= 0, товар пропущен")
+                continue
+
+            min_price = self._get_float(row, df.columns, ["цена риц", "min_price", "rip"], 0.0)
+
+            # Чтение цен конкурентов (используем настраиваемый префикс)
+            competitor_prices = []
+            price_prefix = settings.COMPETITOR_PRICE_COLUMN_PREFIX
+            for j in range(1, settings.MAX_COMPETITORS + 1):
+                price_col = f"{price_prefix} {j}"
+                if price_col in df.columns:
+                    val = row.get(price_col)
+                    if pd.notna(val):
+                        try:
+                            price = float(val)
+                            if price > 0:
+                                competitor_prices.append(price)
+                        except (ValueError, TypeError):
+                            pass
+            competitor_min_price = min(competitor_prices) if competitor_prices else None
+
+            # Парсинг интервалов стратегий
+            intervals, interval_warnings = self._parse_intervals_with_validation(row, df.columns)
+            warnings.extend(interval_warnings)
+
+            if not intervals:
+                warnings.append(
+                    f"SKU {sku}: не задано ни одного интервала стратегии, "
+                    "используется стратегия по умолчанию 'Равная'"
+                )
+                intervals = [
+                    StrategyInterval(
+                        start="00:00", end="23:59", strategy_type=StrategyType.EQUAL, percent=0.0
+                    )
+                ]
+
+            old_price_val = self._get_float(
+                row, df.columns, ["цена до скидки", "old_price", "старая цена"], 0.0
+            )
+            old_price = old_price_val if old_price_val > 0 else None
+
+            product = ProductInfo(
+                sku=sku,
+                product_name=None,
+                cost_price=cost_price,
+                min_price=min_price,
+                current_price=0.0,
+                old_price=old_price,
+                competitor_min_price=competitor_min_price,
+            )
+            products.append(product)
+            self._strategies[sku] = intervals
+
+        return products, warnings

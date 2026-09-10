@@ -31,7 +31,7 @@ def render_tables() -> None:
         return
 
     tabs = st.tabs(table_names)
-    for tab, table_name in zip(tabs, table_names):
+    for tab, table_name in zip(tabs, table_names, strict=False):
         with tab:
             with repo._get_connection() as conn:
                 df = pd.read_sql_query(f"SELECT * FROM {table_name}", conn)

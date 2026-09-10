@@ -2,7 +2,7 @@
 Initial schema
 
 Revision ID: 001
-Revises: 
+Revises:
 Create Date: 2026-07-22 20:00:00.000000
 
 Создаёт основные таблицы:
@@ -17,16 +17,16 @@ Create Date: 2026-07-22 20:00:00.000000
 и запись в maintenance о последней очистке.
 """
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
 import sqlalchemy as sa
 from alembic import op
 
 # Идентификаторы ревизии
 revision: str = "001"
-down_revision: Union[str, None] = None
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = None
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
@@ -162,15 +162,9 @@ def upgrade() -> None:
     )
 
     # Начальные данные стратегий
-    op.execute(
-        "INSERT OR IGNORE INTO strategy(id, strategy_name) VALUES (1, 'Ниже')"
-    )
-    op.execute(
-        "INSERT OR IGNORE INTO strategy(id, strategy_name) VALUES (2, 'Выше')"
-    )
-    op.execute(
-        "INSERT OR IGNORE INTO strategy(id, strategy_name) VALUES (3, 'Равная')"
-    )
+    op.execute("INSERT OR IGNORE INTO strategy(id, strategy_name) VALUES (1, 'Ниже')")
+    op.execute("INSERT OR IGNORE INTO strategy(id, strategy_name) VALUES (2, 'Выше')")
+    op.execute("INSERT OR IGNORE INTO strategy(id, strategy_name) VALUES (3, 'Равная')")
 
     # Начальные данные maintenance
     op.execute(

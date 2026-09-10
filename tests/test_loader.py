@@ -1,21 +1,23 @@
 import logging
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from infrastructure.excel_loader import ExcelLoader
 from core.entities import ProductInfo, StrategyInterval
+from infrastructure.excel_loader import ExcelLoader
 
 logging.basicConfig(level=logging.INFO)
 
+
 def test_load_products():
-    data_file = Path(__file__).parent.parent / 'data' / 'products.xlsx'
+    data_file = Path(__file__).parent.parent / "data" / "products.xlsx"
     if not data_file.exists():
         print(f"❌ Файл {data_file} не найден, пропускаем тест.")
         return
 
     loader = ExcelLoader(data_file)
-    products = loader.load()
+    products, warnings = loader.load()
     print(f"\n📦 Загружено товаров: {len(products)}\n")
 
     for idx, product in enumerate(products, 1):
@@ -32,6 +34,7 @@ def test_load_products():
         assert all(isinstance(inv, StrategyInterval) for inv in intervals)
         print(f"Интервалы стратегий: {intervals}")
         print()
+
 
 if __name__ == "__main__":
     test_load_products()

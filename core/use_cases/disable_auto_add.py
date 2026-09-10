@@ -5,10 +5,9 @@ Use‑case для отключения автодобавления товаро
 через Ozon API и удаляет их (или показывает, сколько будет удалено, в dry‑run).
 """
 
-from typing import Dict
-
 from core.services import ActionService
 from infrastructure.logger import logger
+from infrastructure.ozon_api import OzonApiClient
 
 
 class DisableAutoAddUseCase:
@@ -19,7 +18,7 @@ class DisableAutoAddUseCase:
     и последующего удаления.
     """
 
-    def __init__(self, api_client) -> None:
+    def __init__(self, api_client: OzonApiClient) -> None:
         """
         Инициализирует use‑case.
 
@@ -28,7 +27,7 @@ class DisableAutoAddUseCase:
         """
         self.service = ActionService(api_client)
 
-    async def execute(self, dry_run: bool = False) -> Dict[str, int]:
+    async def execute(self, dry_run: bool = False) -> dict[str, int]:
         """
         Запускает процесс отключения автодобавления.
 
@@ -54,8 +53,6 @@ class DisableAutoAddUseCase:
 
         # 2. Удаляем автодобавление
         stats = await self.service.disable_auto_add_for_products(products)
-        logger.info(
-            f"=== Завершено. Удалено: {stats['deleted']}, ошибок: {stats['errors']} ==="
-        )
+        logger.info(f"=== Завершено. Удалено: {stats['deleted']}, ошибок: {stats['errors']} ===")
 
         return stats

@@ -32,12 +32,8 @@ from ui.sidebar import render_sidebar
 # ------------------------------------------------------------------
 # 1. Настройка страницы Streamlit
 # ------------------------------------------------------------------
-page_title = f"Репрайсер {settings.INSTANCE_NAME}"
-st.set_page_config(
-    page_title=page_title,
-    layout="wide",
-    page_icon="static/favicon.ico"
-)
+page_title = f"Менеджер {settings.INSTANCE_NAME}"
+st.set_page_config(page_title=page_title, layout="wide", page_icon="static/favicon.ico")
 
 # Подключение Font Awesome 6.7.2
 st.markdown(
@@ -47,7 +43,7 @@ st.markdown(
 
 # Подключение пользовательских CSS-стилей
 css_path = Path(__file__).parent / "static" / "styles.css"
-with open(css_path, encoding="utf-8") as f:
+with css_path.open(encoding="utf-8") as f:
     st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
 # ------------------------------------------------------------------
@@ -61,7 +57,7 @@ check_auth()
 
 # Репозиторий БД
 if "repo" not in st.session_state:
-    st.session_state.repo = SQLiteRepository(settings.DATABASE_PATH_PATH)
+    st.session_state.repo = SQLiteRepository(settings.database_path_path)
 
 # Состояния репрайсинга
 if "running" not in st.session_state:

@@ -2,9 +2,11 @@
 Миксин для аналитических методов (KPI, ROI, heatmap, ABC и т.д.).
 """
 
-from typing import Any, Dict
+from typing import Any
 
 import pandas as pd
+
+from core.enums import StrategyType
 
 from .base import DBConnectionMixin
 
@@ -57,7 +59,7 @@ class AnalyticsMixin(DBConnectionMixin):
             """
             return pd.read_sql_query(query, conn)
 
-    def get_kpi_metrics(self) -> Dict[str, Any]:
+    def get_kpi_metrics(self) -> dict[str, Any]:
         """Возвращает ключевые метрики для дашборда."""
         with self._get_connection() as conn:
             today_margin = conn.execute(
@@ -122,7 +124,7 @@ class AnalyticsMixin(DBConnectionMixin):
                 params=(limit,),
             )
 
-    def get_strategy_counts(self) -> Dict[str, int]:
+    def get_strategy_counts(self) -> dict[str, int]:
         """Подсчитывает количество товаров по типам стратегий."""
         with self._get_connection() as conn:
             rows = conn.execute(
@@ -133,7 +135,7 @@ class AnalyticsMixin(DBConnectionMixin):
                 """
             ).fetchall()
             counts = {"Ниже": 0, "Выше": 0, "Равная": 0, "Смешанная": 0}
-            per_sku = {}
+            per_sku: dict[str, set[int]] = {}
             for r in rows:
                 sku = r["sku"]
                 sid = r["strategy_id"]
@@ -141,9 +143,9 @@ class AnalyticsMixin(DBConnectionMixin):
             for strategies in per_sku.values():
                 if len(strategies) > 1:
                     counts["Смешанная"] += 1
-                elif 1 in strategies:
+                elif StrategyType.BELOW in strategies:
                     counts["Ниже"] += 1
-                elif 2 in strategies:
+                elif StrategyType.ABOVE in strategies:
                     counts["Выше"] += 1
                 else:
                     counts["Равная"] += 1
@@ -152,7 +154,7 @@ class AnalyticsMixin(DBConnectionMixin):
     def get_strategy_performance(self, days: int = 30) -> pd.DataFrame:
         """Возвращает эффективность стратегий за указанный период."""
         with self._get_connection() as conn:
-            df = pd.read_sql_query(
+            return pd.read_sql_query(
                 """
                 SELECT
                     s.strategy_name as "Стратегия",
@@ -167,12 +169,11 @@ class AnalyticsMixin(DBConnectionMixin):
                 conn,
                 params=(-days,),
             )
-            return df
 
     def get_stale_products(self, days: int = 7) -> pd.DataFrame:
         """Возвращает товары, у которых давно не было обновлений цен."""
         with self._get_connection() as conn:
-            df = pd.read_sql_query(
+            return pd.read_sql_query(
                 """
                 SELECT
                     p.sku, p.product_name,
@@ -187,7 +188,6 @@ class AnalyticsMixin(DBConnectionMixin):
                 conn,
                 params=(days,),
             )
-            return df
 
     def get_update_heatmap(self, days: int = 90) -> pd.DataFrame:
         """Возвращает данные для тепловой карты обновлений."""

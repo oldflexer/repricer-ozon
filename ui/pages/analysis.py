@@ -6,12 +6,13 @@
     2. ABC-анализ – распределение товаров по вкладу в прибыль (диаграмма Парето).
 """
 
-import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import streamlit as st
 
-from ui.cache import get_repo, get_cached_ozon_price_df
+from config.settings import ABC_A_THRESHOLD, ABC_B_THRESHOLD
+from ui.cache import get_cached_ozon_price_df, get_repo
 
 
 def render_analysis_page() -> None:
@@ -71,8 +72,8 @@ def render_commissions_analysis() -> None:
         analysis_df["fbs_direct_flow_trans_min_amount"]
         + analysis_df["fbs_direct_flow_trans_max_amount"]
     ) / 2
-    analysis_df["sales_commission"] = (
-        analysis_df["result_target_price"] * (analysis_df["sales_percent_fbs"] / 100)
+    analysis_df["sales_commission"] = analysis_df["result_target_price"] * (
+        analysis_df["sales_percent_fbs"] / 100
     )
     analysis_df["total_extra_costs"] = (
         analysis_df["sales_commission"]
@@ -133,7 +134,7 @@ def render_commissions_analysis() -> None:
                 "real_price": "Реальная цена покупателя (₽)",
                 "marginality": "Маржинальность",
             },
-            color_continuous_scale="RdYlGn",
+            color_continuous_scale=["RdYlGn"],
             range_color=[-0.2, 0.4],
         )
         max_val = max(
@@ -146,7 +147,7 @@ def render_commissions_analysis() -> None:
                 y=[0, max_val],
                 mode="lines",
                 name="y=x",
-                line=dict(dash="dash", color="gray"),
+                line={"dash": "dash", "color": "gray"},
             )
         )
         st.plotly_chart(fig_scatter, width="stretch")
@@ -213,9 +214,9 @@ def render_abc_analysis() -> None:
 
     def assign_category(percent: float) -> str:
         """Определяет категорию A/B/C по накопленному проценту."""
-        if percent <= 80:
+        if percent <= ABC_A_THRESHOLD:
             return "A"
-        elif percent <= 95:
+        if percent <= ABC_B_THRESHOLD:
             return "B"
         return "C"
 
@@ -268,20 +269,20 @@ def render_abc_analysis() -> None:
             name="Накопленный процент",
             yaxis="y2",
             mode="lines+markers",
-            line=dict(color="red", width=2),
+            line={"color": "red", "width": 2},
         )
     )
     fig_pareto.update_layout(
         title=f"ABC-анализ по прибыли (топ-{top_n} товаров, от большей прибыли к меньшей)",
         xaxis_title="SKU",
         yaxis_title="Прибыль (₽)",
-        yaxis2=dict(
-            title="Накопленный процент (%)",
-            overlaying="y",
-            side="right",
-            range=[0, 100],
-        ),
-        legend=dict(x=0.01, y=0.99),
+        yaxis2={
+            "title": "Накопленный процент (%)",
+            "overlaying": "y",
+            "side": "right",
+            "range": [0, 100],
+        },
+        legend={"x": 0.01, "y": 0.99},
         width=None,
     )
     fig_pareto.update_xaxes(type="category")
@@ -289,7 +290,9 @@ def render_abc_analysis() -> None:
 
     st.subheader("Таблица ABC-категорий")
     st.dataframe(
-        df_sorted[["sku", "product_name", "profit_positive", "cumulative_percent", "category"]].rename(
+        df_sorted[
+            ["sku", "product_name", "profit_positive", "cumulative_percent", "category"]
+        ].rename(
             columns={
                 "profit_positive": "Прибыль (₽)",
                 "cumulative_percent": "Накопленный %",

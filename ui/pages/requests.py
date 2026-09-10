@@ -49,9 +49,7 @@ def render_requests_page() -> None:
                 df_hist = pd.DataFrame(hist)
                 df_hist["timestamp"] = pd.to_datetime(df_hist["timestamp"])
                 df_hist["timestamp"] = (
-                    df_hist["timestamp"]
-                    .dt.tz_localize("UTC")
-                    .dt.tz_convert(TIMEZONE)
+                    df_hist["timestamp"].dt.tz_localize("UTC").dt.tz_convert(TIMEZONE)
                 )
                 df_hist["customer_price"] = df_hist["customer_price"].round(0)
                 df_hist["marginality_pct"] = (df_hist["marginality"] * 100).round(2)

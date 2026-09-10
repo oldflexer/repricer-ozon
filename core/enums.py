@@ -5,6 +5,11 @@
 """
 
 from enum import IntEnum
+from typing import Any
+
+import pandas as pd
+
+from infrastructure.logger import logger
 
 
 class StrategyType(IntEnum):
@@ -16,18 +21,20 @@ class StrategyType(IntEnum):
     - 2: ABOVE (выше индекса/конкурента)
     - 3: EQUAL (равна индексу/РИЦ)
     """
-    BELOW = 1      # "Ниже" - цена ниже базовой на заданный процент
-    ABOVE = 2      # "Выше" - цена выше базовой на заданный процент
-    EQUAL = 3      # "Равная" - цена равна целевой минимальной (РИЦ / discount_coef)
+
+    BELOW = 1  # "Ниже" - цена ниже базовой на заданный процент
+    ABOVE = 2  # "Выше" - цена выше базовой на заданный процент
+    EQUAL = 3  # "Равная" - цена равна целевой минимальной (РИЦ / discount_coef)
 
 
 class StrategyDirection(IntEnum):
     """Направление отклонения для стратегий BELOW/ABOVE."""
+
     NEGATIVE = -1  # Для BELOW: base_price * (1 - percent/100)
-    POSITIVE = 1   # Для ABOVE: base_price * (1 + percent/100)
+    POSITIVE = 1  # Для ABOVE: base_price * (1 + percent/100)
 
 
-def parse_strategy_value(value) -> StrategyType:
+def parse_strategy_value(value: Any) -> StrategyType:
     """
     Преобразует значение из Excel/БД в StrategyType.
 
@@ -42,8 +49,6 @@ def parse_strategy_value(value) -> StrategyType:
     Returns:
         StrategyType: Соответствующий тип стратегии (по умолчанию EQUAL).
     """
-    import pandas as pd
-
     if pd.isna(value):
         return StrategyType.EQUAL
 
@@ -59,17 +64,12 @@ def parse_strategy_value(value) -> StrategyType:
     str_val = str(value).strip().lower()
     if str_val in ("ниже", "ниже индекса", "1", "below"):
         return StrategyType.BELOW
-    elif str_val in ("выше", "выше индекса", "2", "above"):
+    if str_val in ("выше", "выше индекса", "2", "above"):
         return StrategyType.ABOVE
-    elif str_val in ("равная", "равно", "равна", "равен", "3", "equal"):
+    if str_val in ("равная", "равно", "равна", "равен", "3", "equal"):
         return StrategyType.EQUAL
-    else:
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.warning(
-            f"Неизвестное значение стратегии '{value}', используется 'Равная' (EQUAL)"
-        )
-        return StrategyType.EQUAL
+    logger.warning(f"Неизвестное значение стратегии '{value}', используется 'Равная' (EQUAL)")
+    return StrategyType.EQUAL
 
 
 def strategy_to_display_name(strategy: StrategyType) -> str:

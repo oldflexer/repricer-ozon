@@ -9,21 +9,17 @@
 import sys
 from pathlib import Path
 
-# Добавляем корень проекта в sys.path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from infrastructure.db import run_migrations_once
+from core.services.migration_service import MigrationService
 from infrastructure.logger import setup_logging
 
 logger = setup_logging("migrate.log", mode="a")
 
 
 def main() -> None:
-    """Применяет миграции к БД."""
-    logger.info("=== Запуск миграций БД ===")
     try:
-        run_migrations_once()
-        logger.info("Миграции успешно применены.")
+        MigrationService.run_migrations()
     except Exception as e:
         logger.error(f"Ошибка применения миграций: {e}")
         sys.exit(1)

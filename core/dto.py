@@ -6,7 +6,6 @@ Data Transfer Objects (DTO) для обмена данными между сло
 """
 
 from dataclasses import dataclass
-from typing import Optional
 
 
 @dataclass
@@ -26,16 +25,17 @@ class ProductDTO:
         real_customer_price: Реальная цена покупателя (полученная из индексов).
         competitor_min_price: Минимальная цена среди конкурентов.
     """
+
     sku: str
-    product_name: Optional[str] = None
+    product_name: str | None = None
     cost_price: float = 0.0
     min_price: float = 0.0
     current_price: float = 0.0
-    old_price: Optional[float] = None
-    product_id: Optional[int] = None
-    offer_id: Optional[str] = None
-    real_customer_price: Optional[float] = None
-    competitor_min_price: Optional[float] = None
+    old_price: float | None = None
+    product_id: int | None = None
+    offer_id: str | None = None
+    real_customer_price: float | None = None
+    competitor_min_price: float | None = None
 
 
 @dataclass
@@ -49,6 +49,7 @@ class StrategyIntervalDTO:
         strategy_type: Тип стратегии (1 – ниже, 2 – выше, 3 – равна).
         percent: Процент отклонения для стратегий 1 и 2.
     """
+
     start: str
     end: str
     strategy_type: int
@@ -68,11 +69,12 @@ class PriceUpdateRequestDTO:
         old_price: Старая цена (для отображения скидки).
         manage_elastic_boosting_through_price: Флаг управления эластичностью.
     """
+
     product_id: int
     price: int
     min_price: int
-    net_price: Optional[int] = None
-    old_price: Optional[int] = None
+    net_price: int | None = None
+    old_price: int | None = None
     manage_elastic_boosting_through_price: bool = False
 
 
@@ -92,12 +94,13 @@ class ProductViewModel:
         avg_month_margin: Средняя маржинальность за месяц (%).
         competitor_min_price: Минимальная цена конкурента.
     """
+
     sku: str
     name: str
     cost_price: float
     min_price: float
-    current_price: Optional[float]
-    marginality_percent: Optional[float]
-    avg_week_margin: Optional[float]
-    avg_month_margin: Optional[float]
-    competitor_min_price: Optional[float] = None
+    current_price: float | None
+    marginality_percent: float | None
+    avg_week_margin: float | None
+    avg_month_margin: float | None
+    competitor_min_price: float | None = None

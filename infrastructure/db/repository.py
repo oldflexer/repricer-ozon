@@ -5,15 +5,15 @@
 
 import sqlite3
 from pathlib import Path
-from typing import List
 
 from config.settings import settings
 from core.entities import ProductInfo, StrategyInterval
 from core.repository import IProductRepository
 
+from .analytics import AnalyticsMixin
+
 # Импортируем миксины
 from .history import HistoryMixin
-from .analytics import AnalyticsMixin
 from .maintenance import MaintenanceMixin
 
 
@@ -29,7 +29,7 @@ class SQLiteRepository(
     Использует PRAGMA busy_timeout и WAL-режим для конкурентного доступа.
     """
 
-    def __init__(self, db_path: Path = settings.DATABASE_PATH_PATH) -> None:
+    def __init__(self, db_path: Path = settings.database_path_path) -> None:
         """
         Инициализирует репозиторий, создавая директорию для БД при необходимости.
 
@@ -38,6 +38,37 @@ class SQLiteRepository(
         """
         self.db_path = db_path
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self._initialize_schema()
+
+    def _initialize_schema(self) -> None:
+        """Создаёт таблицы, если они не существуют (для тестов и простого запуска без миграций).
+
+        DDL читается из SQL-файлов в migrations/sql/ — single source of truth.
+        """
+        sql_dir = Path(__file__).resolve().parent.parent.parent / "migrations" / "sql"
+
+        # Выполняем миграцию 001
+        sql_001 = sql_dir / "001_initial_schema.sql"
+        if sql_001.exists():
+            with self._get_connection() as conn, sql_001.open(encoding="utf-8") as f:
+                conn.executescript(f.read())
+
+        # Выполняем миграцию 002
+        sql_002 = sql_dir / "002_add_daily_aggregates_and_logs.sql"
+        if sql_002.exists():
+            with self._get_connection() as conn, sql_002.open(encoding="utf-8") as f:
+                conn.executescript(f.read())
+
+        # Выполняем миграцию 003 - проверяем наличие колонок перед выполнением
+        sql_003 = sql_dir / "003_add_discount_coef.sql"
+        if sql_003.exists():
+            with self._get_connection() as conn:
+                # Проверяем, существует ли уже колонка discount_coef
+                cursor = conn.execute("PRAGMA table_info(product)")
+                columns = [row[1] for row in cursor.fetchall()]
+                if "discount_coef" not in columns:
+                    with sql_003.open(encoding="utf-8") as f:
+                        conn.executescript(f.read())
 
     # ------------------------------------------------------------------
     # Вспомогательные методы
@@ -47,19 +78,20 @@ class SQLiteRepository(
         """Создаёт и возвращает соединение с SQLite с нужными настройками."""
         conn = sqlite3.connect(str(self.db_path))
         conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA busy_timeout = 30000")
-        conn.execute("PRAGMA journal_mode = WAL")
+        conn.execute(f"PRAGMA busy_timeout = {settings.SQLITE_BUSY_TIMEOUT}")
+        conn.execute(f"PRAGMA journal_mode = {settings.SQLITE_JOURNAL_MODE}")
         return conn
 
     # ------------------------------------------------------------------
     # Реализация методов IProductRepository (CRUD)
     # ------------------------------------------------------------------
 
-    def get_all_products(self) -> List[ProductInfo]:
+    def get_all_products(self) -> list[ProductInfo]:
         """Возвращает список всех товаров из таблицы product."""
         with self._get_connection() as conn:
             rows = conn.execute("""
-                SELECT product_id, offer_id, sku, product_name, rip, net_price, real_customer_price
+                SELECT product_id, offer_id, sku, product_name, rip, net_price,
+                       real_customer_price, discount_coef, discount_coef_source, discount_coef_updated_at
                 FROM product
             """).fetchall()
             return [
@@ -71,9 +103,32 @@ class SQLiteRepository(
                     min_price=r["rip"] or 0.0,
                     cost_price=r["net_price"] or 0.0,
                     real_customer_price=r["real_customer_price"],
+                    discount_coef=r["discount_coef"],
+                    discount_coef_source=r["discount_coef_source"],
+                    discount_coef_updated_at=r["discount_coef_updated_at"],
                 )
                 for r in rows
             ]
+
+    def get_product_by_product_id(self, product_id: int) -> ProductInfo | None:
+        """Возвращает товар по product_id."""
+        with self._get_connection() as conn:
+            row = conn.execute("""
+                SELECT product_id, offer_id, sku, product_name, rip, net_price,
+                       real_customer_price
+                FROM product WHERE product_id = ?
+            """, (product_id,)).fetchone()
+            if row:
+                return ProductInfo(
+                    sku=row["sku"],
+                    product_name=row["product_name"],
+                    product_id=row["product_id"],
+                    offer_id=row["offer_id"],
+                    min_price=row["rip"] or 0.0,
+                    cost_price=row["net_price"] or 0.0,
+                    real_customer_price=row["real_customer_price"],
+                )
+            return None
 
     def upsert_product(self, product: ProductInfo) -> bool:
         """
@@ -128,7 +183,36 @@ class SQLiteRepository(
             conn.commit()
             return True
 
-    def get_strategies(self, sku: str) -> List[StrategyInterval]:
+    def update_discount_coef(
+        self, sku: str, discount_coef: float, source: str
+    ) -> bool:
+        """
+        Обновляет discount_coef для товара (только при успешном парсинге своих товаров).
+
+        Args:
+            sku: Артикул товара.
+            discount_coef: Новый коэффициент дисконта.
+            source: Источник ('parsed' | 'historical' | 'default').
+
+        Returns:
+            True в случае успеха.
+        """
+        with self._get_connection() as conn:
+            conn.execute(
+                """
+                UPDATE product
+                SET discount_coef = ?,
+                    discount_coef_source = ?,
+                    discount_coef_updated_at = CURRENT_TIMESTAMP,
+                    last_updated = CURRENT_TIMESTAMP
+                WHERE sku = ?
+                """,
+                (discount_coef, source, sku),
+            )
+            conn.commit()
+            return True
+
+    def get_strategies(self, sku: str) -> list[StrategyInterval]:
         """
         Возвращает интервалы стратегий для товара.
 
@@ -159,7 +243,7 @@ class SQLiteRepository(
                 for r in rows
             ]
 
-    def set_strategies(self, sku: str, intervals: List[StrategyInterval]) -> bool:
+    def set_strategies(self, sku: str, intervals: list[StrategyInterval]) -> bool:
         """
         Сохраняет интервалы стратегий для товара (заменяет существующие).
 
@@ -190,3 +274,16 @@ class SQLiteRepository(
                 )
             conn.commit()
             return True
+
+    def get_strategy_counts(self) -> dict[str, int]:
+        """Возвращает количество интервалов стратегий по типам."""
+        with self._get_connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT s.strategy_name, COUNT(*) as count
+                FROM product_strategy ps
+                JOIN strategy s ON ps.strategy_id = s.id
+                GROUP BY s.strategy_name
+                """
+            ).fetchall()
+            return {r["strategy_name"]: r["count"] for r in rows}

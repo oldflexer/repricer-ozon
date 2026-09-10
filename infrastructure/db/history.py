@@ -3,14 +3,30 @@
 """
 
 import json
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import pandas as pd
 
 from core.entities import PriceCalculationResult, PricingData
-from infrastructure.logger import logger
+
 from .base import DBConnectionMixin
+from .maintenance import _utc_now_naive
+from .queries import (
+    SQL_INSERT_DAILY_AGGREGATE,
+    SQL_INSERT_MARGINALITY_HISTORY,
+    SQL_INSERT_PRICE_CALCULATION_LOG,
+    SQL_INSERT_PRICE_HISTORY,
+    SQL_SELECT_AVG_MARGINALITY,
+    SQL_SELECT_DAILY_AGGREGATE,
+    SQL_SELECT_DAILY_DEVIATION,
+    SQL_SELECT_DAILY_TRENDS_AGGREGATED,
+    SQL_SELECT_DAILY_TRENDS_FALLBACK,
+    SQL_SELECT_MAX_PRICE_HISTORY_TIMESTAMP,
+    SQL_SELECT_PRICE_HISTORY_BY_SKU,
+    SQL_SELECT_PRODUCT_ID_BY_SKU,
+    SQL_UPDATE_DAILY_AGGREGATE,
+)
 
 
 class HistoryMixin(DBConnectionMixin):
@@ -21,35 +37,18 @@ class HistoryMixin(DBConnectionMixin):
         sku: str,
         pricing: PricingData,
         result: PriceCalculationResult,
-        real_price: Optional[float] = None,
+        real_price: float | None = None,
     ) -> bool:
         """Сохраняет запись истории цен для товара."""
         with self._get_connection() as conn:
-            product_id = conn.execute(
-                "SELECT product_id FROM product WHERE sku = ?", (sku,)
-            ).fetchone()
+            product_id = conn.execute(SQL_SELECT_PRODUCT_ID_BY_SKU, (sku,)).fetchone()
             if not product_id:
                 return False
             pid = product_id["product_id"]
             log_details_json = json.dumps(result.log_details, ensure_ascii=False)
 
             cursor = conn.execute(
-                """
-                INSERT INTO product_price_history (
-                    product_id, min_price, price, old_price,
-                    marketing_seller_price,
-                    external_index_data_price, external_index_data_index,
-                    ozon_index_data_price, ozon_index_data_index,
-                    self_marketplaces_index_data_price, self_marketplaces_index_data_index,
-                    result_target_price, discount_coef, marginality,
-                    sales_percent_fbs, acquiring,
-                    fbs_first_mile_min_amount, fbs_first_mile_max_amount,
-                    fbs_direct_flow_trans_min_amount, fbs_direct_flow_trans_max_amount,
-                    fbs_deliv_to_customer_amount,
-                    fbo_deliv_to_customer_amount, fbo_direct_flow_trans_min_amount,
-                    fbo_direct_flow_trans_max_amount, real_price, log_details
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
+                SQL_INSERT_PRICE_HISTORY,
                 (
                     pid,
                     pricing.min_price,
@@ -83,7 +82,7 @@ class HistoryMixin(DBConnectionMixin):
 
             if log_details_json:
                 conn.execute(
-                    "INSERT INTO price_calculation_logs (history_id, log_details) VALUES (?, ?)",
+                    SQL_INSERT_PRICE_CALCULATION_LOG,
                     (history_id, log_details_json),
                 )
 
@@ -93,20 +92,16 @@ class HistoryMixin(DBConnectionMixin):
     def save_daily_aggregates(
         self,
         sku: str,
-        pricing: PricingData,
         result: PriceCalculationResult,
-        real_price: Optional[float] = None,
+        real_price: float | None = None,
     ) -> None:
         """Сохраняет агрегированные данные за текущий день (avg, min, max)."""
-        today = datetime.now(timezone.utc).date()
+        today = _utc_now_naive().date()
+        today_str = today.isoformat()
         with self._get_connection() as conn:
             row = conn.execute(
-                """
-                SELECT avg_price, avg_marginality, min_price, max_price, updates_count
-                FROM product_price_daily
-                WHERE product_id = (SELECT product_id FROM product WHERE sku = ?) AND date = ?
-                """,
-                (sku, today.isoformat()),
+                SQL_SELECT_DAILY_AGGREGATE,
+                (sku, today_str),
             ).fetchone()
 
             price_val = (
@@ -120,96 +115,55 @@ class HistoryMixin(DBConnectionMixin):
                 avg_price = (row["avg_price"] * row["updates_count"] + price_val) / (
                     row["updates_count"] + 1
                 )
-                avg_marginality = (
-                    row["avg_marginality"] * row["updates_count"] + margin_val
-                ) / (row["updates_count"] + 1)
+                avg_marginality = (row["avg_marginality"] * row["updates_count"] + margin_val) / (
+                    row["updates_count"] + 1
+                )
                 min_price = min(row["min_price"], price_val)
                 max_price = max(row["max_price"], price_val)
                 updates_count = row["updates_count"] + 1
 
                 conn.execute(
-                    """
-                    UPDATE product_price_daily
-                    SET avg_price = ?, avg_marginality = ?, min_price = ?, max_price = ?, updates_count = ?
-                    WHERE product_id = (SELECT product_id FROM product WHERE sku = ?) AND date = ?
-                    """,
-                    (avg_price, avg_marginality, min_price, max_price, updates_count, sku, today.isoformat()),
+                    SQL_UPDATE_DAILY_AGGREGATE,
+                    (
+                        avg_price,
+                        avg_marginality,
+                        min_price,
+                        max_price,
+                        updates_count,
+                        sku,
+                        today_str,
+                    ),
                 )
             else:
                 conn.execute(
-                    """
-                    INSERT INTO product_price_daily
-                    (product_id, date, avg_price, avg_marginality, min_price, max_price, updates_count)
-                    VALUES ((SELECT product_id FROM product WHERE sku = ?), ?, ?, ?, ?, ?, ?)
-                    """,
-                    (sku, today.isoformat(), price_val, margin_val, price_val, price_val, 1),
+                    SQL_INSERT_DAILY_AGGREGATE,
+                    (sku, today_str, price_val, margin_val, price_val, price_val, 1),
                 )
             conn.commit()
 
     def get_daily_trends_aggregated(self, days: int = 7) -> pd.DataFrame:
         """Возвращает агрегированные дневные тренды."""
         with self._get_connection() as conn:
-            query = """
-                SELECT
-                    date as day,
-                    AVG(avg_price) as avg_price,
-                    AVG(avg_marginality) as avg_margin
-                FROM product_price_daily
-                WHERE date >= date('now', ? || ' days')
-                GROUP BY date
-                ORDER BY date
-            """
-            return pd.read_sql_query(query, conn, params=(-days,))
+            return pd.read_sql_query(SQL_SELECT_DAILY_TRENDS_AGGREGATED, conn, params=(-days,))
 
     def get_daily_trends(self, days: int = 7) -> pd.DataFrame:
         """Получает дневные тренды."""
         df = self.get_daily_trends_aggregated(days)
         if df.empty:
             with self._get_connection() as conn:
-                query = """
-                    SELECT
-                        DATE(ph.timestamp) as day,
-                        AVG(ph.result_target_price * ph.discount_coef) as avg_price,
-                        AVG(ph.marginality) as avg_margin
-                    FROM product_price_history ph
-                    WHERE ph.timestamp >= datetime('now', ? || ' days')
-                    GROUP BY day
-                    ORDER BY day
-                """
-                return pd.read_sql_query(query, conn, params=(-days,))
+                return pd.read_sql_query(SQL_SELECT_DAILY_TRENDS_FALLBACK, conn, params=(-days,))
         return df
 
     def get_daily_deviation(self, days: int = 30) -> pd.DataFrame:
         """Возвращает среднее отношение цены к индексу Ozon по дням."""
         with self._get_connection() as conn:
-            query = """
-                SELECT
-                    DATE(ph.timestamp) as day,
-                    AVG( (ph.result_target_price * ph.discount_coef) / NULLIF(ph.ozon_index_data_price, 0) ) as avg_ratio
-                FROM product_price_history ph
-                WHERE ph.ozon_index_data_price > 0
-                AND ph.timestamp >= datetime('now', ? || ' days')
-                GROUP BY day
-                ORDER BY day
-            """
-            return pd.read_sql_query(query, conn, params=(-days,))
+            return pd.read_sql_query(SQL_SELECT_DAILY_DEVIATION, conn, params=(-days,))
 
-    def get_price_history(self, sku: str) -> List[Dict[str, Any]]:
+    def get_price_history(self, sku: str) -> list[dict[str, Any]]:
         """Возвращает историю цен для товара."""
         with self._get_connection() as conn:
             rows = conn.execute(
-                """
-                SELECT
-                    ph.timestamp,
-                    ph.result_target_price,
-                    ph.discount_coef,
-                    ph.real_price,
-                    ph.marginality
-                FROM product_price_history ph
-                JOIN product p ON p.product_id = ph.product_id
-                WHERE p.sku = ?
-                ORDER BY ph.timestamp
-                """,
+                SQL_SELECT_PRICE_HISTORY_BY_SKU,
                 (sku,),
             ).fetchall()
             result = []
@@ -236,46 +190,35 @@ class HistoryMixin(DBConnectionMixin):
     ) -> bool:
         """Сохраняет значения маржинальности."""
         with self._get_connection() as conn:
-            product_id = conn.execute(
-                "SELECT product_id FROM product WHERE sku = ?", (sku,)
-            ).fetchone()
+            product_id = conn.execute(SQL_SELECT_PRODUCT_ID_BY_SKU, (sku,)).fetchone()
             if not product_id:
                 return False
             pid = product_id["product_id"]
             conn.execute(
-                """
-                INSERT INTO product_marginality_history
-                (product_id, marginality, marginality_week, marginality_month)
-                VALUES (?, ?, ?, ?)
-                """,
+                SQL_INSERT_MARGINALITY_HISTORY,
                 (pid, marginality, marginality_week, marginality_month),
             )
             conn.commit()
             return True
 
-    def get_average_marginality(self, sku: str, days: int) -> Optional[float]:
+    def get_average_marginality(self, sku: str, days: int) -> float | None:
         """Возвращает среднюю маржинальность за указанное количество дней."""
         with self._get_connection() as conn:
-            product_id = conn.execute(
-                "SELECT product_id FROM product WHERE sku = ?", (sku,)
-            ).fetchone()
+            product_id = conn.execute(SQL_SELECT_PRODUCT_ID_BY_SKU, (sku,)).fetchone()
             if not product_id:
                 return None
             pid = product_id["product_id"]
-            cutoff = datetime.now() - timedelta(days=days)
+            cutoff = _utc_now_naive() - timedelta(days=days)
             row = conn.execute(
-                """
-                SELECT AVG(marginality) FROM product_marginality_history
-                WHERE product_id = ? AND timestamp >= ?
-                """,
+                SQL_SELECT_AVG_MARGINALITY,
                 (pid, cutoff.isoformat()),
             ).fetchone()
             return row[0] if row and row[0] else None
 
-    def get_last_run_time(self) -> Optional[datetime]:
+    def get_last_run_time(self) -> datetime | None:
         """Возвращает время последнего успешного запуска репрайсинга."""
         with self._get_connection() as conn:
-            row = conn.execute("SELECT MAX(timestamp) FROM product_price_history").fetchone()
+            row = conn.execute(SQL_SELECT_MAX_PRICE_HISTORY_TIMESTAMP).fetchone()
             if row and row[0]:
-                return datetime.fromisoformat(row[0]).replace(tzinfo=timezone.utc)
+                return datetime.fromisoformat(row[0]).replace(tzinfo=UTC)
             return None

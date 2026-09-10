@@ -5,16 +5,16 @@
 """
 
 import asyncio
-from typing import Dict, List, Tuple
 
 from config.settings import settings
+from core.protocols.api import IApiClient
 from infrastructure.logger import logger
 
 
 class ActionService:
     """Сервис для управления автодобавлением товаров в акции Ozon."""
 
-    def __init__(self, api_client) -> None:
+    def __init__(self, api_client: IApiClient) -> None:
         """
         Инициализирует сервис.
 
@@ -24,7 +24,7 @@ class ActionService:
         """
         self.api = api_client
 
-    async def get_all_auto_add_products(self) -> List[Tuple[int, str, int]]:
+    async def get_all_auto_add_products(self) -> list[tuple[int, str, int]]:
         """
         Получает все товары, у которых включено автодобавление в акции.
 
@@ -70,8 +70,8 @@ class ActionService:
         return results
 
     async def disable_auto_add_for_products(
-        self, products: List[Tuple[int, str, int]]
-    ) -> Dict[str, int]:
+        self, products: list[tuple[int, str, int]]
+    ) -> dict[str, int]:
         """
         Отключает автодобавление для переданного списка товаров.
 
@@ -87,22 +87,20 @@ class ActionService:
         stats = {"deleted": 0, "errors": 0}
 
         # Группировка по (action_id, auto_add_date)
-        groups = {}
+        groups: dict[tuple[int, str], list[int]] = {}
         for action_id, auto_add_date, product_id in products:
             key = (action_id, auto_add_date)
             groups.setdefault(key, []).append(product_id)
 
         # Максимальный размер батча согласно документации Ozon
-        BATCH_SIZE = 1000
+        batch_size = 1000
 
         for (action_id, auto_add_date), product_ids in groups.items():
             # Разбиваем на батчи по BATCH_SIZE
-            for i in range(0, len(product_ids), BATCH_SIZE):
-                batch = product_ids[i:i + BATCH_SIZE]
+            for i in range(0, len(product_ids), batch_size):
+                batch = product_ids[i : i + batch_size]
                 try:
-                    resp = await self.api.delete_auto_add_products(
-                        action_id, auto_add_date, batch
-                    )
+                    resp = await self.api.delete_auto_add_products(action_id, auto_add_date, batch)
                     deleted = resp.get("product_ids", [])
                     stats["deleted"] += len(deleted)
                     if len(deleted) < len(batch):

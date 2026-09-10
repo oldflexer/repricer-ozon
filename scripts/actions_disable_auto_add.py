@@ -18,9 +18,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from config.settings import settings
-from core.use_cases.disable_auto_add import DisableAutoAddUseCase
+from core.container import container
 from infrastructure.logger import setup_logging
-from infrastructure.ozon_api import OzonApiClient
+from scripts.common import register_signal_handlers
 
 logger = setup_logging(f"disable_auto_add-{settings.INSTANCE_NAME}.log", mode="a")
 
@@ -32,17 +32,20 @@ async def main() -> None:
     Читает аргумент --dry-run и выполняет соответствующее действие.
     """
 
+    register_signal_handlers()
     parser = argparse.ArgumentParser(description="Отключение автодобавления в акции Ozon")
-    parser.add_argument("--dry-run", action="store_true", help="Тестовый режим: только показать, что будет удалено")
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Тестовый режим: только показать, что будет удалено"
+    )
     args = parser.parse_args()
 
-    api = OzonApiClient()
-    use_case = DisableAutoAddUseCase(api)
+    use_case = container.disable_auto_add_use_case()
 
     try:
         stats = await use_case.execute(dry_run=args.dry_run)
         logger.info(f"Статистика: {stats}")
     finally:
+        api = container.api_client()
         await api.close()
 
 

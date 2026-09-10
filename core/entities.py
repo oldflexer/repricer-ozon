@@ -7,7 +7,6 @@
 
 from dataclasses import dataclass, field
 from datetime import datetime, time
-from typing import Optional, List
 
 from core.enums import StrategyType, parse_strategy_value
 
@@ -26,19 +25,26 @@ class ProductInfo:
         old_price: Старая цена (до скидки).
         product_id: Идентификатор товара в Ozon.
         offer_id: Offer ID товара.
-        real_customer_price: Реальная цена покупателя (из индексов).
+        real_customer_price: Реальная цена покупателя (FBS).
         competitor_min_price: Минимальная цена конкурента.
+        discount_coef: Коэффициент дисконта (кэш из парсинга своих товаров).
+        discount_coef_source: Источник discount_coef ('parsed' | 'historical' | 'default').
+        discount_coef_updated_at: Время последнего обновления discount_coef.
     """
+
     sku: str
-    product_name: Optional[str] = None
+    product_name: str | None = None
     cost_price: float = 0.0
     min_price: float = 0.0
     current_price: float = 0.0
-    old_price: Optional[float] = None
-    product_id: Optional[int] = None
-    offer_id: Optional[str] = None
-    real_customer_price: Optional[float] = None
-    competitor_min_price: Optional[float] = None
+    old_price: float | None = None
+    product_id: int | None = None
+    offer_id: str | None = None
+    real_customer_price: float | None = None
+    competitor_min_price: float | None = None
+    discount_coef: float | None = None
+    discount_coef_source: str | None = None
+    discount_coef_updated_at: str | None = None
 
 
 @dataclass
@@ -53,6 +59,7 @@ class StrategyInterval:
         percent: Процент отклонения для стратегий BELOW и ABOVE.
         start_time, end_time: Объекты time, вычисляемые автоматически.
     """
+
     start: str
     end: str
     strategy_type: StrategyType  # Enum: BELOW=1, ABOVE=2, EQUAL=3
@@ -96,6 +103,7 @@ class PricingData:
             Комиссия за прямую доставку (FBO).
         fbo_deliv_to_customer_amount: Доставка до покупателя (FBO).
     """
+
     product_id: int
     price: float = 0.0
     old_price: float = 0.0
@@ -103,93 +111,26 @@ class PricingData:
     net_price: float = 0.0
     marketing_seller_price: float = 0.0
 
-    external_index_data_price: Optional[float] = None
-    external_index_data_index: Optional[float] = None
-    ozon_index_data_price: Optional[float] = None
-    ozon_index_data_index: Optional[float] = None
-    self_marketplaces_index_data_price: Optional[float] = None
-    self_marketplaces_index_data_index: Optional[float] = None
+    external_index_data_price: float | None = None
+    external_index_data_index: float | None = None
+    ozon_index_data_price: float | None = None
+    ozon_index_data_index: float | None = None
+    self_marketplaces_index_data_price: float | None = None
+    self_marketplaces_index_data_index: float | None = None
 
-    sales_percent_fbs: float = 0.0
     acquiring: float = 0.0
-
-    fbs_first_mile_min_amount: float = 0.0
-    fbs_first_mile_max_amount: float = 0.0
-    fbs_direct_flow_trans_min_amount: float = 0.0
-    fbs_direct_flow_trans_max_amount: float = 0.0
-    fbs_deliv_to_customer_amount: float = 0.0
-
-    fbo_direct_flow_trans_min_amount: float = 0.0
-    fbo_direct_flow_trans_max_amount: float = 0.0
     fbo_deliv_to_customer_amount: float = 0.0
-
-    @classmethod
-    def from_api_response(cls, data: dict) -> "PricingData":
-        """
-        Создаёт экземпляр PricingData из ответа Ozon API (/v5/product/info/prices).
-
-        Args:
-            data: Словарь с данными ответа API.
-
-        Returns:
-            PricingData: Объект с заполненными полями.
-        """
-        price_obj = data.get("price", {})
-        indexes = data.get("price_indexes", {})
-        commissions = data.get("commissions", {})
-
-        def _get_index(index_name: str) -> tuple[Optional[float], Optional[float]]:
-            """Извлекает цену и значение индекса из блока price_indexes."""
-            idx = indexes.get(index_name)
-            if isinstance(idx, dict):
-                min_price = idx.get("min_price")
-                if min_price in ("", None):
-                    min_price_val = None
-                else:
-                    try:
-                        min_price_val = float(min_price)
-                    except (ValueError, TypeError):
-                        min_price_val = None
-
-                idx_val = idx.get("price_index_value")
-                if idx_val in ("", None):
-                    idx_value = None
-                else:
-                    try:
-                        idx_value = float(idx_val)
-                    except (ValueError, TypeError):
-                        idx_value = None
-                return min_price_val, idx_value
-            return None, None
-
-        ext_price, ext_index = _get_index("external_index_data")
-        ozon_price, ozon_index = _get_index("ozon_index_data")
-        self_price, self_index = _get_index("self_marketplaces_index_data")
-
-        return cls(
-            product_id=data["product_id"],
-            price=float(price_obj.get("price", 0)),
-            old_price=float(price_obj.get("old_price", 0)),
-            min_price=float(price_obj.get("min_price", 0)),
-            net_price=float(price_obj.get("net_price", 0)),
-            marketing_seller_price=float(price_obj.get("marketing_seller_price", 0)),
-            external_index_data_price=ext_price,
-            external_index_data_index=ext_index,
-            ozon_index_data_price=ozon_price,
-            ozon_index_data_index=ozon_index,
-            self_marketplaces_index_data_price=self_price,
-            self_marketplaces_index_data_index=self_index,
-            sales_percent_fbs=float(commissions.get("sales_percent_fbs", 0)),
-            acquiring=float(data.get("acquiring", 0)),
-            fbs_first_mile_min_amount=float(commissions.get("fbs_first_mile_min_amount", 0)),
-            fbs_first_mile_max_amount=float(commissions.get("fbs_first_mile_max_amount", 0)),
-            fbs_direct_flow_trans_min_amount=float(commissions.get("fbs_direct_flow_trans_min_amount", 0)),
-            fbs_direct_flow_trans_max_amount=float(commissions.get("fbs_direct_flow_trans_max_amount", 0)),
-            fbs_deliv_to_customer_amount=float(commissions.get("fbs_deliv_to_customer_amount", 0)),
-            fbo_direct_flow_trans_min_amount=float(commissions.get("fbo_direct_flow_trans_min_amount", 0)),
-            fbo_direct_flow_trans_max_amount=float(commissions.get("fbo_direct_flow_trans_max_amount", 0)),
-            fbo_deliv_to_customer_amount=float(commissions.get("fbo_deliv_to_customer_amount", 0)),
-        )
+    fbo_direct_flow_trans_max_amount: float = 0.0
+    fbo_direct_flow_trans_min_amount: float = 0.0
+    fbo_return_flow_amount: float = 0.0
+    fbs_deliv_to_customer_amount: float = 0.0
+    fbs_direct_flow_trans_max_amount: float = 0.0
+    fbs_direct_flow_trans_min_amount: float = 0.0
+    fbs_first_mile_max_amount: float = 0.0
+    fbs_first_mile_min_amount: float = 0.0
+    fbs_return_flow_amount: float = 0.0
+    sales_percent_fbo: float = 0.0
+    sales_percent_fbs: float = 0.0
 
 
 @dataclass
@@ -204,14 +145,19 @@ class PriceCalculationResult:
         target_strategy_price: Цена по стратегии с учётом дисконта.
         result_target_price: Итоговая цена для отправки в Ozon (округлённая).
         marginality: Рассчитанная маржинальность (в долях).
+        discount_coef: Использованный коэффициент дисконта.
+        discount_coef_source: Источник discount_coef ('parsed' | 'historical' | 'default').
         log_details: Дополнительная информация для логирования (словарь).
     """
+
     sku: str
     target_min_price: float
-    strategy_price: Optional[float]
-    target_strategy_price: Optional[float]
+    strategy_price: float | None
+    target_strategy_price: float | None
     result_target_price: float
     marginality: float
+    discount_coef: float
+    discount_coef_source: str
     log_details: dict = field(default_factory=dict)
 
 
@@ -222,8 +168,9 @@ class UpdateRequest:
 
     Этот класс оставлен для обратной совместимости и будет удалён в будущих версиях.
     """
+
     product_id: int
     price: float
     min_price: float
-    net_price: Optional[float] = None
-    old_price: Optional[float] = None
+    net_price: float | None = None
+    old_price: float | None = None
