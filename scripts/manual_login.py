@@ -43,7 +43,7 @@ def main() -> int:
     # Флаг для отслеживания ручного закрытия
     manually_closed = False
     
-    def signal_handler(signum, frame):
+    def signal_handler(signum: int, frame: object) -> None:
         nonlocal manually_closed
         logger.info("Получен сигнал завершения, закрываем браузер...")
         manually_closed = True
