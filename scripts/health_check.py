@@ -10,6 +10,7 @@ import argparse
 import json
 import shutil
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from config.settings import settings
 from infrastructure.db.repository import SQLiteRepository
+from infrastructure.ozon_api import OzonApiClient
 
 
 def check_database() -> dict[str, Any]:
@@ -101,14 +103,49 @@ def check_log_directory() -> dict[str, Any]:
         return {"status": "unhealthy", "details": f"Log directory error: {e}"}
 
 
+def check_api_connectivity() -> dict[str, Any]:
+    """Check Ozon API connectivity with a simple request."""
+    try:
+        if not settings.OZON_CLIENT_ID or not settings.OZON_API_KEY:
+            return {"status": "unhealthy", "details": "API credentials not configured"}
+
+        client = OzonApiClient()
+        # Try a simple API call - get product list with limit 1
+        import asyncio
+        result = asyncio.run(client.get_product_ids_by_skus(["health_check_test"]))
+        return {"status": "healthy", "details": "API connectivity OK"}
+    except Exception as e:
+        return {"status": "unhealthy", "details": f"API connectivity failed: {e}"}
+
+
+def check_last_run_time() -> dict[str, Any]:
+    """Check when the last repricing cycle ran."""
+    try:
+        repo = SQLiteRepository()
+        last_run = repo.get_last_run_time()
+        if last_run is None:
+            return {"status": "degraded", "details": "No previous run recorded"}
+
+        # Check if last run was within expected timeframe (e.g., 24 hours)
+        elapsed_hours = (time.time() - last_run.timestamp()) / 3600
+        if elapsed_hours > 24:
+            return {"status": "degraded", "details": f"Last run {elapsed_hours:.1f} hours ago (>24h)"}
+
+        return {"status": "healthy", "details": f"Last run {elapsed_hours:.1f} hours ago"}
+    except Exception as e:
+        return {"status": "unhealthy", "details": f"Last run check failed: {e}"}
+
+
 def run_checks() -> dict[str, Any]:
     """Run all health checks."""
     checks = {
         "database": check_database(),
         "api_credentials": check_api_credentials(),
+        "api_connectivity": check_api_connectivity(),
         "disk_space": check_disk_space(),
         "excel_file": check_excel_file(),
         "log_directory": check_log_directory(),
+        "last_run_time": check_last_run_time(),
     }
 
     # Overall status
@@ -123,7 +160,7 @@ def run_checks() -> dict[str, Any]:
     return {"status": overall, "checks": checks}
 
 
-def main():
+def main() -> None:
     """Main entry point."""
     parser = argparse.ArgumentParser(description="Health check for Repricer-Ozon")
     parser.add_argument("--json", action="store_true", help="Output as JSON")

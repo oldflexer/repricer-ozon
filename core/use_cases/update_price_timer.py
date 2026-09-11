@@ -3,10 +3,11 @@ Use‑case для обновления таймера актуальности �
 """
 
 from infrastructure.logger import logger
+from infrastructure.ozon_api import OzonApiClient
 
 
 class UpdatePriceTimerUseCase:
-    def __init__(self, api_client):
+    def __init__(self, api_client: OzonApiClient) -> None:
         self.api = api_client
 
     async def execute(self, product_ids: list[int]) -> dict[str, int]:

@@ -5,10 +5,12 @@
 с ротацией по дням (TimedRotatingFileHandler).
 """
 
+import contextvars
 import logging
 import sys
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
+from typing import Any
 
 import structlog
 
@@ -17,6 +19,9 @@ _LOG_DIR = _ROOT / "logs"
 _LOG_DIR.mkdir(exist_ok=True)
 
 _LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+# Context variable for correlation ID
+request_id_var: contextvars.ContextVar[str | None] = contextvars.ContextVar("request_id", default=None)
 
 # Логгеры, для которых отключаем propagation в парсере
 _PARSER_LOGGERS = [
@@ -31,6 +36,17 @@ _PARSER_LOGGERS = [
     "webdriver_manager",
 ]
 
+
+def _add_request_id(
+    logger: Any, method_name: str, event_dict: Any
+) -> Any:
+    """Add request_id from contextvar to log entries."""
+    request_id = request_id_var.get()
+    if request_id:
+        event_dict["request_id"] = request_id
+    return event_dict
+
+
 # Настройка structlog – выполняется один раз при импорте
 structlog.configure(
     processors=[
@@ -40,7 +56,8 @@ structlog.configure(
         structlog.processors.StackInfoRenderer(),
         structlog.processors.format_exc_info,
         structlog.processors.UnicodeDecoder(),
-        structlog.processors.KeyValueRenderer(key_order=["event", "level", "timestamp"]),
+        _add_request_id,
+        structlog.processors.JSONRenderer(),
     ],
     context_class=dict,
     logger_factory=structlog.stdlib.LoggerFactory(),
@@ -52,9 +69,24 @@ structlog.configure(
 logger = structlog.get_logger()
 
 
+def set_request_id(request_id: str) -> None:
+    """Set the correlation ID for the current context."""
+    request_id_var.set(request_id)
+
+
+def clear_request_id() -> None:
+    """Clear the correlation ID."""
+    request_id_var.set(None)
+
+
+def get_request_id() -> str | None:
+    """Get the current correlation ID."""
+    return request_id_var.get()
+
+
 def setup_logging(
     log_file: str | None = None, mode: str = "a", console: bool = True
-) -> structlog.BoundLogger:
+) -> Any:
     """
     Настраивает логирование репрайсера.
 
@@ -88,13 +120,14 @@ def setup_logging(
     else:
         file_handler = logging.FileHandler(file_path, mode=mode, encoding="utf-8")
 
-    file_handler.setFormatter(logging.Formatter(_LOG_FORMAT))
+    # Use JSON formatter for structured logs
+    file_handler.setFormatter(logging.Formatter("%(message)s"))
     file_handler.setLevel(logging.INFO)
     root_logger.addHandler(file_handler)
 
     if console:
         console_handler = logging.StreamHandler(sys.stdout)
-        console_handler.setFormatter(logging.Formatter(_LOG_FORMAT))
+        console_handler.setFormatter(logging.Formatter("%(message)s"))
         console_handler.setLevel(logging.INFO)
         root_logger.addHandler(console_handler)
 
@@ -132,7 +165,7 @@ def setup_parser_logging(log_file: str | None = None, mode: str = "a") -> loggin
     else:
         file_handler = logging.FileHandler(file_path, mode=mode, encoding="utf-8")
 
-    file_handler.setFormatter(logging.Formatter(_LOG_FORMAT))
+    file_handler.setFormatter(logging.Formatter("%(message)s"))
     file_handler.setLevel(logging.INFO)
 
     # Настраиваем дочерние логгеры – только файл, без propagation

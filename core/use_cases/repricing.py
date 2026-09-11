@@ -4,9 +4,11 @@ Use‑case для запуска полного цикла репрайсинг�
 Использует Pipeline Pattern вместо монолитного координатора.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from core.domain.pricing_rules import OzonPricingRules
 from core.pipeline.orchestrator import (
     PipelineDependencies,
     create_repricing_pipeline,
@@ -22,6 +24,7 @@ from core.protocols.repository import (
     IProductRepository,
 )
 from core.services.price_calculation import PriceCalculationService
+from core.use_cases.parse_own_products import ParseOwnProductsUseCase
 
 
 @dataclass(slots=True)
@@ -36,7 +39,10 @@ class RepricingUseCaseDependencies:
     api_client: IApiClient
     mail_notifier: INotifier
     loader: ILoader
+    pricing_rules: OzonPricingRules
+    parse_own_products_use_case: ParseOwnProductsUseCase
     calculator: PriceCalculationService | None = None
+    progress_callback: Callable[[int, int, str], None] | None = None
 
 
 class RepricingUseCase:
@@ -73,7 +79,7 @@ class RepricingUseCase:
                 - errors: список ошибок.
                 - warnings: список предупреждений.
         """
-        # Создаём pipeline с зависимостями
+        # Создаём pipeline с переданными зависимостями
         pipeline_deps = PipelineDependencies(
             loader=self._deps.loader,
             api_client=self._deps.api_client,
@@ -83,8 +89,11 @@ class RepricingUseCase:
             marginality_repo=self._deps.marginality_repo,
             maintenance_repo=self._deps.maintenance_repo,
             notifier=self._deps.mail_notifier,
-            calculator=self._deps.calculator or PriceCalculationService(),
+            calculator=self._deps.calculator or PriceCalculationService(self._deps.pricing_rules),
+            pricing_rules=self._deps.pricing_rules,
+            parse_own_products_use_case=self._deps.parse_own_products_use_case,
             dry_run=dry_run,
+            progress_callback=self._deps.progress_callback,
         )
         orchestrator, context = create_repricing_pipeline(pipeline_deps)
 

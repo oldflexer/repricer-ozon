@@ -7,6 +7,7 @@ Use‑case для отключения автодобавления товаро
 
 from core.services import ActionService
 from infrastructure.logger import logger
+from infrastructure.ozon_api import OzonApiClient
 
 
 class DisableAutoAddUseCase:
@@ -17,7 +18,7 @@ class DisableAutoAddUseCase:
     и последующего удаления.
     """
 
-    def __init__(self, api_client) -> None:
+    def __init__(self, api_client: OzonApiClient) -> None:
         """
         Инициализирует use‑case.
 

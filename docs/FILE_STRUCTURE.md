@@ -93,8 +93,18 @@ repricer-ozon/
 │   ├── competitors_parser.py       # Запуск парсера цен конкурентов
 │   ├── actions_disable_auto_add.py # Запуск отключения автодобавления (CLI, --dry-run)
 │   ├── actions_update_price_timer.py # Запуск обновления таймера актуальности цены
+│   ├── manual_login.py             # Ручной логин в Ozon Seller (сохранение профиля Chrome)
 │   ├── health_check.py             # Проверка здоровья (диск, БД, Excel)
 │   └── upgrade_db.py               # Ручной запуск миграций
+│
+├── deploy/                         # Инфраструктура деплоя (Linux)
+│   ├── deploy.sh                   # Скрипт установки (venv, deps, systemd, cron)
+│   ├── cron.template               # Базовый cron-шаблон
+│   ├── parser.cron.template        # Cron для парсера конкурентов
+│   ├── repricer.cron.template      # Cron для репрайсинга
+│   ├── disable_auto_add.cron.template # Cron для отключения автодобавления
+│   ├── update_price_timer.cron.template # Cron для таймера цен
+│   └── repricer-web.service.template # Systemd сервис для Streamlit дашборда
 │
 ├── ui/                             # Слой представления (Streamlit UI)
 │   ├── __init__.py

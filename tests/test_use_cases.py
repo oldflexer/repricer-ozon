@@ -6,9 +6,11 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from core.domain.pricing_rules import OzonPricingRules
 from core.entities import PricingData, ProductInfo, StrategyInterval
 from core.enums import StrategyType
 from core.use_cases import RepricingUseCase, RepricingUseCaseDependencies
+from core.use_cases.parse_own_products import ParseOwnProductsUseCase
 
 
 @pytest.mark.asyncio
@@ -53,6 +55,9 @@ async def test_execute_dry_run():
     repo.get_average_marginality.return_value = None
     loader.update_product_in_file.return_value = True
 
+    parse_own_products_use_case = MagicMock(spec=ParseOwnProductsUseCase)
+    parse_own_products_use_case.execute = AsyncMock(return_value={"updated": 0, "errors": 0, "skipped": 0})
+
     deps = RepricingUseCaseDependencies(
         product_repo=repo,
         history_repo=repo,
@@ -62,6 +67,8 @@ async def test_execute_dry_run():
         api_client=api,
         mail_notifier=notifier,
         loader=loader,
+        pricing_rules=OzonPricingRules(),
+        parse_own_products_use_case=parse_own_products_use_case,
     )
     use_case = RepricingUseCase(deps)
     stats = await use_case.execute(dry_run=True)
@@ -83,6 +90,9 @@ async def test_execute_without_products():
     # load() returns tuple (products, warnings)
     loader.load.return_value = ([], [])
 
+    parse_own_products_use_case = MagicMock(spec=ParseOwnProductsUseCase)
+    parse_own_products_use_case.execute = AsyncMock(return_value={"updated": 0, "errors": 0, "skipped": 0})
+
     deps = RepricingUseCaseDependencies(
         product_repo=repo,
         history_repo=repo,
@@ -92,6 +102,8 @@ async def test_execute_without_products():
         api_client=api,
         mail_notifier=notifier,
         loader=loader,
+        pricing_rules=OzonPricingRules(),
+        parse_own_products_use_case=parse_own_products_use_case,
     )
     use_case = RepricingUseCase(deps)
     stats = await use_case.execute(dry_run=False)

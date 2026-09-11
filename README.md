@@ -1,11 +1,18 @@
-# Репрайсер для Ozon (API‑версия)
+# Репрайсер для Ozon (API‑версия) v1.1.0
 
 Автоматическое управление ценами на Ozon через Ozon Seller API, с расчётом на основе индексов цен и заданных временных стратегий, контролем маржинальности по реальным комиссиям FBS.
 
+**Статус:** ✅ Production-ready | **Тесты:** 165 passed | **Mypy:** clean | **Pre-commit:** configured
+
 ## 🚀 Возможности
 
-- Работа **только через Ozon Seller API** (v3, v5, v1)
-- Автоматическое получение product_id, offer_id, названия товара через `/v3/product/info/list`.
+### 🔄 Гибридный подход: API + Парсинг
+Проект работает **двумя каналами**:
+- **Ozon Seller API (v3, v5, v1)** — репрайсинг, управление ценами, акции, таймеры, получение комиссий/индексов, синхронизация реальных цен из шаблона
+- **Прямой парсинг (Selenium/undetected-chromedriver)** — цены конкурентов, ручной логин в Ozon Seller для сохранения сессии
+
+### 📦 Основные функции
+- Автоматическое получение `product_id`, `offer_id`, названия товара через `/v3/product/info/list`.
 - Получение цен, индексов и комиссий FBS через `/v5/product/info/prices`.
 - Расчёт целевой цены с использованием динамического `discount_coef` на основе индексов (external, ozon, self_marketplaces) или коэффициента из `.env`.
 - Гибкие временные стратегии: ниже/выше/равна индексу Ozon с настраиваемым процентом.
@@ -22,6 +29,7 @@
 - **Отключение автодобавления в акции** Ozon (mass-delete через API).
 - **Обновление таймера актуальности минимальной цены** через API.
 - **Синхронизация реальных цен из шаблона Ozon** (ДО и ПОСЛЕ репрайсинга).
+- **Ручной логин в Ozon** для сохранения профиля Chrome (`scripts/manual_login.py`).
 - Веб-интерфейс на **Streamlit** (7 страниц: Сводка, Статистика, Аналитика, Анализ, Таблицы, Запросы, Сервис).
 - Поддержка `--dry-run` (расчёт без отправки) для всех операций.
 - **Alembic-миграции** БД (автозапуск `run_migrations_once` при старте).
@@ -282,6 +290,20 @@ CleanupDatabaseStep    → Автоочистка старых записей (>
 - Получает все акции (/v1/actions), даты автодобавления, товары (пагинация).
 - Массовое удаление (/v1/actions/auto-add/products/delete) батчами по 1000.
 
+## 🔐 Ручной логин в Ozon (scripts/manual_login.py)
+
+- Запуск: python scripts/manual_login.py
+- Открывает Chrome с профилем (CHROME_PROFILE_PATH) и страницу https://seller.ozon.ru/
+- Даёт 5 минут на ручной вход в аккаунт (или до ручного закрытия браузера).
+- Профиль сохраняется автоматически — куки/сессия используются парсером и API.
+- Обработка SIGINT/SIGTERM для корректного завершения.
+
+## ⏱ Обновление таймера актуальности цены (scripts/actions_update_price_timer.py)
+
+- Запуск: python scripts/actions_update_price_timer.py [--dry-run]
+- Обновляет таймер актуальности минимальной цены через API Ozon (/v1/product/import/prices).
+- Необходим для поддержания актуальности цен в каталоге.
+
 ## 🌐 Веб-дашборд (Streamlit)
 
 Запуск: streamlit run app.py
@@ -343,15 +365,43 @@ python scripts/repricer.py [--dry-run]
 # 6. Запуск парсера конкурентов
 python scripts/competitors_parser.py [--dry-run]
 
-# 7. Отключение автодобавления
+# 7. Ручной логин в Ozon (сохранение профиля Chrome)
+python scripts/manual_login.py
+
+# 8. Отключение автодобавления
 python scripts/actions_disable_auto_add.py [--dry-run]
 
-# 8. Обновление таймера актуальности цены
+# 9. Обновление таймера актуальности цены
 python scripts/actions_update_price_timer.py [--dry-run]
 
-# 9. Веб-дашборд
+# 10. Веб-дашборд
 streamlit run app.py
 `
+
+## 🚀 Деплой на сервере (Linux)
+
+Проект готов к production-развёртыванию через systemd и cron.
+
+### Файлы деплоя (`deploy/`):
+- `deploy.sh` — скрипт установки (создаёт виртуальное окружение, ставит зависимости, настраивает systemd/cron)
+- `deploy/repricer-web.service.template` — systemd сервис для Streamlit дашборда
+- `deploy/repricer.cron.template` — cron для репрайсинга (например, каждые 30 мин)
+- `deploy/parser.cron.template` — cron для парсера конкурентов (например, раз в час)
+- `deploy/disable_auto_add.cron.template` — cron для отключения автодобавления (раз в день)
+- `deploy/update_price_timer.cron.template` — cron для таймера цен (раз в день)
+- `deploy/cron.template` — базовый шаблон
+
+### Быстрый деплой:
+```bash
+# На сервере
+git clone <repo>
+cd repricer-ozon
+cp .env.example .env  # заполните переменные
+chmod +x deploy.sh
+sudo ./deploy.sh
+```
+
+Сервисы будут установлены и запущены автоматически.
 
 ## 🧪 Тесты
 

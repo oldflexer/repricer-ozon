@@ -2,14 +2,27 @@
 Pipeline Orchestrator - управляет выполнением последовательности шагов.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass
+import time
 
+from core.domain.pricing_rules import OzonPricingRules
+from core.metrics import (
+    record_cycle_duration,
+    record_pipeline_step_duration,
+    record_products_loaded,
+    record_prices_updated,
+    record_error,
+    record_marginality,
+    set_active_tasks,
+)
 from core.pipeline.steps import (
     CalculatePricesStep,
     CleanupDatabaseStep,
     EnrichProductIdsStep,
     FetchPricingDataStep,
     LoadProductsStep,
+    ParseOwnProductsStep,
     PersistToExcelStep,
     PipelineContext,
     PipelineStep,
@@ -17,6 +30,10 @@ from core.pipeline.steps import (
     SendReportStep,
     SubmitPricesToOzonStep,
 )
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from core.use_cases.parse_own_products import ParseOwnProductsUseCase
 from core.protocols.api import IApiClient
 from core.protocols.loader import ILoader
 from core.protocols.notifier import INotifier
@@ -28,7 +45,8 @@ from core.protocols.repository import (
     IProductRepository,
 )
 from core.services.price_calculation import PriceCalculationService
-from infrastructure.logger import logger
+from infrastructure.logger import logger, set_request_id, clear_request_id
+import uuid
 
 
 @dataclass
@@ -62,20 +80,59 @@ class PipelineOrchestrator:
         Returns:
             PipelineResult со статистикой выполнения
         """
-        logger.info(f"Starting pipeline with {len(self.steps)} steps")
+        start_time = time.time()
+        
+        # Generate and set request_id for correlation
+        request_id = context.request_id or str(uuid.uuid4())[:8]
+        context.request_id = request_id
+        set_request_id(request_id)
 
-        for step in self.steps:
-            if context.should_stop:
-                logger.warning(f"Pipeline stopped before step {step.name} due to critical error")
-                break
+        logger.info("Starting pipeline", steps=len(self.steps), request_id=request_id)
 
-            logger.info(f"Executing pipeline step: {step.name}")
-            try:
-                await step.execute(context)
-            except Exception as e:
-                logger.exception(f"Pipeline step {step.name} failed with exception")
-                context.add_error(f"Step {step.name} failed: {e}")
-                context.should_stop = True
+        try:
+            set_active_tasks(1)
+            for i, step in enumerate(self.steps, start=1):
+                if context.should_stop:
+                    logger.warning("Pipeline stopped before step", step=step.name, request_id=request_id)
+                    break
+
+                context.report_progress(i, f"Executing: {step.name}")
+                logger.info("Executing pipeline step", step=step.name, request_id=request_id)
+                step_start = time.time()
+                try:
+                    await step.execute(context)
+                except Exception as e:
+                    logger.exception("Pipeline step failed with exception", step=step.name, request_id=request_id)
+                    context.add_error(f"Step {step.name} failed: {e}")
+                    record_error(type(e).__name__, step.name)
+                    context.should_stop = True
+                finally:
+                    step_duration = time.time() - step_start
+                    record_pipeline_step_duration(step.name, step_duration)
+        finally:
+            clear_request_id()
+            set_active_tasks(0)
+            # Record metrics
+            duration = time.time() - start_time
+            record_cycle_duration(duration)
+            record_products_loaded(len(context.products))
+            
+            prices_updated = 0
+            if context.dry_run:
+                prices_updated = len(context.calculation_results)
+                record_prices_updated("dry_run", prices_updated)
+            elif context.api_results:
+                prices_updated = sum(1 for r in context.api_results.values() if r.get("updated", False))
+                record_prices_updated("success", prices_updated)
+                failed = sum(1 for r in context.api_results.values() if not r.get("updated", False))
+                if failed:
+                    record_prices_updated("failed", failed)
+            
+            # Record marginality for each product
+            for product in context.products:
+                result = context.calculation_results.get(str(product.sku))
+                if result:
+                    record_marginality(str(product.sku), result.marginality)
 
         # Подсчет статистики
         prices_updated = 0
@@ -85,7 +142,7 @@ class PipelineOrchestrator:
         elif context.api_results:
             prices_updated = sum(1 for r in context.api_results.values() if r.get("updated", False))
 
-        result = PipelineResult(
+        pipeline_result = PipelineResult(
             products_loaded=len(context.products),
             prices_updated=prices_updated,
             errors=context.errors,
@@ -93,11 +150,11 @@ class PipelineOrchestrator:
         )
 
         logger.info(
-            f"Pipeline completed: loaded={result.products_loaded}, "
-            f"updated={result.prices_updated}, errors={len(result.errors)}, warnings={len(result.warnings)}"
+            f"Pipeline completed: loaded={pipeline_result.products_loaded}, "
+            f"updated={pipeline_result.prices_updated}, errors={len(pipeline_result.errors)}, warnings={len(pipeline_result.warnings)}"
         )
 
-        return result
+        return pipeline_result
 
 
 @dataclass
@@ -113,7 +170,10 @@ class PipelineDependencies:
     maintenance_repo: IMaintenanceRepository
     notifier: INotifier
     calculator: PriceCalculationService
+    pricing_rules: OzonPricingRules
+    parse_own_products_use_case: "ParseOwnProductsUseCase"
     dry_run: bool = False
+    progress_callback: Callable[[int, int, str], None] | None = None
 
 
 def create_repricing_pipeline(
@@ -129,18 +189,20 @@ def create_repricing_pipeline(
         notifier: INotifier - сервис уведомлений
         calculator: PriceCalculationService - сервис расчёта цен
         dry_run: Режим тестового запуска
+        progress_callback: Опциональный колбэк для отображения прогресса (current, total, message)
 
     Returns:
         Tuple (orchestrator, context)
     """
 
     steps = [
+        ParseOwnProductsStep(deps.parse_own_products_use_case, deps.dry_run),
         LoadProductsStep(deps.loader, deps.product_repo),
         EnrichProductIdsStep(deps.api_client),
         FetchPricingDataStep(deps.api_client),
-        CalculatePricesStep(deps.calculator),
-        PersistToExcelStep(deps.loader),
-        SubmitPricesToOzonStep(deps.api_client),
+        CalculatePricesStep(deps.calculator, deps.pricing_rules),
+        PersistToExcelStep(deps.loader, deps.pricing_rules),
+        SubmitPricesToOzonStep(deps.api_client, deps.pricing_rules),
         SaveHistoryStep(
             deps.product_repo, deps.history_repo, deps.analytics_repo, deps.marginality_repo
         ),
@@ -148,6 +210,10 @@ def create_repricing_pipeline(
         CleanupDatabaseStep(deps.maintenance_repo),
     ]
 
-    context = PipelineContext(dry_run=deps.dry_run)
+    context = PipelineContext(
+        dry_run=deps.dry_run,
+        progress_callback=deps.progress_callback,
+    )
+    context.set_total_steps(len(steps))
 
     return PipelineOrchestrator(steps), context

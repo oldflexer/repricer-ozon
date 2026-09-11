@@ -10,14 +10,17 @@ UseCase для парсинга цен конкурентов с Ozon.
 import contextlib
 import random
 import time
+from typing import Any
 
+import numpy as np
 import pandas as pd
 
 from config.settings import settings
+from core.metrics import record_parser_retry
+from core.protocols.parser import OzonPriceParserProtocol
 from core.use_cases.base_parser import BaseParserUseCase
 from infrastructure.file_utils import save_safely, wait_for_excel_available
 from infrastructure.logger import logger
-from infrastructure.ozon_competitor import OzonPriceParser
 from scripts.common import is_shutdown_requested
 
 
@@ -28,14 +31,15 @@ class ParseCompetitorPricesUseCase(BaseParserUseCase):
     Использует OzonPriceParser (Selenium) для извлечения цен со страниц товаров.
     """
 
-    def __init__(self, parser: OzonPriceParser | None = None):
+    def __init__(self, parser: OzonPriceParserProtocol | None = None):
         """
         Инициализирует UseCase.
 
         Args:
-            parser: Экземпляр OzonPriceParser (опционально, будет создан при необходимости).
+            parser: Экземпляр парсера, реализующий OzonPriceParserProtocol
+                    (опционально, будет создан при необходимости).
         """
-        self.parser = parser or OzonPriceParser()
+        self.parser = parser
 
     def _parse_price_with_retry(self, url: str) -> float | None:
         """
@@ -47,6 +51,11 @@ class ParseCompetitorPricesUseCase(BaseParserUseCase):
         Returns:
             Цена (float), -1.0 если товар закончился, None при ошибке.
         """
+        # Ensure parser is initialized
+        if self.parser is None:
+            from infrastructure.ozon_competitor import OzonPriceParser
+            self.parser = OzonPriceParser()
+
         for attempt in range(1, settings.PARSER_RETRIES + 1):
             if is_shutdown_requested():
                 logger.info("Shutdown requested, stopping price parsing")
@@ -67,6 +76,7 @@ class ParseCompetitorPricesUseCase(BaseParserUseCase):
                 )
 
             if attempt < settings.PARSER_RETRIES:
+                record_parser_retry(attempt)
                 logger.info(f"Перезапуск драйвера перед повторной попыткой {attempt + 1}...")
                 try:
                     self.parser.restart()
@@ -87,6 +97,11 @@ class ParseCompetitorPricesUseCase(BaseParserUseCase):
         Returns:
             Словарь со статистикой: updated, errors, skipped.
         """
+        # Lazy initialization of parser
+        if self.parser is None:
+            from infrastructure.ozon_competitor import OzonPriceParser
+            self.parser = OzonPriceParser()
+
         excel_path = settings.data_file_path
 
         if not excel_path.exists():
@@ -112,9 +127,22 @@ class ParseCompetitorPricesUseCase(BaseParserUseCase):
             url_col_name = f"{url_prefix} {i}"
             price_col_name = f"{price_prefix} {i}"
             if url_col_name in df.columns and price_col_name in df.columns:
+                url_loc = df.columns.get_loc(url_col_name)
+                price_loc = df.columns.get_loc(price_col_name)
+                # get_loc can return int, slice, or ndarray - handle all cases
+                def _to_int(loc: Any) -> int:
+                    if isinstance(loc, int):
+                        return loc
+                    if isinstance(loc, slice):
+                        return loc.start if loc.start is not None else 0
+                    if isinstance(loc, (list, tuple, np.ndarray)):
+                        return int(loc[0]) if len(loc) > 0 else 0
+                    return int(loc)
+                url_idx = _to_int(url_loc)
+                price_idx = _to_int(price_loc)
                 col_indices[i] = {
-                    "url_col": df.columns.get_loc(url_col_name) + 1,  # 1-based для openpyxl
-                    "price_col": df.columns.get_loc(price_col_name) + 1,
+                    "url_col": url_idx + 1,  # 1-based для openpyxl
+                    "price_col": price_idx + 1,
                 }
 
         if not col_indices:
@@ -122,7 +150,7 @@ class ParseCompetitorPricesUseCase(BaseParserUseCase):
             return {"updated": 0, "errors": 0, "skipped": 0}
 
         stats = {"updated": 0, "errors": 0, "skipped": 0}
-        excel_updates = {}
+        excel_updates: dict[tuple[int, int], float] = {}
 
         try:
             for row_num, (_, row) in enumerate(df.iterrows(), start=2):

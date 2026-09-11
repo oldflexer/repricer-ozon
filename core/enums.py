@@ -5,6 +5,7 @@
 """
 
 from enum import IntEnum
+from typing import Any
 
 import pandas as pd
 
@@ -33,7 +34,7 @@ class StrategyDirection(IntEnum):
     POSITIVE = 1  # Для ABOVE: base_price * (1 + percent/100)
 
 
-def parse_strategy_value(value) -> StrategyType:
+def parse_strategy_value(value: Any) -> StrategyType:
     """
     Преобразует значение из Excel/БД в StrategyType.
 

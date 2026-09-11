@@ -17,8 +17,10 @@ from .queries import (
     SQL_DELETE_PRODUCT,
     SQL_DELETE_PRODUCT_STRATEGIES_BY_PID,
     SQL_SELECT_LAST_CLEANUP,
+    SQL_SELECT_LAST_RUN,
     SQL_SELECT_PRODUCT_ID_BY_SKU,
     SQL_UPDATE_LAST_CLEANUP,
+    SQL_UPDATE_LAST_RUN,
 )
 
 
@@ -137,6 +139,32 @@ class MaintenanceMixin(DBConnectionMixin):
         with self._get_connection() as conn:
             conn.execute(
                 SQL_UPDATE_LAST_CLEANUP,
+                (dt_str,),
+            )
+            conn.commit()
+
+    def get_last_repricing_run(self) -> datetime | None:
+        """Возвращает дату последнего запуска репрайсинга."""
+        with self._get_connection() as conn:
+            row = conn.execute(SQL_SELECT_LAST_RUN).fetchone()
+            if row and row["value"]:
+                try:
+                    dt = datetime.fromisoformat(row["value"])
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=UTC)
+                    return dt
+                except Exception:
+                    return None
+            return None
+
+    def set_last_repricing_run(self, dt: datetime) -> None:
+        """Устанавливает дату последнего запуска репрайсинга."""
+        if dt.tzinfo is not None:
+            dt = dt.astimezone(UTC).replace(tzinfo=None)
+        dt_str = dt.isoformat()
+        with self._get_connection() as conn:
+            conn.execute(
+                SQL_UPDATE_LAST_RUN,
                 (dt_str,),
             )
             conn.commit()

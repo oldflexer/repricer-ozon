@@ -20,7 +20,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from config.settings import settings
 from core.container import container
 from core.use_cases.parse_competitor_prices import ParseCompetitorPricesUseCase
-from infrastructure.x_display import get_available_display
 from scripts.common import register_signal_handlers, setup_parser_logging
 
 logger = setup_parser_logging("parser")
@@ -43,21 +42,9 @@ def main() -> None:
     """
     Основная точка входа.
 
-    Определяет доступный DISPLAY (Linux), получает блокировку на выполнение
-    и запускает UseCase.
+    Получает блокировку на выполнение и запускает UseCase.
     """
     register_signal_handlers()
-
-    # Определяем DISPLAY только на Linux/Unix
-    if not sys.platform.startswith("win"):
-        if "DISPLAY" not in os.environ:
-            display = get_available_display()
-            if display:
-                os.environ["DISPLAY"] = display
-                logger.info(f"Установлен DISPLAY={display}")
-            else:
-                logger.error("Не найден доступный X-сервер. Парсинг невозможен.")
-                return
 
     parser = argparse.ArgumentParser(description="Парсер цен конкурентов для Ozon.")
     parser.add_argument(

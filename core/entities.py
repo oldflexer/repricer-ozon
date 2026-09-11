@@ -25,8 +25,11 @@ class ProductInfo:
         old_price: Старая цена (до скидки).
         product_id: Идентификатор товара в Ozon.
         offer_id: Offer ID товара.
-        real_customer_price: Реальная цена покупателя (из индексов).
+        real_customer_price: Реальная цена покупателя (FBS).
         competitor_min_price: Минимальная цена конкурента.
+        discount_coef: Коэффициент дисконта (кэш из парсинга своих товаров).
+        discount_coef_source: Источник discount_coef ('parsed' | 'historical' | 'default').
+        discount_coef_updated_at: Время последнего обновления discount_coef.
     """
 
     sku: str
@@ -39,6 +42,9 @@ class ProductInfo:
     offer_id: str | None = None
     real_customer_price: float | None = None
     competitor_min_price: float | None = None
+    discount_coef: float | None = None
+    discount_coef_source: str | None = None
+    discount_coef_updated_at: str | None = None
 
 
 @dataclass
@@ -139,6 +145,8 @@ class PriceCalculationResult:
         target_strategy_price: Цена по стратегии с учётом дисконта.
         result_target_price: Итоговая цена для отправки в Ozon (округлённая).
         marginality: Рассчитанная маржинальность (в долях).
+        discount_coef: Использованный коэффициент дисконта.
+        discount_coef_source: Источник discount_coef ('parsed' | 'historical' | 'default').
         log_details: Дополнительная информация для логирования (словарь).
     """
 
@@ -148,6 +156,8 @@ class PriceCalculationResult:
     target_strategy_price: float | None
     result_target_price: float
     marginality: float
+    discount_coef: float
+    discount_coef_source: str
     log_details: dict = field(default_factory=dict)
 
 

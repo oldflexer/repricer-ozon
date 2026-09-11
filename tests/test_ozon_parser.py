@@ -21,6 +21,8 @@ def parser():
         from selenium.common.exceptions import NoSuchElementException
 
         mock_driver.find_element.side_effect = NoSuchElementException("not found")
+        # Mock find_elements to return empty list for CAPTCHA/block detection
+        mock_driver.find_elements.return_value = []
         return p
 
 

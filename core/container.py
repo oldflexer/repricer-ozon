@@ -11,6 +11,7 @@ from typing import cast
 from dependency_injector import containers, providers
 
 from config.settings import settings
+from core.domain.pricing_rules import OzonPricingRules
 from core.pipeline.orchestrator import (
     PipelineDependencies,
     create_repricing_pipeline,
@@ -25,8 +26,19 @@ from core.protocols.repository import (
 from core.services.price_calculation import PriceCalculationService
 from core.use_cases.disable_auto_add import DisableAutoAddUseCase
 from core.use_cases.parse_competitor_prices import ParseCompetitorPricesUseCase
-from core.use_cases.repricing import RepricingUseCase, RepricingUseCaseDependencies
+from core.use_cases.parse_own_products import ParseOwnProductsUseCase
+from core.use_cases.repricing import (
+    RepricingUseCase,
+    RepricingUseCaseDependencies,
+)
 from infrastructure.db import SQLiteRepository
+from infrastructure.db.repositories import (
+    AnalyticsRepository,
+    MaintenanceRepository,
+    MarginalityRepository,
+    PriceHistoryRepository,
+    ProductRepository,
+)
 from infrastructure.excel_loader import ExcelLoader
 from infrastructure.mail_notifier import MailNotifier
 from infrastructure.ozon_api import OzonApiClient
@@ -43,8 +55,35 @@ class Container(containers.DeclarativeContainer):
     # Infrastructure singletons
     # ------------------------------------------------------------------
 
+    # Legacy monolithic repository (for backward compatibility)
     repository = providers.Singleton(
         SQLiteRepository,
+        db_path=providers.Callable(Path, config.database_path),
+    )
+
+    # New separate repositories
+    product_repo = providers.Singleton(
+        ProductRepository,
+        db_path=providers.Callable(Path, config.database_path),
+    )
+
+    price_history_repo = providers.Singleton(
+        PriceHistoryRepository,
+        db_path=providers.Callable(Path, config.database_path),
+    )
+
+    marginality_repo = providers.Singleton(
+        MarginalityRepository,
+        db_path=providers.Callable(Path, config.database_path),
+    )
+
+    analytics_repo = providers.Singleton(
+        AnalyticsRepository,
+        db_path=providers.Callable(Path, config.database_path),
+    )
+
+    maintenance_repo = providers.Singleton(
+        MaintenanceRepository,
         db_path=providers.Callable(Path, config.database_path),
     )
 
@@ -62,6 +101,15 @@ class Container(containers.DeclarativeContainer):
     )
 
     # ------------------------------------------------------------------
+    # Domain Rules (Singleton)
+    # ------------------------------------------------------------------
+
+    pricing_rules = providers.Singleton(
+        OzonPricingRules.from_settings,
+        settings=settings,
+    )
+
+    # ------------------------------------------------------------------
     # Infrastructure (Factory - new instance each time)
     # ------------------------------------------------------------------
 
@@ -75,47 +123,56 @@ class Container(containers.DeclarativeContainer):
 
     price_calculation_service = providers.Singleton(
         PriceCalculationService,
-        default_coefficient=config.pricing.coefficient_ozon,
+        pricing_rules=pricing_rules,
     )
 
     # ------------------------------------------------------------------
-    # Repository protocols (extracted from the main repository)
+    # Repository protocols (using new separate repositories)
     # ------------------------------------------------------------------
 
-    product_repo: IProductRepository = cast(IProductRepository, repository)
-    history_repo: IPriceHistoryRepository = cast(IPriceHistoryRepository, repository)
-    analytics_repo: IAnalyticsRepository = cast(IAnalyticsRepository, repository)
-    marginality_repo: IMarginalityRepository = cast(IMarginalityRepository, repository)
-    maintenance_repo: IMaintenanceRepository = cast(IMaintenanceRepository, repository)
+    product_repo_protocol: IProductRepository = cast(IProductRepository, product_repo)
+    history_repo_protocol: IPriceHistoryRepository = cast(IPriceHistoryRepository, price_history_repo)
+    analytics_repo_protocol: IAnalyticsRepository = cast(IAnalyticsRepository, analytics_repo)
+    marginality_repo_protocol: IMarginalityRepository = cast(IMarginalityRepository, marginality_repo)
+    maintenance_repo_protocol: IMaintenanceRepository = cast(IMaintenanceRepository, maintenance_repo)
 
     # ------------------------------------------------------------------
     # Coordinators / Use Cases (Factories - new for each run)
     # ------------------------------------------------------------------
 
+    parse_competitor_prices_use_case = providers.Factory(
+        ParseCompetitorPricesUseCase,
+        parser=parser,
+    )
+
+    parse_own_products_use_case = providers.Factory(
+        ParseOwnProductsUseCase,
+        parser=parser,
+        product_repo=product_repo_protocol,
+        api_client=api_client,
+    )
+
     repricing_use_case = providers.Factory(
         RepricingUseCase,
         deps=providers.Factory(
             RepricingUseCaseDependencies,
-            product_repo=product_repo,
-            history_repo=history_repo,
-            analytics_repo=analytics_repo,
-            marginality_repo=marginality_repo,
-            maintenance_repo=maintenance_repo,
+            product_repo=product_repo_protocol,
+            history_repo=history_repo_protocol,
+            analytics_repo=analytics_repo_protocol,
+            marginality_repo=marginality_repo_protocol,
+            maintenance_repo=maintenance_repo_protocol,
             api_client=api_client,
             mail_notifier=notifier,
             loader=loader,
             calculator=price_calculation_service,
+            pricing_rules=pricing_rules,
+            parse_own_products_use_case=parse_own_products_use_case,
         ),
     )
 
     disable_auto_add_use_case = providers.Factory(
         DisableAutoAddUseCase,
         api_client=api_client,
-    )
-
-    parse_competitor_prices_use_case = providers.Factory(
-        ParseCompetitorPricesUseCase,
-        parser=parser,
     )
 
     # ------------------------------------------------------------------
@@ -128,13 +185,15 @@ class Container(containers.DeclarativeContainer):
             PipelineDependencies,
             loader=loader,
             api_client=api_client,
-            product_repo=product_repo,
-            history_repo=history_repo,
-            analytics_repo=analytics_repo,
-            marginality_repo=marginality_repo,
-            maintenance_repo=maintenance_repo,
+            product_repo=product_repo_protocol,
+            history_repo=history_repo_protocol,
+            analytics_repo=analytics_repo_protocol,
+            marginality_repo=marginality_repo_protocol,
+            maintenance_repo=maintenance_repo_protocol,
             notifier=notifier,
             calculator=price_calculation_service,
+            pricing_rules=pricing_rules,
+            parse_own_products_use_case=parse_own_products_use_case,
             dry_run=False,  # Will be overridden per call
         ),
     )
