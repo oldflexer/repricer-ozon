@@ -68,7 +68,7 @@ fi
 # --- Установка Google Chrome ---
 if ! command -v google-chrome &> /dev/null; then
     echo "=== Установка Google Chrome из официального репозитория ==="
-    wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
+    wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/google-chrome.gpg > /dev/null
     sudo sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list'
     sudo apt-get update
     sudo apt-get install -y google-chrome-stable
@@ -156,29 +156,32 @@ else
     echo "⚠️ Шаблон update_price_timer.cron.template не найден, пропускаем"
 fi
 
-# --- systemd сервис ---
-echo "=== Установка systemd сервиса ${SERVICE_NAME} ==="
+# --- systemd сервис для дашборда ---
+DASHBOARD_SERVICE_NAME="repricer-dashboard-${INSTANCE_NAME}.service"
+DASHBOARD_SERVICE_FILE="/etc/systemd/system/${DASHBOARD_SERVICE_NAME}"
+
+echo "=== Установка systemd сервиса для дашборда: ${DASHBOARD_SERVICE_NAME} ==="
 sed -e "s|{{USER}}|$CURRENT_USER|g" \
     -e "s|{{WORKING_DIR}}|$WORKING_DIR|g" \
     -e "s|{{PORT}}|$PORT|g" \
     -e "s|{{INSTANCE_NAME}}|$INSTANCE_NAME|g" \
-    "deploy/repricer-web.service.template" | sudo tee "$SERVICE_FILE" > /dev/null
+    "deploy/repricer-dashboard.service.template" | sudo tee "$DASHBOARD_SERVICE_FILE" > /dev/null
 
 sudo systemctl daemon-reload
-sudo systemctl enable "$SERVICE_NAME"
+sudo systemctl enable "$DASHBOARD_SERVICE_NAME"
 
-if sudo systemctl is-active --quiet "$SERVICE_NAME"; then
-    sudo systemctl restart "$SERVICE_NAME"
+if sudo systemctl is-active --quiet "$DASHBOARD_SERVICE_NAME"; then
+    sudo systemctl restart "$DASHBOARD_SERVICE_NAME"
 else
-    sudo systemctl start "$SERVICE_NAME"
+    sudo systemctl start "$DASHBOARD_SERVICE_NAME"
 fi
 
-echo "=== Проверка статуса сервиса ==="
-if sudo systemctl is-active --quiet "$SERVICE_NAME"; then
-    echo "✅ Сервис $SERVICE_NAME успешно запущен"
+echo "=== Проверка статуса сервиса дашборда ==="
+if sudo systemctl is-active --quiet "$DASHBOARD_SERVICE_NAME"; then
+    echo "✅ Сервис дашборда $DASHBOARD_SERVICE_NAME успешно запущен"
 else
-    echo "❌ Сервис $SERVICE_NAME не запустился!"
-    sudo systemctl status "$SERVICE_NAME" --no-pager
+    echo "❌ Сервис дашборда $DASHBOARD_SERVICE_NAME не запустился!"
+    sudo systemctl status "$DASHBOARD_SERVICE_NAME" --no-pager
 fi
 
 echo "=== Установка прав на выполнение ==="

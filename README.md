@@ -384,7 +384,7 @@ streamlit run app.py
 
 ### Файлы деплоя (`deploy/`):
 - `deploy.sh` — скрипт установки (создаёт виртуальное окружение, ставит зависимости, настраивает systemd/cron)
-- `deploy/repricer-web.service.template` — systemd сервис для Streamlit дашборда
+- `deploy/repricer-dashboard.service.template` — systemd сервис для Streamlit дашборда
 - `deploy/repricer.cron.template` — cron для репрайсинга (например, каждые 30 мин)
 - `deploy/parser.cron.template` — cron для парсера конкурентов (например, раз в час)
 - `deploy/disable_auto_add.cron.template` — cron для отключения автодобавления (раз в день)
@@ -401,7 +401,9 @@ chmod +x deploy.sh
 sudo ./deploy.sh
 ```
 
-Сервисы будут установлены и запущены автоматически.
+Сервисы будут установлены и запущены автоматически:
+- **Дашборд** — systemd сервис `repricer-dashboard-<INSTANCE>.service` (запускается сразу)
+- **Репрайсер** — cron (каждые 30 мин)
 
 ## 🧪 Тесты
 

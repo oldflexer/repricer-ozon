@@ -58,7 +58,7 @@ python scripts/repricer.py --dry-run
 
 ### Файлы в `deploy/`:
 - `deploy.sh` — скрипт установки (создаёт venv, ставит зависимости, настраивает systemd/cron)
-- `deploy/repricer-web.service.template` — systemd сервис для Streamlit дашборда
+- `deploy/repricer-dashboard.service.template` — systemd сервис для Streamlit дашборда
 - `deploy/repricer.cron.template` — cron для репрайсинга
 - `deploy/parser.cron.template` — cron для парсера конкурентов
 - `deploy/disable_auto_add.cron.template` — cron для отключения автодобавления
@@ -75,33 +75,16 @@ chmod +x deploy.sh
 sudo ./deploy.sh
 ```
 
-Сервисы будут установлены и запущены автоматически.
+Сервисы будут установлены и запущены автоматически:
+- **Дашборд** — systemd сервис `repricer-dashboard-<INSTANCE>.service` (запускается сразу)
+- **Репрайсер** — cron (каждые 30 мин)
 
 ## Systemd Service (Linux) — ручная настройка
 
-### Создайте `/etc/systemd/system/repricer-ozon.service`:
+### Дашборд: `/etc/systemd/system/repricer-dashboard-<INSTANCE>.service`
 ```
 [Unit]
-Description=Ozon Repricer
-After=network.target
-
-[Service]
-Type=oneshot
-User=repricer
-WorkingDirectory=/opt/repricer-ozon
-EnvironmentFile=/opt/repricer-ozon/.env
-ExecStart=/opt/repricer-ozon/.venv/bin/python scripts/repricer.py
-StandardOutput=journal
-StandardError=journal
-
-[Install]
-WantedBy=multi-user.target
-```
-
-### Streamlit дашборд: `/etc/systemd/system/repricer-web.service`
-```
-[Unit]
-Description=Ozon Repricer Web Dashboard
+Description=Ozon Repricer Web Dashboard (<INSTANCE>)
 After=network.target
 
 [Service]
@@ -109,7 +92,7 @@ Type=simple
 User=repricer
 WorkingDirectory=/opt/repricer-ozon
 EnvironmentFile=/opt/repricer-ozon/.env
-ExecStart=/opt/repricer-ozon/.venv/bin/python -m streamlit run app.py --server.port=8501 --server.address=0.0.0.0
+ExecStart=/opt/repricer-ozon/.venv/bin/streamlit run app.py --server.port=8501 --server.address=0.0.0.0
 Restart=always
 RestartSec=10
 
@@ -117,16 +100,13 @@ RestartSec=10
 WantedBy=multi-user.target
 ```
 
-### Таймеры:
+### Включение дашборда:
 ```bash
-# Репрайсинг каждые 30 минут
-systemctl enable --now repricer-ozon.timer
-
-# Дашборд
-systemctl enable --now repricer-web.service
+systemctl daemon-reload
+systemctl enable --now repricer-dashboard-<INSTANCE>.service
 ```
 
-## Cron Jobs (альтернатива systemd)
+## Cron Jobs (рекомендуется для репрайсера)
 ```
 # Репрайсинг каждые 30 минут
 */30 * * * * /opt/repricer-ozon/.venv/bin/python /opt/repricer-ozon/scripts/repricer.py
