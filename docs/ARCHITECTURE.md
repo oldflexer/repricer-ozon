@@ -1,8 +1,8 @@
 # ARCHITECTURE.md - Детальная архитектура repricer-ozon
 
 > Автоматически сгенерированная документация архитектуры проекта.
-> Версия: 1.0.0
-> Дата: 2026-08-19
+> Версия: 1.1.0
+> Дата: 2026-09-11
 
 ---
 
@@ -129,7 +129,24 @@
 
 ---
 
-## 4. Protocol-based DI (core/protocols/)
+## 4. Business Services (core/services/)
+
+Бизнес-сервисы инкапсулируют сложную логику и координируют работу с внешними системами:
+
+| Сервис | Ответственность | Ключевые методы |
+|--------|-----------------|-----------------|
+| **PriceCalculationService** | Алгоритм расчёта цены и маржи (индексы, FBS-комиссии, стратегии) | `calculate()` |
+| **ActionService** | Работа с акциями Ozon (получение/удаление автодобавления) | `get_actions()`, `disable_auto_add()` |
+| **HistoryService** | Сохранение истории цен, дневных агрегатов, логов расчётов | `save_price_history()`, `save_daily_aggregates()` |
+| **MigrationService** | Запуск Alembic миграций при старте | `run_migrations_once()` |
+| **RealPriceSyncService** | Синхронизация реальных цен из шаблона Ozon (ДО и ПОСЛЕ репрайсинга) | `sync_before()`, `sync_after()` |
+| **UpdatePriceTimerService** | Обновление таймера актуальности минимальной цены через API | `update_timer()` |
+
+Все сервисы зарегистрированы в DI-контейнере как **Singleton** (application lifetime).
+
+---
+
+## 5. Protocol-based DI (core/protocols/)
 
 Интерфейсы для инверсии зависимостей:
 
@@ -156,7 +173,7 @@
 
 | Тип | Scope | Примеры |
 |-----|-------|---------|
-| Singleton | Application lifetime | Repository, ApiClient, Loader, Notifier, PriceCalculationService |
+| Singleton | Application lifetime | Repository, ApiClient, Loader, Notifier, PriceCalculationService, ActionService, HistoryService, MigrationService, RealPriceSyncService, UpdatePriceTimerService |
 | Factory | New instance per call | Parser, Use Cases, Pipeline |
 | Resource | Async lifecycle | ApiClient (auto-close) |
 
@@ -168,13 +185,31 @@ Lifecycle management для ApiClient через @providers.Resource.
 
 ## 6. Data Flow (последовательность)
 
+### Репрайсинг (scripts/repricer.py)
+
 User -> Script -> Sync(ДО) -> UC -> Pipeline -> 9 Steps -> Excel/API/DB/Email -> Sync(ПОСЛЕ) -> Close
 
-1. Синхронизация реальных цен ДО (RealPriceSyncService)
-2. RepricingUseCase.execute() -> создаёт Pipeline
-3. PipelineOrchestrator выполняет 9 шагов последовательно
-4. Синхронизация реальных цен ПОСЛЕ (если не dry-run)
-5. Закрытие HTTP-клиента
+1. **Синхронизация реальных цен ДО** (RealPriceSyncService.sync_before())
+2. **RepricingUseCase.execute()** -> создаёт Pipeline
+3. **PipelineOrchestrator** выполняет 9 шагов последовательно
+4. **Синхронизация реальных цен ПОСЛЕ** (RealPriceSyncService.sync_after(), если не dry-run)
+5. **Закрытие HTTP-клиента**
+
+### Парсинг конкурентов (scripts/competitors_parser.py)
+
+User -> Script -> ParseCompetitorPricesUseCase -> OzonPriceParser (Selenium) -> Excel/DB
+
+### Отключение автодобавления (scripts/actions_disable_auto_add.py)
+
+User -> Script -> DisableAutoAddUseCase -> ActionService -> Ozon API (mass delete)
+
+### Обновление таймера цены (scripts/actions_update_price_timer.py)
+
+User -> Script -> UpdatePriceTimerUseCase -> UpdatePriceTimerService -> Ozon API
+
+### Ручной логин (scripts/manual_login.py)
+
+User -> Script -> ChromeDriverManager (profile) -> seller.ozon.ru -> 5 min wait -> Profile saved
 
 ---
 
@@ -241,6 +276,16 @@ Type=oneshot, User=repricer, WorkingDirectory=/opt/repricer-ozon, EnvironmentFil
 - Обновление таймера: 0 5 * * *
 - Health check: 0 * * * *
 
+### Deploy Scripts (`deploy/`)
+
+- `deploy.sh` — скрипт установки (создаёт venv, ставит зависимости, настраивает systemd/cron)
+- `deploy/repricer-web.service.template` — systemd сервис для Streamlit дашборда
+- `deploy/repricer.cron.template` — cron для репрайсинга
+- `deploy/parser.cron.template` — cron для парсера конкурентов
+- `deploy/disable_auto_add.cron.template` — cron для отключения автодобавления
+- `deploy/update_price_timer.cron.template` — cron для таймера цен
+- `deploy/cron.template` — базовый шаблон
+
 ### Docker (опционально)
 
 FROM python:3.12-slim, WORKDIR /app, COPY pyproject.toml requirements.txt, RUN pip install, COPY ., CMD ["python", "scripts/repricer.py"]
@@ -288,4 +333,4 @@ Streamlit дашборд: KPI (товары, обновления, ошибки,
 
 ---
 
-*Документ обновляется при изменении архитектуры. Последнее обновление: 2026-08-19*
+*Документ обновляется при изменении архитектуры. Последнее обновление: 2026-09-11*

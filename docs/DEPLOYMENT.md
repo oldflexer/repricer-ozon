@@ -5,6 +5,7 @@
 - Linux (Ubuntu 20.04+/Debian 11+) или Windows Server
 - Доступ к Ozon Seller API (Client ID, API Key)
 - SMTP сервер для email-уведомлений
+- Google Chrome / Chromium (для парсера конкурентов)
 
 ## Установка
 
@@ -32,6 +33,8 @@ cp .env.example .env
 # INSTANCE_NAME=main
 # WEB_USER=admin
 # WEB_PASSWORD=secure_password
+# CHROME_PROFILE_PATH=/home/server/chrome_profile  # Linux
+# CHROME_PROFILE_PATH=C:\Users\user\AppData\Local\Google\Chrome\User Data\Default  # Windows
 ```
 
 ### 3. Инициализация БД
@@ -39,13 +42,43 @@ cp .env.example .env
 python scripts/upgrade_db.py
 ```
 
-### 4. Проверка
+### 4. Ручной логин в Ozon (для парсера)
+```
+python scripts/manual_login.py
+# Откроется браузер с профилем Chrome, войдите в seller.ozon.ru за 5 минут
+```
+
+### 5. Проверка
 ```
 python scripts/health_check.py
 python scripts/repricer.py --dry-run
 ```
 
-## Systemd Service (Linux)
+## Автоматический деплой (рекомендуется)
+
+### Файлы в `deploy/`:
+- `deploy.sh` — скрипт установки (создаёт venv, ставит зависимости, настраивает systemd/cron)
+- `deploy/repricer-web.service.template` — systemd сервис для Streamlit дашборда
+- `deploy/repricer.cron.template` — cron для репрайсинга
+- `deploy/parser.cron.template` — cron для парсера конкурентов
+- `deploy/disable_auto_add.cron.template` — cron для отключения автодобавления
+- `deploy/update_price_timer.cron.template` — cron для таймера цен
+- `deploy/cron.template` — базовый шаблон
+
+### Быстрый деплой:
+```bash
+# На сервере
+git clone <repo>
+cd repricer-ozon
+cp .env.example .env  # заполните переменные
+chmod +x deploy.sh
+sudo ./deploy.sh
+```
+
+Сервисы будут установлены и запущены автоматически.
+
+## Systemd Service (Linux) — ручная настройка
+
 ### Создайте `/etc/systemd/system/repricer-ozon.service`:
 ```
 [Unit]
@@ -65,27 +98,35 @@ StandardError=journal
 WantedBy=multi-user.target
 ```
 
-### Таймер для периодического запуска `/etc/systemd/system/repricer-ozon.timer`:
+### Streamlit дашборд: `/etc/systemd/system/repricer-web.service`
 ```
 [Unit]
-Description=Run repricer every 30 minutes
+Description=Ozon Repricer Web Dashboard
+After=network.target
 
-[Timer]
-OnBootSec=5min
-OnUnitActiveSec=30min
-Persistent=true
+[Service]
+Type=simple
+User=repricer
+WorkingDirectory=/opt/repricer-ozon
+EnvironmentFile=/opt/repricer-ozon/.env
+ExecStart=/opt/repricer-ozon/.venv/bin/python -m streamlit run app.py --server.port=8501 --server.address=0.0.0.0
+Restart=always
+RestartSec=10
 
 [Install]
-WantedBy=timers.target
+WantedBy=multi-user.target
 ```
 
-### Включение:
-```
-systemctl daemon-reload
+### Таймеры:
+```bash
+# Репрайсинг каждые 30 минут
 systemctl enable --now repricer-ozon.timer
+
+# Дашборд
+systemctl enable --now repricer-web.service
 ```
 
-## Cron Jobs (альтернатива)
+## Cron Jobs (альтернатива systemd)
 ```
 # Репрайсинг каждые 30 минут
 */30 * * * * /opt/repricer-ozon/.venv/bin/python /opt/repricer-ozon/scripts/repricer.py
@@ -130,3 +171,5 @@ systemctl enable --now repricer-ozon.timer
 - Отдельный пользователь для сервиса (не root)
 - Firewall: только исходящие HTTPS (443) к api-seller.ozon.ru
 - SMTP через TLS (порт 465/587)
+- Chrome Profile — изолированный профиль для парсера
+- File Locks — предотвращение параллельного запуска парсера
