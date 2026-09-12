@@ -70,7 +70,7 @@ fi
 # --- Установка системных зависимостей (python3-distutils для Python 3.12+) ---
 echo "=== Установка системных зависимостей ==="
 sudo apt-get update
-sudo apt-get install -y python3-distutils
+sudo apt-get install -y python3.12-distutils
 
 # --- Установка Google Chrome ---
 if ! command -v google-chrome &> /dev/null; then
