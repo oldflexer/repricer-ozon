@@ -30,6 +30,8 @@ from core.use_cases import (
     RepricingUseCaseDependencies,
 )
 from core.use_cases.parse_own_products import ParseOwnProductsUseCase
+from core.use_cases.disable_auto_add import DisableAutoAddUseCase
+from core.use_cases.update_price_timer import UpdatePriceTimerUseCase
 from core.domain.pricing_rules import OzonPricingRules
 from infrastructure.logger import setup_logging, setup_parser_logging
 from ui.auth import get_session_info, logout, render_session_timer
@@ -438,6 +440,70 @@ def start_parsing_own_products_background(dry_run: bool) -> str:
     return task_id
 
 
+def start_disable_auto_add_background(dry_run: bool) -> str:
+    """
+    Запускает отключение автодобавления в фоновом потоке (неблокирующий).
+
+    Args:
+        dry_run: Флаг тестового запуска.
+
+    Returns:
+        ID задачи для отслеживания прогресса.
+    """
+    task_id = f"disable_auto_add_{int(time.time() * 1000)}"
+    st.session_state.current_task_id = task_id
+
+    async def _run() -> tuple[str, str]:
+        from core.container import container
+        api_client = container.api_client()
+        use_case = DisableAutoAddUseCase(api_client)
+        stats = await use_case.execute(dry_run=dry_run)
+        msg = (
+            f"Готово! Удалено: {stats.get('deleted', 0)}, "
+            f"ошибок: {stats.get('errors', 0)}"
+        )
+        return msg, "success"
+
+    _run_async_in_thread(_run(), task_id)
+    return task_id
+
+
+def start_update_price_timer_background() -> str:
+    """
+    Запускает обновление таймера минимальной цены в фоновом потоке (неблокирующий).
+
+    Returns:
+        ID задачи для отслеживания прогресса.
+    """
+    task_id = f"update_price_timer_{int(time.time() * 1000)}"
+    st.session_state.current_task_id = task_id
+
+    async def _run() -> tuple[str, str]:
+        from core.container import container
+        from infrastructure.db import SQLiteRepository
+        
+        repo = SQLiteRepository(settings.database_path_path)
+        products = repo.get_all_products()
+        product_ids = [p.product_id for p in products if p.product_id]
+        
+        if not product_ids:
+            return "Нет товаров в БД для обновления таймера", "error"
+        
+        api = container.api_client()
+        use_case = UpdatePriceTimerUseCase(api)
+        try:
+            stats = await use_case.execute(product_ids)
+            success_count = stats.get("success", 0)
+            failed_count = stats.get("failed", 0)
+            msg = f"Готово! Обновлено таймеров: {success_count}, ошибок: {failed_count}"
+            return msg, "success"
+        finally:
+            await api.close()
+
+    _run_async_in_thread(_run(), task_id)
+    return task_id
+
+
 def render_sidebar_section_excel(disabled: bool) -> None:
     """
     Отрисовывает секцию работы с Excel (загрузка/скачивание).
@@ -494,9 +560,6 @@ def render_sidebar_section_excel(disabled: bool) -> None:
         st.warning("Файл Excel пока не существует.", icon=":material/warning:")
 def _handle_repricing_buttons(is_busy: bool) -> None:
     """Обрабатывает кнопки репрайсинга."""
-    st.markdown(
-        '<h3><i class="fa-solid fa-arrows-up-down"></i> Репрайсинг</h3>', unsafe_allow_html=True
-    )
     if is_busy:
         st.warning("Выполняется задача. Пожалуйста, подождите...", icon=":material/warning:")
 
@@ -508,12 +571,6 @@ def _handle_repricing_buttons(is_busy: bool) -> None:
             disabled=True,
             icon=":material/rocket_launch:",
         )
-        st.button(
-            'Тест репрайсинга',
-            width="stretch",
-            disabled=True,
-            icon=":material/bug_report:",
-        )
     else:
         if st.button(
             'Репрайсинг товаров',
@@ -523,91 +580,58 @@ def _handle_repricing_buttons(is_busy: bool) -> None:
         ):
             start_repricing_background(dry_run=False)
             st.rerun()
-        if st.button(
-            'Тест репрайсинга',
-            width="stretch",
-            icon=":material/bug_report:",
-        ):
-            start_repricing_background(dry_run=True)
-            st.rerun()
 
 
 def _handle_parsing_buttons(is_busy: bool) -> None:
-    """Обрабатывает кнопки парсинга."""
-    st.markdown(
-        '<h3><i class="fa-solid fa-spider"></i> Парсинг конкурентов</h3>', unsafe_allow_html=True
-    )
+    """Обрабатывает кнопки парсинга конкурентов."""
     if is_busy:
         st.warning("Выполняется задача. Пожалуйста, подождите...", icon=":material/warning:")
 
     if st.session_state.get("parsing_running"):
         st.button(
-            'Парсинг цен',
+            'Парсинг цен конкурентов',
             type="primary",
             width="stretch",
             disabled=True,
             icon=":material/rocket_launch:",
         )
-        st.button(
-            'Тест парсинга',
-            width="stretch",
-            disabled=True,
-            icon=":material/bug_report:",
-        )
     else:
         if st.button(
-            'Парсинг цен',
+            'Парсинг цен конкурентов',
             type="primary",
             width="stretch",
             icon=":material/rocket_launch:",
         ):
             start_parsing_background(dry_run=False)
             st.rerun()
-        if st.button(
-            'Тест парсинга',
-            width="stretch",
-            icon=":material/bug_report:",
-        ):
-            start_parsing_background(dry_run=True)
-            st.rerun()
 
-    # Парсинг своих товаров
-    st.markdown(
-        '<h3><i class="fa-solid fa-box"></i> Парсинг своих товаров</h3>', unsafe_allow_html=True
-    )
+
+def _handle_management_buttons(is_busy: bool) -> None:
+    """Обрабатывает кнопки управления (дополнительные действия)."""
     if is_busy:
         st.warning("Выполняется задача. Пожалуйста, подождите...", icon=":material/warning:")
 
-    if st.session_state.get("parsing_running"):
-        st.button(
-            'Парсинг своих товаров',
-            type="primary",
-            width="stretch",
-            disabled=True,
-            icon=":material/rocket_launch:",
-        )
-        st.button(
-            'Тест парсинга своих товаров',
-            width="stretch",
-            disabled=True,
-            icon=":material/bug_report:",
-        )
-    else:
-        if st.button(
-            'Парсинг своих товаров',
-            type="primary",
-            width="stretch",
-            icon=":material/rocket_launch:",
-        ):
-            start_parsing_own_products_background(dry_run=False)
-            st.rerun()
-        if st.button(
-            'Тест парсинга своих товаров',
-            width="stretch",
-            icon=":material/bug_report:",
-        ):
-            start_parsing_own_products_background(dry_run=True)
-            st.rerun()
+    # Отключение автодобавления в акции
+    if st.button(
+        'Автодобавление в акции',
+        type="primary",
+        width="stretch",
+        icon=":material/block:",
+        disabled=is_busy,
+    ):
+        start_disable_auto_add_background(dry_run=False)
+        st.rerun()
+
+    # Обновление таймера минимальной цены
+    if st.button(
+        'Таймер минимальной цены',
+        type="primary",
+        width="stretch",
+        icon=":material/timer:",
+        disabled=is_busy,
+    ):
+        start_update_price_timer_background()
+        st.rerun()
 
 
 def _display_result_message() -> None:
@@ -725,8 +749,13 @@ def render_sidebar() -> None:
     # Кнопки репрайсинга
     _handle_repricing_buttons(is_busy)
 
-    # Кнопки парсинга
+    # Кнопки парсинга конкурентов
     _handle_parsing_buttons(is_busy)
+
+    # Кнопки управления
+    _handle_management_buttons(is_busy)
+
+    st.divider()
 
     # Работа с Excel
     st.markdown(

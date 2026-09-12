@@ -11,6 +11,13 @@
     padding-top: 12px !important;
 }
 
+/* Ограничиваем ширину sidebar 300px */
+[data-testid="stSidebar"] {
+    width: 300px !important;
+    min-width: 300px !important;
+    max-width: 300px !important;
+}
+
 /* Убираем лишний отступ сверху у основного контейнера */
 [data-testid="stMainBlockContainer"] {
     padding-top: 12px !important;
