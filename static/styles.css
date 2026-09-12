@@ -16,6 +16,40 @@
     padding-top: 12px !important;
 }
 
+/* Увеличиваем размер шрифта в сайдбаре до 16px */
+/* Текст в экспандере "Сессия" */
+[data-testid="stSidebar"] [data-testid="stExpander"] summary p {
+    font-size: 16px !important;
+}
+
+/* Текст радиокнопок (переключение страниц) */
+[data-testid="stSidebar"] [data-testid="stRadio"] [data-testid="stMarkdownContainer"] p {
+    font-size: 16px !important;
+}
+
+/* Текст кнопок в сайдбаре */
+[data-testid="stSidebar"] [data-testid="stButton"] [data-testid="stMarkdownContainer"] p {
+    font-size: 16px !important;
+}
+
+/* Текст меток (label) в сайдбаре */
+[data-testid="stSidebar"] [data-testid="stWidgetLabel"] p {
+    font-size: 16px !important;
+}
+
+/* Убираем gap между переключателями страниц (radio group) в сайдбаре */
+[data-testid="stSidebar"] [data-testid="stRadioGroup"] {
+    column-gap: 0 !important;
+    row-gap: 0 !important;
+    gap: 0 !important;
+}
+
+/* Также убираем отступы у самих опций radio */
+[data-testid="stSidebar"] [data-testid="stRadioOption"] {
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
 /* Кастомизация кнопки загрузки Excel (только для виджета с ключом excel_uploader) */
 .st-key-excel_uploader div[data-testid="stFileUploader"] button {
     width: 100% !important;
