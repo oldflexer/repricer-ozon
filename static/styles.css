@@ -46,9 +46,8 @@
 
 /* Убираем gap между переключателями страниц (radio group) в сайдбаре */
 [data-testid="stSidebar"] [data-testid="stRadioGroup"] {
-    column-gap: 0 !important;
+    column-gap: 16px !important;
     row-gap: 0 !important;
-    gap: 0 !important;
 }
 
 /* Также убираем отступы у самих опций radio */
@@ -82,6 +81,11 @@
 /* Скрываем кнопку удаления файла (крестик) */
 .st-key-excel_uploader [data-testid="stFileChipDeleteBtn"] {
     display: none !important;
+}
+
+/* Текст кнопки "Скачать текущий Excel" */
+[data-testid="stSidebar"] [data-testid="stBaseButton-secondary"] [data-testid="stMarkdownContainer"] p {
+    font-size: 16px !important;
 }
 
 /* Для совместимости с Font Awesome иконками в заголовках */
