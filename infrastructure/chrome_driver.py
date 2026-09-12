@@ -3,21 +3,11 @@
 Поддерживает загрузку файлов в указанную папку.
 """
 
-import contextlib
-import os
+# --- ВАЖНО: патч distutils для Python 3.12+ должен быть ДО импорта UC ---
 import sys
-from pathlib import Path
 from types import ModuleType
 
-import undetected_chromedriver as uc  # type: ignore[import-untyped]
-from selenium.webdriver.remote.webdriver import WebDriver
-from selenium.webdriver.support.ui import WebDriverWait
 
-from config.settings import settings
-from infrastructure.logger import logger
-
-
-# --- Патчи для Python 3.12+ ---
 class _LooseVersion:
     def __init__(self, vstring: str) -> None:
         self.vstring = str(vstring)
@@ -45,16 +35,31 @@ class _LooseVersion:
 
 
 class _DistutilsVersionModule(ModuleType):
-    def __getattr__(self, name: str) -> type[_LooseVersion]:
+    def __getattr__(self, name: str):
         if name == "LooseVersion":
             return _LooseVersion
         raise AttributeError(name)
 
 
-if "distutils.version" not in sys.modules:
-    sys.modules["distutils.version"] = _DistutilsVersionModule("distutils.version")
+# Регистрируем модули-заглушки до импорта UC
 if "distutils" not in sys.modules:
     sys.modules["distutils"] = ModuleType("distutils")
+if "distutils.version" not in sys.modules:
+    sys.modules["distutils.version"] = _DistutilsVersionModule("distutils.version")
+# --- Конец патча ---
+
+
+# Теперь можно безопасно импортировать UC и остальное
+import contextlib
+import os
+from pathlib import Path
+
+import undetected_chromedriver as uc  # type: ignore[import-untyped]
+from selenium.webdriver.remote.webdriver import WebDriver
+from selenium.webdriver.support.ui import WebDriverWait
+
+from config.settings import settings
+from infrastructure.logger import logger
 
 
 class ChromeDriverManager:
