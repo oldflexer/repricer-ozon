@@ -67,10 +67,10 @@ else
     echo "⚠️ Скрипт scripts/upgrade_db.py не найден, миграции пропущены"
 fi
 
-# --- Установка системных зависимостей (python3-distutils для Python 3.12+) ---
+# --- Установка системных зависимостей (setuptools для Python 3.12+, заменяет distutils) ---
 echo "=== Установка системных зависимостей ==="
 sudo apt-get update
-sudo apt-get install -y python3.12-distutils
+sudo apt-get install -y python3-setuptools
 
 # --- Установка Google Chrome ---
 if ! command -v google-chrome &> /dev/null; then
