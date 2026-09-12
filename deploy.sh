@@ -24,6 +24,8 @@ INSTANCE_NAME="${INSTANCE_NAME:-$(basename "$(pwd)")}"
 PORT="${PORT:-8501}"
 CRON_SCHEDULE="${CRON_SCHEDULE:-0 * * * *}"
 PARSER_CRON_SCHEDULE="${PARSER_CRON_SCHEDULE:-30 2,10,18 * * *}"
+DISABLE_AUTO_ADD_CRON_SCHEDULE="${DISABLE_AUTO_ADD_CRON_SCHEDULE:-55 3 * * *}"
+UPDATE_PRICE_TIMER_CRON_SCHEDULE="${UPDATE_PRICE_TIMER_CRON_SCHEDULE:-0 5 * * *}"
 
 SERVICE_NAME="repricer-${INSTANCE_NAME}.service"
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}"
@@ -77,14 +79,14 @@ else
 fi
 
 # --- Cron для основного репрайсера ---
-if [ -f "deploy/cron.template" ]; then
+if [ -f "deploy/repricer.template" ]; then
     echo "=== Установка cron задач для репрайсера (${INSTANCE_NAME}) ==="
     CRON_TMP="/tmp/repricer_cron_${INSTANCE_NAME}_$$"
     
     sed -e "s|{{WORKING_DIR}}|$WORKING_DIR|g" \
         -e "s|{{CRON_SCHEDULE}}|$CRON_SCHEDULE|g" \
         -e "s|{{INSTANCE_NAME}}|$INSTANCE_NAME|g" \
-        "deploy/cron.template" > "$CRON_TMP"
+        "deploy/repricer.template" > "$CRON_TMP"
     
     # Удаляем старые блоки для этого INSTANCE_NAME
     crontab -l 2>/dev/null | sed -e "/# BEGIN_REPRICER_${INSTANCE_NAME}/,/# END_REPRICER_${INSTANCE_NAME}/d" > "$CRON_TMP.old" || true
@@ -94,7 +96,7 @@ if [ -f "deploy/cron.template" ]; then
     rm -f "$CRON_TMP" "$CRON_TMP.old"
     echo "✅ Cron задачи для репрайсера обновлены"
 else
-    echo "⚠️ Шаблон cron не найден, пропускаем"
+    echo "⚠️ Шаблон repricer.template не найден, пропускаем"
 fi
 
 # --- Cron для парсера конкурентов ---
@@ -125,6 +127,7 @@ if [ -f "deploy/disable_auto_add.cron.template" ]; then
     
     sed -e "s|{{WORKING_DIR}}|$WORKING_DIR|g" \
         -e "s|{{INSTANCE_NAME}}|$INSTANCE_NAME|g" \
+        -e "s|{{DISABLE_AUTO_ADD_CRON_SCHEDULE}}|$DISABLE_AUTO_ADD_CRON_SCHEDULE|g" \
         "deploy/disable_auto_add.cron.template" > "$CRON_TMP"
     
     crontab -l 2>/dev/null | sed -e "/# BEGIN_DISABLE_AUTO_ADD_${INSTANCE_NAME}/,/# END_DISABLE_AUTO_ADD_${INSTANCE_NAME}/d" > "$CRON_TMP.old" || true
@@ -144,6 +147,7 @@ if [ -f "deploy/update_price_timer.cron.template" ]; then
     
     sed -e "s|{{WORKING_DIR}}|$WORKING_DIR|g" \
         -e "s|{{INSTANCE_NAME}}|$INSTANCE_NAME|g" \
+        -e "s|{{UPDATE_PRICE_TIMER_CRON_SCHEDULE}}|$UPDATE_PRICE_TIMER_CRON_SCHEDULE|g" \
         "deploy/update_price_timer.cron.template" > "$TIMER_CRON_TMP"
     
     crontab -l 2>/dev/null | sed -e "/# BEGIN_UPDATE_PRICE_TIMER_${INSTANCE_NAME}/,/# END_UPDATE_PRICE_TIMER_${INSTANCE_NAME}/d" > "$TIMER_CRON_TMP.old" || true
