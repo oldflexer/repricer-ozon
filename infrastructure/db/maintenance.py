@@ -16,6 +16,7 @@ from .queries import (
     SQL_DELETE_PRICE_HISTORY_BY_PID,
     SQL_DELETE_PRODUCT,
     SQL_DELETE_PRODUCT_STRATEGIES_BY_PID,
+    SQL_DELETE_PRODUCTS_WITHOUT_PRICE_HISTORY,
     SQL_SELECT_LAST_CLEANUP,
     SQL_SELECT_LAST_RUN,
     SQL_SELECT_PRODUCT_ID_BY_SKU,
@@ -116,6 +117,15 @@ class MaintenanceMixin(DBConnectionMixin):
                 f"записей маржинальности старше {months} месяцев"
             )
             return deleted_price + deleted_margin
+
+    def delete_products_without_price_history(self) -> int:
+        """Удаляет товары, у которых нет истории цен в product_price_history."""
+        with self._get_connection() as conn:
+            cursor = conn.execute(SQL_DELETE_PRODUCTS_WITHOUT_PRICE_HISTORY)
+            deleted = cursor.rowcount
+            conn.commit()
+            logger.info(f"Удалено товаров без истории цен: {deleted}")
+            return deleted
 
     def get_last_cleanup_date(self) -> datetime | None:
         """Возвращает дату последней автоматической очистки БД."""

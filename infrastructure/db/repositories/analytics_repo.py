@@ -12,11 +12,17 @@ from core.enums import StrategyType
 from core.protocols.repository import IAnalyticsRepository
 
 from .base import BaseRepository
+from ..history import HistoryMixin
+from ..analytics import AnalyticsMixin
 
 
-class AnalyticsRepository(BaseRepository, IAnalyticsRepository):
+class AnalyticsRepository(BaseRepository, HistoryMixin, AnalyticsMixin, IAnalyticsRepository):
     """Repository for analytical queries."""
-    
+
+    def __init__(self, db_path: Optional[Path] = None) -> None:
+        """Initialize the repository with proper connection handling."""
+        super().__init__(db_path)
+
     def get_all_last_prices(self) -> pd.DataFrame:
         """Возвращает последние цены и маржинальность для всех товаров."""
         with self._get_connection() as conn:

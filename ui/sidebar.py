@@ -188,23 +188,28 @@ def run_repricing(
     logger.info("=== Запуск репрайсинга из дашборда ===")
 
     async def _run() -> dict[str, Any]:
-        # Запуск репрайсинга
+        # Запуск репрайсинга через контейнер (использует специализированные репозитории)
+        from core.container import container
+
         loader = get_excel_loader()
         api = get_api_client()
         notifier = get_mail_notifier()
-        repo = get_repo()
         pricing_rules = OzonPricingRules.from_settings(settings)
-        
-        # Get parse_own_products_use_case from container
-        from core.container import container
         parse_own_products_use_case = container.parse_own_products_use_case()
-        
+
+        # Используем специализированные репозитории из контейнера
+        product_repo = container.product_repo()
+        history_repo = container.price_history_repo()
+        analytics_repo = container.analytics_repo()
+        marginality_repo = container.marginality_repo()
+        maintenance_repo = container.maintenance_repo()
+
         deps = RepricingUseCaseDependencies(
-            product_repo=repo,
-            history_repo=repo,
-            analytics_repo=repo,
-            marginality_repo=repo,
-            maintenance_repo=repo,
+            product_repo=product_repo,
+            history_repo=history_repo,
+            analytics_repo=analytics_repo,
+            marginality_repo=marginality_repo,
+            maintenance_repo=maintenance_repo,
             api_client=api,
             mail_notifier=notifier,
             loader=loader,

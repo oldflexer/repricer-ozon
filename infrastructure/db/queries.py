@@ -67,22 +67,22 @@ SQL_SELECT_ALL_STRATEGIES = """
 """
 
 SQL_INSERT_PRODUCT_STRATEGY = """
-    INSERT INTO product_strategy (product_id, strategy_id, time_start, time_end, percent)
+    INSERT INTO product_strategy (product_id, strategy_id, interval_start, interval_stop, strategy_percent)
     VALUES (?, ?, ?, ?, ?)
 """
 
 SQL_SELECT_PRODUCT_STRATEGIES = """
-    SELECT ps.strategy_id, ps.time_start, ps.time_end, ps.percent, s.name as strategy_name
+    SELECT ps.strategy_id, ps.interval_start, ps.interval_stop, ps.strategy_percent, s.strategy_name
     FROM product_strategy ps
     JOIN strategy s ON s.id = ps.strategy_id
     WHERE ps.product_id = ?
 """
 
 SQL_SELECT_STRATEGY_COUNTS = """
-    SELECT s.name as strategy_name, COUNT(*) as count
+    SELECT s.strategy_name, COUNT(*) as count
     FROM product_strategy ps
     JOIN strategy s ON ps.strategy_id = s.id
-    GROUP BY s.name
+    GROUP BY s.strategy_name
 """
 
 SQL_DELETE_PRODUCT_STRATEGIES = """
@@ -90,7 +90,7 @@ SQL_DELETE_PRODUCT_STRATEGIES = """
 """
 
 SQL_UPDATE_PRODUCT_STRATEGIES = """
-    UPDATE product_strategy SET strategy_id = ?, time_start = ?, time_end = ?, percent = ?
+    UPDATE product_strategy SET strategy_id = ?, interval_start = ?, interval_stop = ?, strategy_percent = ?
     WHERE product_id = ? AND strategy_id = ?
 """
 
@@ -255,6 +255,17 @@ SQL_DELETE_PRICE_HISTORY_BY_PID = """
 
 SQL_DELETE_MARGINALITY_HISTORY_BY_PID = """
     DELETE FROM product_marginality_history WHERE product_id = ?
+"""
+
+# =========================================================================
+# Delete products without price history
+# =========================================================================
+
+SQL_DELETE_PRODUCTS_WITHOUT_PRICE_HISTORY = """
+    DELETE FROM product
+    WHERE product_id NOT IN (
+        SELECT DISTINCT product_id FROM product_price_history
+    )
 """
 
 # =========================================================================

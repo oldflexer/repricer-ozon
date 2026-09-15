@@ -153,6 +153,19 @@ def _render_db_operations(repo: IRepository) -> None:
             except Exception as e:
                 st.error(f"Ошибка при удалении: {e}", icon=":material/cancel:")
 
+    st.divider()
+
+    # Удаление товаров без истории цен
+    st.subheader("Очистка товаров без истории цен")
+    st.caption("Удаляет товары из БД, у которых нет записей в истории цен (product_price_history). Данные в Excel не затрагиваются.")
+    if st.button("Удалить товары без истории цен", icon=":material/delete_forever:", type="secondary"):
+        try:
+            deleted = repo.delete_products_without_price_history()
+            st.success(f"Удалено товаров: {deleted}", icon=":material/check_circle:")
+            st.cache_data.clear()
+        except Exception as e:
+            st.error(f"Ошибка при удалении: {e}", icon=":material/cancel:")
+
     last_cleanup = repo.get_last_cleanup_date()
     if last_cleanup:
         last_cleanup_msk = last_cleanup.astimezone(TIMEZONE)

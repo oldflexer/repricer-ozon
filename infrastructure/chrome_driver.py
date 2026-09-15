@@ -11,6 +11,7 @@ from types import ModuleType
 class _LooseVersion:
     def __init__(self, vstring: str) -> None:
         self.vstring = str(vstring)
+        self.version = str(vstring)  # Required attribute for compatibility
 
     def __repr__(self) -> str:
         return f"LooseVersion('{self.vstring}')"
@@ -35,7 +36,7 @@ class _LooseVersion:
 
 
 class _DistutilsVersionModule(ModuleType):
-    def __getattr__(self, name: str):
+    def __getattr__(self, name: str) -> type[_LooseVersion]:
         if name == "LooseVersion":
             return _LooseVersion
         raise AttributeError(name)

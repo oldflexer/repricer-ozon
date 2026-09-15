@@ -204,6 +204,11 @@ class IMaintenanceRepository(Protocol):
         """Устанавливает дату последнего запуска репрайсинга."""
         ...
 
+    @abstractmethod
+    def delete_products_without_price_history(self) -> int:
+        """Удаляет товары, у которых нет истории цен в product_price_history."""
+        ...
+
 
 # Композитный протокол для обратной совместимости
 class IRepository(

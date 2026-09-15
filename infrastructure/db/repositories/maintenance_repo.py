@@ -11,6 +11,7 @@ from core.protocols.repository import IMaintenanceRepository
 from infrastructure.logger import logger
 
 from .base import BaseRepository
+from ..maintenance import MaintenanceMixin, _utc_now_naive, _subtract_months
 from ..queries import (
     SQL_DELETE_MARGINALITY_HISTORY_BEFORE,
     SQL_DELETE_MARGINALITY_HISTORY_BY_PID,
@@ -19,6 +20,7 @@ from ..queries import (
     SQL_DELETE_PRICE_HISTORY_BY_PID,
     SQL_DELETE_PRODUCT,
     SQL_DELETE_PRODUCT_STRATEGIES_BY_PID,
+    SQL_DELETE_PRODUCTS_WITHOUT_PRICE_HISTORY,
     SQL_SELECT_LAST_CLEANUP,
     SQL_SELECT_LAST_RUN,
     SQL_SELECT_PRODUCT_ID_BY_SKU,
@@ -26,10 +28,8 @@ from ..queries import (
     SQL_UPDATE_LAST_RUN,
 )
 
-from ..maintenance import _utc_now_naive, _subtract_months
 
-
-class MaintenanceRepository(BaseRepository, IMaintenanceRepository):
+class MaintenanceRepository(BaseRepository, MaintenanceMixin, IMaintenanceRepository):
     """Repository for database maintenance operations."""
     
     def get_last_cleanup_date(self) -> datetime | None:
@@ -104,3 +104,12 @@ class MaintenanceRepository(BaseRepository, IMaintenanceRepository):
             self.set_last_cleanup_date(datetime.now(UTC))
             return deleted
         return 0
+
+    def delete_products_without_price_history(self) -> int:
+        """Удаляет товары, у которых нет истории цен в product_price_history."""
+        with self._get_connection() as conn:
+            cursor = conn.execute(SQL_DELETE_PRODUCTS_WITHOUT_PRICE_HISTORY)
+            deleted = cursor.rowcount
+            conn.commit()
+            logger.info(f"Удалено товаров без истории цен: {deleted}")
+            return deleted
