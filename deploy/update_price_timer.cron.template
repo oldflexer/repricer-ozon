@@ -1,3 +1,0 @@
-# BEGIN_UPDATE_PRICE_TIMER_{{INSTANCE_NAME}}
-{{UPDATE_PRICE_TIMER_CRON_SCHEDULE}} cd {{WORKING_DIR}} && {{WORKING_DIR}}/.venv/bin/python scripts/actions_update_price_timer.py >> {{WORKING_DIR}}/logs/update_price_timer-{{INSTANCE_NAME}}.log 2>&1
-# END_UPDATE_PRICE_TIMER_{{INSTANCE_NAME}}
