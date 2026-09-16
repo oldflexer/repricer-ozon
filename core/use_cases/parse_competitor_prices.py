@@ -10,7 +10,7 @@ UseCase для парсинга цен конкурентов с Ozon.
 import contextlib
 import random
 import time
-from typing import Any
+from typing import Any, Callable, Optional
 
 import numpy as np
 import pandas as pd
@@ -87,12 +87,17 @@ class ParseCompetitorPricesUseCase(BaseParserUseCase):
 
         return None
 
-    async def execute(self, dry_run: bool = False) -> dict[str, int]:  # noqa: PLR0912, PLR0915
+    async def execute(
+        self,
+        dry_run: bool = False,
+        progress_callback: Optional[Callable[[int, int, str], None]] = None,
+    ) -> dict[str, int]:  # noqa: PLR0912, PLR0915
         """
         Запускает парсинг цен конкурентов.
 
         Args:
             dry_run: Если True, данные в Excel не записываются.
+            progress_callback: Опциональный колбэк для отображения прогресса (current, total, message).
 
         Returns:
             Словарь со статистикой: updated, errors, skipped.
@@ -152,6 +157,20 @@ class ParseCompetitorPricesUseCase(BaseParserUseCase):
         stats = {"updated": 0, "errors": 0, "skipped": 0}
         excel_updates: dict[tuple[int, int], float] = {}
 
+        # Calculate total operations for progress tracking
+        total_operations = 0
+        for _, row in df.iterrows():
+            for i in range(1, settings.MAX_COMPETITORS + 1):
+                cols = col_indices.get(i)
+                if not cols:
+                    continue
+                url = row.get(f"{url_prefix} {i}")
+                if pd.isna(url) or not str(url).strip():
+                    continue
+                total_operations += 1
+
+        current_operation = 0
+
         try:
             for row_num, (_, row) in enumerate(df.iterrows(), start=2):
                 if is_shutdown_requested():
@@ -174,6 +193,13 @@ class ParseCompetitorPricesUseCase(BaseParserUseCase):
                         stats["skipped"] += 1
                         continue
 
+                    current_operation += 1
+                    if progress_callback:
+                        progress_callback(
+                            current_operation,
+                            total_operations,
+                            f"Парсинг SKU {sku}, конкурент {i}...",
+                        )
                     logger.info(f"Парсинг SKU {sku}, конкурент {i}...")
                     new_price = self._parse_price_with_retry(str(url))
                     if new_price == -1.0:

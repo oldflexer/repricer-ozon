@@ -20,6 +20,9 @@ class InstanceSettings(BaseSettings):
         default="./data/products_{{INSTANCE_NAME}}.xlsx",
         description="Path to Excel data file (supports {{INSTANCE_NAME}} template)",
     )
+    BACKUP_RETENTION_COUNT: int = Field(
+        default=30, description="Number of Excel backups to keep in backups/ folder"
+    )
 
     @property
     def data_file_path(self) -> Path:

@@ -9,7 +9,7 @@ UseCase для парсинга своих товаров для получен�
 
 import random
 import time
-from typing import Any
+from typing import Any, Callable, Optional
 
 from config.settings import settings
 from core.metrics import record_parser_retry
@@ -94,12 +94,17 @@ class ParseOwnProductsUseCase(BaseParserUseCase):
 
         return None
 
-    async def execute(self, dry_run: bool = False) -> dict[str, int]:
+    async def execute(
+        self,
+        dry_run: bool = False,
+        progress_callback: Optional[Callable[[int, int, str], None]] = None,
+    ) -> dict[str, int]:
         """
         Запускает парсинг цен своих товаров.
 
         Args:
             dry_run: Если True, данные в БД не записываются.
+            progress_callback: Опциональный колбэк для отображения прогресса (current, total, message).
 
         Returns:
             Словарь со статистикой: updated, errors, skipped.
@@ -136,8 +141,19 @@ class ParseOwnProductsUseCase(BaseParserUseCase):
 
         stats = {"updated": 0, "errors": 0, "skipped": 0}
 
+        # Calculate total for progress tracking
+        total_products = len(products)
+        current_product = 0
+
         try:
             for product in products:
+                current_product += 1
+                if progress_callback:
+                    progress_callback(
+                        current_product,
+                        total_products,
+                        f"Парсинг своего товара SKU {product.sku}...",
+                    )
                 if is_shutdown_requested():
                     logger.info("Shutdown requested, stopping own product parsing")
                     break

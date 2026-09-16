@@ -1,10 +1,13 @@
 import logging
 import shutil
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Tuple
 
 from openpyxl import load_workbook
+
+from config.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +37,54 @@ def wait_for_excel_available(file_path: Path, timeout: int = 60) -> bool:
     return False
 
 
+def _create_timestamped_backup(file_path: Path) -> Path:
+    """
+    Creates a timestamped backup in the backups/ folder.
+    Returns the path to the created backup.
+    """
+    # Create backups directory if it doesn't exist
+    backups_dir = file_path.parent / "backups"
+    backups_dir.mkdir(parents=True, exist_ok=True)
+
+    # Generate timestamped backup filename
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    instance_name = settings.INSTANCE_NAME
+    backup_name = f"{file_path.stem}_{timestamp}.xlsx.backup"
+    backup_path = backups_dir / backup_name
+
+    # Copy the file
+    shutil.copy2(file_path, backup_path)
+    logger.info(f"Создан бэкап: {backup_path}")
+
+    return backup_path
+
+
+def _rotate_backups(file_path: Path) -> None:
+    """
+    Rotates backups, keeping only the last BACKUP_RETENTION_COUNT backups.
+    """
+    backups_dir = file_path.parent / "backups"
+    if not backups_dir.exists():
+        return
+
+    # Find all backup files for this instance
+    instance_name = settings.INSTANCE_NAME
+    pattern = f"{file_path.stem}_*.xlsx.backup"
+    backup_files = list(backups_dir.glob(pattern))
+
+    # Sort by modification time (newest first)
+    backup_files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+
+    # Remove old backups beyond retention count
+    retention_count = settings.BACKUP_RETENTION_COUNT
+    for old_backup in backup_files[retention_count:]:
+        try:
+            old_backup.unlink()
+            logger.info(f"Удалён старый бэкап: {old_backup}")
+        except Exception as e:
+            logger.warning(f"Не удалось удалить старый бэкап {old_backup}: {e}")
+
+
 def save_safely(
     updates: Dict[Tuple[int, int], Any], file_path: Path, max_retries: int = 3
 ) -> None:
@@ -45,7 +96,10 @@ def save_safely(
     for attempt in range(max_retries):
         temp_path: Path | None = None
         try:
-            # Create a backup
+            # Create a timestamped backup in backups/ folder
+            _create_timestamped_backup(file_path)
+
+            # Also create a quick rollback backup in the same directory
             backup_path = file_path.with_suffix(file_path.suffix + ".backup")
             shutil.copy2(file_path, backup_path)
 
@@ -65,6 +119,9 @@ def save_safely(
             wb.close()
             temp_path.replace(file_path)
             logger.info(f"Файл {file_path} успешно сохранён (попытка {attempt})")
+
+            # Rotate old backups
+            _rotate_backups(file_path)
             return
         except Exception as e:
             last_error = e

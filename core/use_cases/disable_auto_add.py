@@ -5,7 +5,9 @@ Use‑case для отключения автодобавления товаро
 через Ozon API и удаляет их (или показывает, сколько будет удалено, в dry‑run).
 """
 
-from core.services import ActionService
+from typing import Callable, Optional
+
+from core.services.action_service import ActionService
 from infrastructure.logger import logger
 from infrastructure.ozon_api import OzonApiClient
 
@@ -27,13 +29,18 @@ class DisableAutoAddUseCase:
         """
         self.service = ActionService(api_client)
 
-    async def execute(self, dry_run: bool = False) -> dict[str, int]:
+    async def execute(
+        self,
+        dry_run: bool = False,
+        progress_callback: Optional[Callable[[int, int, str], None]] = None,
+    ) -> dict[str, int]:
         """
         Запускает процесс отключения автодобавления.
 
         Args:
             dry_run: Если True, только выводит количество найденных записей,
                      не выполняя фактического удаления.
+            progress_callback: Опциональный колбэк для отображения прогресса (current, total, message).
 
         Returns:
             Словарь со статистикой:
@@ -44,7 +51,7 @@ class DisableAutoAddUseCase:
         logger.info("=== Запуск отключения автодобавления в акции ===")
 
         # 1. Получаем все товары с автодобавлением
-        products = await self.service.get_all_auto_add_products()
+        products = await self.service.get_all_auto_add_products(progress_callback=progress_callback)
         logger.info(f"Найдено товаров с автодобавлением: {len(products)}")
 
         if dry_run:
@@ -52,7 +59,7 @@ class DisableAutoAddUseCase:
             return {"found": len(products), "deleted": 0, "errors": 0}
 
         # 2. Удаляем автодобавление
-        stats = await self.service.disable_auto_add_for_products(products)
+        stats = await self.service.disable_auto_add_for_products(products, progress_callback=progress_callback)
         logger.info(f"=== Завершено. Удалено: {stats['deleted']}, ошибок: {stats['errors']} ===")
 
         return stats

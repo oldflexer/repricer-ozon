@@ -313,12 +313,16 @@ def get_task_progress(task_id: str) -> Optional[tuple[int, int, str]]:
     return _task_progress.get(task_id)
 
 
-async def run_parsing(dry_run: bool = False) -> dict[str, Any]:
+async def run_parsing(
+    dry_run: bool = False,
+    progress_callback: Optional[Callable[[int, int, str], None]] = None,
+) -> dict[str, Any]:
     """
     Запускает парсинг конкурентов в асинхронном контексте (из Streamlit).
 
     Args:
         dry_run: Если True, данные не записываются в Excel.
+        progress_callback: Опциональный колбэк для отображения прогресса (current, total, message).
 
     Returns:
         Словарь со статистикой {updated, errors, skipped}.
@@ -327,15 +331,19 @@ async def run_parsing(dry_run: bool = False) -> dict[str, Any]:
     logger.info("=== Запуск парсинга из дашборда ===")
 
     use_case = ParseCompetitorPricesUseCase()
-    return await use_case.execute(dry_run=dry_run)
+    return await use_case.execute(dry_run=dry_run, progress_callback=progress_callback)
 
 
-async def run_parsing_own_products(dry_run: bool = False) -> dict[str, Any]:
+async def run_parsing_own_products(
+    dry_run: bool = False,
+    progress_callback: Optional[Callable[[int, int, str], None]] = None,
+) -> dict[str, Any]:
     """
     Запускает парсинг своих товаров в асинхронном контексте (из Streamlit).
 
     Args:
         dry_run: Если True, данные не записываются в БД.
+        progress_callback: Опциональный колбэк для отображения прогресса (current, total, message).
 
     Returns:
         Словарь со статистикой {updated, errors, skipped}.
@@ -346,7 +354,7 @@ async def run_parsing_own_products(dry_run: bool = False) -> dict[str, Any]:
     # Get dependencies from container
     from core.container import container
     use_case = container.parse_own_products_use_case()
-    return await use_case.execute(dry_run=dry_run)
+    return await use_case.execute(dry_run=dry_run, progress_callback=progress_callback)
 
 
 def execute_parsing(dry_run: bool) -> tuple[str, str]:
@@ -392,10 +400,10 @@ def execute_parsing(dry_run: bool) -> tuple[str, str]:
 def start_parsing_background(dry_run: bool) -> str:
     """
     Запускает парсинг в фоновом потоке (неблокирующий).
-    
+
     Args:
         dry_run: Флаг тестового запуска.
-        
+
     Returns:
         ID задачи для отслеживания прогресса.
     """
@@ -403,18 +411,22 @@ def start_parsing_background(dry_run: bool) -> str:
     st.session_state.parsing_running = True
     st.session_state.current_task_id = task_id
     st.session_state.parsing_dry_run = dry_run
-    
+
+    def progress_cb(current: int, total: int, message: str) -> None:
+        _task_progress[task_id] = (current, total, message)
+
     async def _run() -> tuple[str, str]:
-        stats = await run_parsing(dry_run=dry_run)
+        stats = await run_parsing(dry_run=dry_run, progress_callback=progress_cb)
         msg = (
             f"Готово! Обновлено цен: {stats.get('updated', 0)}, "
             f"ошибок: {stats.get('errors', 0)}, "
             f"пропущено: {stats.get('skipped', 0)}"
         )
         return msg, "success"
-    
-    _run_async_in_thread(_run(), task_id)
+
+    _run_async_in_thread(_run(), task_id, progress_cb)
     return task_id
+
 
 
 def start_parsing_own_products_background(dry_run: bool) -> str:
@@ -432,8 +444,11 @@ def start_parsing_own_products_background(dry_run: bool) -> str:
     st.session_state.current_task_id = task_id
     st.session_state.parsing_dry_run = dry_run
 
+    def progress_cb(current: int, total: int, message: str) -> None:
+        _task_progress[task_id] = (current, total, message)
+
     async def _run() -> tuple[str, str]:
-        stats = await run_parsing_own_products(dry_run=dry_run)
+        stats = await run_parsing_own_products(dry_run=dry_run, progress_callback=progress_cb)
         msg = (
             f"Готово! Обновлено товаров: {stats.get('updated', 0)}, "
             f"ошибок: {stats.get('errors', 0)}, "
@@ -441,7 +456,7 @@ def start_parsing_own_products_background(dry_run: bool) -> str:
         )
         return msg, "success"
 
-    _run_async_in_thread(_run(), task_id)
+    _run_async_in_thread(_run(), task_id, progress_cb)
     return task_id
 
 
@@ -458,18 +473,21 @@ def start_disable_auto_add_background(dry_run: bool) -> str:
     task_id = f"disable_auto_add_{int(time.time() * 1000)}"
     st.session_state.current_task_id = task_id
 
+    def progress_cb(current: int, total: int, message: str) -> None:
+        _task_progress[task_id] = (current, total, message)
+
     async def _run() -> tuple[str, str]:
         from core.container import container
         api_client = container.api_client()
         use_case = DisableAutoAddUseCase(api_client)
-        stats = await use_case.execute(dry_run=dry_run)
+        stats = await use_case.execute(dry_run=dry_run, progress_callback=progress_cb)
         msg = (
             f"Готово! Удалено: {stats.get('deleted', 0)}, "
             f"ошибок: {stats.get('errors', 0)}"
         )
         return msg, "success"
 
-    _run_async_in_thread(_run(), task_id)
+    _run_async_in_thread(_run(), task_id, progress_cb)
     return task_id
 
 
@@ -483,21 +501,24 @@ def start_update_price_timer_background() -> str:
     task_id = f"update_price_timer_{int(time.time() * 1000)}"
     st.session_state.current_task_id = task_id
 
+    def progress_cb(current: int, total: int, message: str) -> None:
+        _task_progress[task_id] = (current, total, message)
+
     async def _run() -> tuple[str, str]:
         from core.container import container
         from infrastructure.db import SQLiteRepository
-        
+
         repo = SQLiteRepository(settings.database_path_path)
         products = repo.get_all_products()
         product_ids = [p.product_id for p in products if p.product_id]
-        
+
         if not product_ids:
             return "Нет товаров в БД для обновления таймера", "error"
-        
+
         api = container.api_client()
         use_case = UpdatePriceTimerUseCase(api)
         try:
-            stats = await use_case.execute(product_ids)
+            stats = await use_case.execute(product_ids, progress_callback=progress_cb)
             success_count = stats.get("success", 0)
             failed_count = stats.get("failed", 0)
             msg = f"Готово! Обновлено таймеров: {success_count}, ошибок: {failed_count}"
@@ -505,8 +526,9 @@ def start_update_price_timer_background() -> str:
         finally:
             await api.close()
 
-    _run_async_in_thread(_run(), task_id)
+    _run_async_in_thread(_run(), task_id, progress_cb)
     return task_id
+
 
 
 def render_sidebar_section_excel(disabled: bool) -> None:
