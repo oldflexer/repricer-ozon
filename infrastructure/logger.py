@@ -57,7 +57,8 @@ structlog.configure(
         structlog.processors.format_exc_info,
         structlog.processors.UnicodeDecoder(),
         _add_request_id,
-        structlog.processors.JSONRenderer(),
+        # ВАЖНО: ensure_ascii=False для читаемых кириллических символов
+        structlog.processors.JSONRenderer(ensure_ascii=False),
     ],
     context_class=dict,
     logger_factory=structlog.stdlib.LoggerFactory(),

@@ -135,11 +135,29 @@ class ChromeDriverManager:
     def init_driver(self) -> bool:
         try:
             options = self._build_uc_options()
-            # Specify Chrome version 152 to match installed Chrome version
-            self.driver = uc.Chrome(options=options, version_main=152)
-            self._configure_driver()
-            logger.info("✅ UC драйвер успешно инициализирован")
-            return True
+            
+            # Сначала пробуем без указания версии (автоопределение)
+            try:
+                self.driver = uc.Chrome(options=options)
+                self._configure_driver()
+                logger.info("✅ UC драйвер успешно инициализирован (автоопределение версии)")
+                return True
+            except Exception as e:
+                logger.warning(f"Автоопределение версии не удалось: {e}. Пробуем известные версии...")
+                
+                # Fallback: пробуем известные версии
+                for version in [152, 151, 150, 149, 148, 147, 146]:
+                    try:
+                        self.driver = uc.Chrome(options=options, version_main=version)
+                        self._configure_driver()
+                        logger.info(f"✅ UC драйвер инициализирован с version_main={version}")
+                        return True
+                    except Exception as ve:
+                        logger.debug(f"Версия {version} не подходит: {ve}")
+                        continue
+                
+                raise Exception("Все известные версии Chrome не подошли")
+                
         except Exception as e:
             logger.error(f"Ошибка инициализации UC драйвера: {e}")
             self.driver = None

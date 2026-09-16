@@ -582,6 +582,7 @@ def _handle_repricing_buttons(is_busy: bool) -> None:
             type="primary",
             width="stretch",
             icon=":material/rocket_launch:",
+            disabled=is_busy,
         ):
             start_repricing_background(dry_run=False)
             st.rerun()
@@ -606,6 +607,7 @@ def _handle_parsing_buttons(is_busy: bool) -> None:
             type="primary",
             width="stretch",
             icon=":material/rocket_launch:",
+            disabled=is_busy,
         ):
             start_parsing_background(dry_run=False)
             st.rerun()
@@ -655,6 +657,9 @@ def _display_background_progress() -> None:
     task_id = st.session_state.get("current_task_id")
     if not task_id:
         return
+
+    # Контейнер для прогресс-бара (можно очистить)
+    progress_container = st.empty()
     
     # Check if task is complete
     result = check_background_task(task_id)
@@ -662,17 +667,19 @@ def _display_background_progress() -> None:
         msg, msg_type = result
         st.session_state.result_message = msg
         st.session_state.result_type = msg_type
+        # ОЧИСТИТЬ прогресс-бар при завершении
+        progress_container.empty()
         st.rerun()
-    
+
     # Show progress
     progress = get_task_progress(task_id)
     if progress:
         current, total, message = progress
         if total > 0:
-            st.progress(current / total, text=f"{message} ({current}/{total})")
+            progress_container.progress(current / total, text=f"{message} ({current}/{total})")
         else:
-            st.info(message)
-    
+            progress_container.info(message)
+
     # If task is still running, check event and rerun when done
     event = _task_events.get(task_id)
     if event and not event.is_set():
@@ -749,7 +756,11 @@ def render_sidebar() -> None:
     # Отображение сообщения о результате
     _display_result_message()
 
-    is_busy = bool(st.session_state.get("running") or st.session_state.get("parsing_running"))
+    is_busy = bool(
+        st.session_state.get("running") or 
+        st.session_state.get("parsing_running") or 
+        st.session_state.get("current_task_id")
+    )
 
     # Кнопки репрайсинга
     _handle_repricing_buttons(is_busy)

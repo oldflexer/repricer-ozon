@@ -100,15 +100,50 @@ class OzonPriceParser(OzonPriceParserProtocol):
                     return "captcha"
             except Exception:
                 pass
-                
+        
         for selector in block_selectors:
             try:
                 if self.driver.find_elements(By.XPATH, selector):
                     return "block"
             except Exception:
                 pass
-                
+        
         return None
+
+    def _detect_product_ended(self) -> bool:
+        """Проверяет, закончился ли товар на странице.
+        
+        Проверяет несколько селекторов, так как верстка Ozon может меняться.
+        """
+        if not self.driver:
+            return False
+            
+        # Список селекторов для проверки "Товар закончился"
+        ended_selectors = [
+            # Селектор из текущего кода
+            (By.XPATH, "//h2[contains(text(), 'Этот товар закончился')]"),
+            # Селектор, указанный пользователем
+            (By.CSS_SELECTOR, "span.tsHeadline500Medium"),
+            # Дополнительные варианты
+            (By.XPATH, "//span[contains(@class, 'tsHeadline500Medium') and contains(text(), 'Товар закончился')]"),
+            (By.XPATH, "//span[contains(text(), 'Товар закончился')]"),
+            (By.XPATH, "//div[contains(text(), 'Товар закончился')]"),
+            (By.XPATH, "//h1[contains(text(), 'Товар закончился')]"),
+            (By.XPATH, "//h2[contains(text(), 'Товар закончился')]"),
+        ]
+        
+        for by, selector in ended_selectors:
+            try:
+                elements = self.driver.find_elements(by, selector)
+                for el in elements:
+                    text = el.text.strip().lower()
+                    if "товар закончился" in text or "этот товар закончился" in text:
+                        logger.info(f"Обнаружен закончившийся товар (селектор: {selector}): {el.text.strip()}")
+                        return True
+            except Exception:
+                continue
+        return False
+
 
     def get_price(self, product_url: str) -> float | None:
         """
@@ -223,3 +258,4 @@ class OzonPriceParser(OzonPriceParserProtocol):
         self.driver_manager.close()
         self.driver = None
         self.wait = None
+
