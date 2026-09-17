@@ -91,14 +91,21 @@ class ChromeDriverManager:
     def _clean_profile_locks(self, profile_path: str) -> None:
         if not profile_path:
             return
-        for fname in ["SingletonLock", "SingletonSocket", "SingletonCookie", "DevToolsActivePort"]:
-            fpath = Path(profile_path) / fname
-            if fpath.exists():
-                try:
-                    fpath.unlink()
-                    logger.debug(f"Удалён файл: {fpath}")
-                except Exception:
-                    pass
+        lock_files = ["SingletonLock", "SingletonSocket", "SingletonCookie", "DevToolsActivePort", "LOCK"]
+        profile_dir = Path(profile_path)
+        if not profile_dir.exists():
+            return
+        # Clean locks in profile root and all subdirectories (Default, Profile 1, etc.)
+        subdirs = [profile_dir] + [d for d in profile_dir.iterdir() if d.is_dir()]
+        for subdir in subdirs:
+            for fname in lock_files:
+                fpath = subdir / fname
+                if fpath.exists():
+                    try:
+                        fpath.unlink()
+                        logger.debug(f"Удалён файл: {fpath}")
+                    except Exception:
+                        pass
 
     def _build_uc_options(self) -> uc.ChromeOptions:
         options = uc.ChromeOptions()
@@ -134,10 +141,9 @@ class ChromeDriverManager:
 
     def init_driver(self) -> bool:
         try:
-            options = self._build_uc_options()
-            
             # Сначала пробуем без указания версии (автоопределение)
             try:
+                options = self._build_uc_options()
                 self.driver = uc.Chrome(options=options)
                 self._configure_driver()
                 logger.info("✅ UC драйвер успешно инициализирован (автоопределение версии)")
@@ -148,6 +154,8 @@ class ChromeDriverManager:
                 # Fallback: пробуем известные версии
                 for version in [152, 151, 150, 149, 148, 147, 146]:
                     try:
+                        # Пересоздаем options перед каждой попыткой для очистки блокировок профиля
+                        options = self._build_uc_options()
                         self.driver = uc.Chrome(options=options, version_main=version)
                         self._configure_driver()
                         logger.info(f"✅ UC драйвер инициализирован с version_main={version}")

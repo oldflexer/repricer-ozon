@@ -21,8 +21,8 @@ SQL_SELECT_PRODUCT_BY_SKU = """
 """
 
 SQL_INSERT_PRODUCT = """
-    INSERT INTO product (product_id, sku, product_name, rip, net_price, real_customer_price)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO product (product_id, sku, product_name, rip, net_price, real_customer_price, offer_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
 """
 
 SQL_UPDATE_PRODUCT = """

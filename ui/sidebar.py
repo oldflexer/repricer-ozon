@@ -296,7 +296,7 @@ def start_repricing_background(dry_run: bool) -> str:
 def check_background_task(task_id: str) -> Optional[tuple[str, str]]:
     """
     Проверяет статус фоновой задачи.
-    
+
     Returns:
         (message, type) если задача завершена, None если еще выполняется.
     """
@@ -304,6 +304,11 @@ def check_background_task(task_id: str) -> Optional[tuple[str, str]]:
         result = _task_results.pop(task_id)
         st.session_state.running = False
         st.session_state.parsing_running = False
+        # Очищаем current_task_id, чтобы is_busy стал False
+        if st.session_state.get("current_task_id") == task_id:
+            st.session_state.current_task_id = None
+        # Очищаем прогресс
+        _task_progress.pop(task_id, None)
         return result
     return None
 
@@ -680,17 +685,24 @@ def _display_background_progress() -> None:
     if not task_id:
         return
 
-    # Контейнер для прогресс-бара (можно очистить)
-    progress_container = st.empty()
-    
+    # Получаем или создаём стабильный контейнер для этого task_id
+    # Это решает проблему: при rerun st.empty() создаёт новый контейнер,
+    # а старый с прогресс-баром остаётся на экране навсегда
+    container_key = f"progress_container_{task_id}"
+    if container_key not in st.session_state:
+        st.session_state[container_key] = st.empty()
+    progress_container = st.session_state[container_key]
+
     # Check if task is complete
     result = check_background_task(task_id)
     if result:
         msg, msg_type = result
         st.session_state.result_message = msg
         st.session_state.result_type = msg_type
-        # ОЧИСТИТЬ прогресс-бар при завершении
+        # Очищаем правильный контейнер
         progress_container.empty()
+        # Удаляем контейнер из session_state
+        del st.session_state[container_key]
         st.rerun()
 
     # Show progress
@@ -712,6 +724,7 @@ def _display_background_progress() -> None:
                 # Task completed, trigger rerun to show results
                 st.rerun()
         poll_task()
+
 def render_sidebar() -> None:
     """Отрисовывает боковую панель дашборда."""
     icon_path = Path(__file__).parent.parent / "static" / "favicon.ico"

@@ -58,13 +58,13 @@ class ProductRepository(BaseRepository, IProductRepository):
             conn.execute(
                 SQL_INSERT_PRODUCT,
                 (
-                    product.sku,
-                    product.product_name,
-                    product.product_id,
-                    product.offer_id,
-                    product.min_price,
-                    product.cost_price,
-                    product.real_customer_price,
+                    product.product_id,      # product_id
+                    product.sku,             # sku
+                    product.product_name,    # product_name
+                    product.min_price,       # rip
+                    product.cost_price,      # net_price
+                    product.real_customer_price,  # real_customer_price
+                    product.offer_id,        # offer_id
                 ),
             )
             conn.commit()

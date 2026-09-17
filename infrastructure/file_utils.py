@@ -7,7 +7,7 @@ from typing import Any, Dict, Tuple
 
 from openpyxl import load_workbook
 
-from config.settings import settings
+from config.settings import settings, BASE_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -39,11 +39,11 @@ def wait_for_excel_available(file_path: Path, timeout: int = 60) -> bool:
 
 def _create_timestamped_backup(file_path: Path) -> Path:
     """
-    Creates a timestamped backup in the backups/ folder.
+    Creates a timestamped backup in the backups/ folder (project root).
     Returns the path to the created backup.
     """
-    # Create backups directory if it doesn't exist
-    backups_dir = file_path.parent / "backups"
+    # Create backups directory in project root if it doesn't exist
+    backups_dir = BASE_DIR / "backups"
     backups_dir.mkdir(parents=True, exist_ok=True)
 
     # Generate timestamped backup filename
@@ -63,7 +63,7 @@ def _rotate_backups(file_path: Path) -> None:
     """
     Rotates backups, keeping only the last BACKUP_RETENTION_COUNT backups.
     """
-    backups_dir = file_path.parent / "backups"
+    backups_dir = BASE_DIR / "backups"
     if not backups_dir.exists():
         return
 
